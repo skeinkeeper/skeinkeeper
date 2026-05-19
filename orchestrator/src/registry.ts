@@ -71,6 +71,12 @@ export interface ToolDispatcherOptions {
 export class ToolDispatcher {
   constructor(private readonly options: ToolDispatcherOptions) {}
 
+  /** Access the underlying registry — needed by the turn loop to enumerate
+   *  available tools when building the LLM request. */
+  registry(): ToolRegistry {
+    return this.options.registry;
+  }
+
   async dispatch(
     call: { name: string; input: unknown },
     ctx: ToolHandlerContext,

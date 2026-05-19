@@ -40,6 +40,15 @@ export { renderActorState } from "./foundry/render.js";
 export * from "./interfaces/index.js";
 export { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
 export {
+  Session,
+  runTurn,
+  type DispatchedToolCall,
+  type SessionConfig,
+  type TurnInput,
+  type TurnOutput,
+  type TurnStopReason,
+} from "./session.js";
+export {
   BehaviorSpecError,
   assertSpecCompatible,
   bucketSpecSizeKb,
