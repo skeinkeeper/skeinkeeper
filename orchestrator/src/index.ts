@@ -23,7 +23,6 @@ export {
   type HotContext,
   type HotContextOptions,
   type WarmStateSnapshot,
-  type ClockSnapshot,
   type LocationSnapshot,
   type CampaignSnapshot,
   type DialogueTurn,

@@ -47,16 +47,6 @@ function warm(): WarmStateSnapshot {
     ],
     activeNpcs: [dnd5eNpc("Sildar")],
     currentLocation: { id: "scene-1", name: "Phandalin Town Square", description: "Dusty and quiet." },
-    clocks: [
-      {
-        id: "clk-redbrands",
-        name: "Faction: Redbrands",
-        category: "faction",
-        segmentsFilled: 1,
-        segmentsTotal: 6,
-        visibleToPlayers: false,
-      },
-    ],
   };
 }
 
@@ -75,7 +65,6 @@ describe("assembleHotContext", () => {
     expect(ctx.party).toHaveLength(2);
     expect(ctx.activeNpcs[0]?.name).toBe("Sildar");
     expect(ctx.currentLocation?.name).toBe("Phandalin Town Square");
-    expect(ctx.clocks).toHaveLength(1);
   });
 
   it("takes the most recent N turns when history exceeds the window", () => {
@@ -109,7 +98,7 @@ describe("assembleHotContext", () => {
 });
 
 describe("formatHotContextAsText", () => {
-  it("renders campaign, location, party via dnd5e renderer, NPCs, clocks, dialogue", () => {
+  it("renders campaign, location, party via dnd5e renderer, NPCs, and dialogue", () => {
     const text = formatHotContextAsText(assembleHotContext(warm(), turns(2)));
     expect(text).toContain("Lost Mine of Phandelver");
     expect(text).toContain("Phandalin Town Square");
@@ -120,13 +109,10 @@ describe("formatHotContextAsText", () => {
     expect(text).toContain("[frightened]");
     expect(text).toContain("Active NPCs (on this scene):");
     expect(text).toContain("Sildar");
-    expect(text).toContain("Faction: Redbrands");
-    expect(text).toContain("1/6");
-    expect(text).toContain("(GM-only)");
     expect(text).toContain("[player] turn 0");
   });
 
-  it("handles empty party / no NPCs / no scene / no clocks gracefully", () => {
+  it("handles empty party / no NPCs / no scene gracefully", () => {
     const text = formatHotContextAsText(
       assembleHotContext(
         {
@@ -134,7 +120,6 @@ describe("formatHotContextAsText", () => {
           party: [],
           activeNpcs: [],
           currentLocation: null,
-          clocks: [],
         },
         [],
       ),
@@ -142,7 +127,6 @@ describe("formatHotContextAsText", () => {
     expect(text).toContain("Current location: (no active scene)");
     expect(text).not.toContain("Party:");
     expect(text).not.toContain("Active NPCs");
-    expect(text).not.toContain("Clocks:");
     expect(text).not.toContain("Recent dialogue:");
   });
 });

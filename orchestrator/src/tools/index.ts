@@ -15,7 +15,6 @@ import { defineTool, ToolRegistry, type AnyToolDefinition } from "../registry.js
  *  - Dice: thin wrapper that delegates to FoundryClient.rollDice() in
  *    Phase 3 so rolls land in Foundry's chat log. Until then, no-op.
  *  - World state: quest flags, party movement, in-game time.
- *  - Clocks: PbtA-style segmented progress bars, useful in any system.
  *  - Player whisper: Discord side, not VTT side.
  *  - Fudge: meta-mechanic, not system-specific.
  */
@@ -155,97 +154,6 @@ const fudgeRollDef = defineTool({
   },
 });
 
-// ---- clocks ----
-const createClockDef = defineTool({
-  name: "create_clock",
-  description:
-    "Create a segmented progress clock for the campaign. Common categories: 'harm' (PbtA harm clocks), 'countdown' (looming threats), 'faction' (group progress), 'mystery' (revelation tracking), 'progress' (party objectives). visibleToPlayers=false keeps it GM-only.",
-  inputSchema: z.object({
-    id: z.string().min(1),
-    campaignId: z.string(),
-    name: z.string().min(1),
-    segmentsTotal: z.number().int().min(1),
-    segmentsFilled: z.number().int().nonnegative().optional(),
-    category: z.string().optional(),
-    description: z.string().optional(),
-    visibleToPlayers: z.boolean().optional(),
-  }),
-  outputSchema: z.object({
-    id: z.string(),
-    name: z.string(),
-    segmentsFilled: z.number(),
-    segmentsTotal: z.number(),
-  }),
-  async handle(input, ctx) {
-    const now = Date.now();
-    ctx.tenantDb.clocks.create({
-      id: input.id,
-      campaignId: input.campaignId,
-      name: input.name,
-      ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.category !== undefined ? { category: input.category } : {}),
-      segmentsTotal: input.segmentsTotal,
-      segmentsFilled: input.segmentsFilled ?? 0,
-      visibleToPlayers: input.visibleToPlayers ?? true,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return {
-      id: input.id,
-      name: input.name,
-      segmentsFilled: input.segmentsFilled ?? 0,
-      segmentsTotal: input.segmentsTotal,
-    };
-  },
-});
-
-const tickClockDef = defineTool({
-  name: "tick_clock",
-  description:
-    "Advance (or reverse) a clock by a number of segments. Positive ticks fill the clock; negative ticks unfill it. Clamped at 0 and at the clock's total.",
-  inputSchema: z.object({
-    id: z.string(),
-    segments: z.number().int(),
-  }),
-  outputSchema: z.object({
-    id: z.string(),
-    segmentsFilled: z.number(),
-    segmentsTotal: z.number(),
-  }),
-  async handle(input, ctx) {
-    return ctx.tenantDb.clocks.tick(input.id, input.segments);
-  },
-});
-
-const setClockDef = defineTool({
-  name: "set_clock",
-  description:
-    "Set a clock's filled segments to an explicit value. Clamped at 0 and at the clock's total.",
-  inputSchema: z.object({
-    id: z.string(),
-    segmentsFilled: z.number().int().nonnegative(),
-  }),
-  outputSchema: z.object({
-    id: z.string(),
-    segmentsFilled: z.number(),
-    segmentsTotal: z.number(),
-  }),
-  async handle(input, ctx) {
-    return ctx.tenantDb.clocks.set(input.id, input.segmentsFilled);
-  },
-});
-
-const deleteClockDef = defineTool({
-  name: "delete_clock",
-  description: "Delete a clock from the campaign.",
-  inputSchema: z.object({ id: z.string() }),
-  outputSchema: z.object({ id: z.string() }),
-  async handle(input, ctx) {
-    ctx.tenantDb.clocks.delete(input.id);
-    return { id: input.id };
-  },
-});
-
 export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   rollDef,
   setQuestFlagDef,
@@ -253,10 +161,6 @@ export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   advanceTimeDef,
   whisperDef,
   fudgeRollDef,
-  createClockDef,
-  tickClockDef,
-  setClockDef,
-  deleteClockDef,
 ];
 
 export function registerBuiltinTools(registry: ToolRegistry): void {

@@ -41,7 +41,6 @@ The following stays in Skeinkeeper's SQLite (`server/`):
 - **`consents`** — per-player voice-processing consent (keyed on Discord ID, not Foundry user ID).
 - **`deletion_log`** — anonymous erasure trail.
 - **`quest_flags`** — AI-DM-internal world state. The AI's view of plot/quest progression, kept separate from Foundry's official world state so operators can curate what's visible to players.
-- **`clocks`** — segmented progress bars (PbtA pattern, generally useful). System-agnostic; Foundry has community modules for clocks but none are universal, and they don't always expose a clean MCP surface.
 
 ### The `FoundryClient` interface
 
@@ -109,7 +108,6 @@ Two categories of state-mutation tools:
 
 **Skeinkeeper-owned** (write directly to our SQLite via `TenantDb`):
 - `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`
-- `create_clock`, `tick_clock`, `set_clock`, `delete_clock`
 
 **Foundry-routed** (translate to MCP calls; system-aware; registered at session start once the active Foundry system is known):
 - D&D 5e: `apply_damage`, `heal`, `set_condition`, `clear_condition`, `update_inventory`, `update_npc_disposition`
@@ -143,7 +141,7 @@ Foundry is a deliberate bet — see ADR-0001's revised context. Roll20 is more p
 
 ## Telemetry implications
 
-No new events. The existing `tool.called` event covers tool dispatches whether they route to SQLite (clock tools) or to Foundry (D&D-specific tools). Foundry-call latency may show up in the bucket; that's intentional — operators can observe MCP performance via opted-in analytics.
+No new events. The existing `tool.called` event covers tool dispatches whether they route to SQLite (quest flags, advance_time, whisper, fudge) or to Foundry (D&D-specific tools). Foundry-call latency may show up in the bucket; that's intentional — operators can observe MCP performance via opted-in analytics.
 
 ## Privacy implications
 

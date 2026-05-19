@@ -3,7 +3,7 @@
 
 import type { TenantDb } from "@skeinkeeper/server";
 import type { FoundryClient } from "./foundry/client.js";
-import type { ClockSnapshot, LocationSnapshot, WarmStateSnapshot } from "./hot_context.js";
+import type { LocationSnapshot, WarmStateSnapshot } from "./hot_context.js";
 import { renderActorState } from "./foundry/render.js";
 
 /**
@@ -12,9 +12,9 @@ import { renderActorState } from "./foundry/render.js";
  * assembleHotContext.
  *
  * Per design doc 0007, mechanical state (party, NPCs, scene) is read
- * from Foundry via the FoundryClient. AI-DM-specific state (clocks,
- * campaign metadata) is read from TenantDb. The orchestrator stitches
- * the two sources together and produces a single snapshot.
+ * from Foundry via the FoundryClient. AI-DM-specific state (campaign
+ * metadata, quest flags) is read from TenantDb. The orchestrator
+ * stitches the two sources together and produces a single snapshot.
  *
  * No writes here. Per ADR-0003, warm-state mutations occur only via
  * the tool dispatcher.
@@ -39,25 +39,11 @@ export async function buildWarmStateSnapshot(
     if (scene.description) currentLocation.description = scene.description;
   }
 
-  const clockRows = tenantDb.clocks.listByCampaign(campaignId);
-  const clocks: ReadonlyArray<ClockSnapshot> = clockRows.map((c) => {
-    const out: ClockSnapshot = {
-      id: c.id,
-      name: c.name,
-      segmentsFilled: c.segmentsFilled,
-      segmentsTotal: c.segmentsTotal,
-      visibleToPlayers: Boolean(c.visibleToPlayers),
-    };
-    if (c.category) out.category = c.category;
-    return out;
-  });
-
   return {
     campaign: { id: campaign.id, name: campaign.name, rulesetId: campaign.rulesetId },
     party,
     activeNpcs,
     currentLocation,
-    clocks,
   };
 }
 
@@ -78,9 +64,5 @@ export function summarizeWarmStateForOperator(snapshot: WarmStateSnapshot): stri
     snapshot.activeNpcs.length === 0
       ? ""
       : ` Active NPCs: ${snapshot.activeNpcs.map((n) => n.name).join(", ")}.`;
-  const clocks =
-    snapshot.clocks.length === 0
-      ? ""
-      : ` Clocks: ${snapshot.clocks.map((c) => `${c.name} ${c.segmentsFilled}/${c.segmentsTotal}`).join(", ")}.`;
-  return `Campaign "${snapshot.campaign.name}" ${loc}. Party: ${partyStr}.${npcs}${clocks}`;
+  return `Campaign "${snapshot.campaign.name}" ${loc}. Party: ${partyStr}.${npcs}`;
 }

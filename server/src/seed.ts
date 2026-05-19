@@ -7,9 +7,7 @@ import type { Db } from "./db.js";
 import {
   tenants,
   campaigns,
-  clocks,
   type NewCampaign,
-  type NewClock,
   type NewTenant,
 } from "./schema/index.js";
 
@@ -22,15 +20,6 @@ interface SeedFile {
     behaviorSpecVersion: string;
     status?: "active" | "paused" | "archived";
     foundryWorldName?: string; // not stored; for operator reference only
-    clocks?: ReadonlyArray<{
-      id: string;
-      name: string;
-      description?: string;
-      category?: string;
-      segmentsTotal: number;
-      segmentsFilled?: number;
-      visibleToPlayers?: boolean;
-    }>;
   }>;
 }
 
@@ -40,8 +29,7 @@ interface SeedFile {
  *
  * Per design doc 0007, mechanical state (characters, NPCs, locations)
  * lives in Foundry, not Skeinkeeper. The seed file therefore carries
- * only Skeinkeeper-owned state: the tenant, campaigns, and any starting
- * clocks the AI should be aware of.
+ * only Skeinkeeper-owned state: the tenant and campaigns.
  */
 export function seedFromFile(db: Db, path: string): { inserted: number } {
   if (!existsSync(path)) {
@@ -80,26 +68,6 @@ export function seedFromFile(db: Db, path: string): { inserted: number } {
       };
       db.insert(campaigns).values(newCampaign).run();
       inserted++;
-    }
-    for (const clk of c.clocks ?? []) {
-      const existingClock = db.select().from(clocks).all().find((x) => x.id === clk.id);
-      if (!existingClock) {
-        const newClock: NewClock = {
-          id: clk.id,
-          tenantId: file.tenant.id,
-          campaignId: c.id,
-          name: clk.name,
-          ...(clk.description !== undefined ? { description: clk.description } : {}),
-          ...(clk.category !== undefined ? { category: clk.category } : {}),
-          segmentsTotal: clk.segmentsTotal,
-          segmentsFilled: clk.segmentsFilled ?? 0,
-          visibleToPlayers: clk.visibleToPlayers ?? true,
-          createdAt: now,
-          updatedAt: now,
-        };
-        db.insert(clocks).values(newClock).run();
-        inserted++;
-      }
     }
   }
   return { inserted };

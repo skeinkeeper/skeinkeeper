@@ -49,20 +49,8 @@ function npc(id: string, name: string): FoundryActor {
 }
 
 describe("buildWarmStateSnapshot", () => {
-  it("merges Foundry party + scene NPCs with Skeinkeeper clocks", async () => {
+  it("merges Foundry party + scene NPCs with campaign metadata", async () => {
     const { t } = setup();
-    t.clocks.create({
-      id: "clk-1",
-      campaignId: "c1",
-      name: "Threat",
-      category: "countdown",
-      segmentsTotal: 4,
-      segmentsFilled: 1,
-      visibleToPlayers: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-
     const aragorn = character("char-aragorn", "Aragorn", 22, 30);
     const sildar = npc("npc-sildar", "Sildar");
     const villain = npc("npc-glasstaff", "Glasstaff");
@@ -92,8 +80,6 @@ describe("buildWarmStateSnapshot", () => {
     expect(snap.activeNpcs[0]?.name).toBe("Sildar");
     expect(snap.currentLocation?.name).toBe("Stonehill Inn");
     expect(snap.currentLocation?.description).toBe("smells of stew");
-    expect(snap.clocks).toHaveLength(1);
-    expect(snap.clocks[0]?.segmentsFilled).toBe(1);
   });
 
   it("returns null currentLocation when no active scene", async () => {
@@ -112,18 +98,8 @@ describe("buildWarmStateSnapshot", () => {
 });
 
 describe("summarizeWarmStateForOperator", () => {
-  it("renders a one-line summary including party and clocks", async () => {
+  it("renders a one-line summary including party", async () => {
     const { t } = setup();
-    t.clocks.create({
-      id: "clk-1",
-      campaignId: "c1",
-      name: "Redbrands",
-      segmentsTotal: 6,
-      segmentsFilled: 2,
-      visibleToPlayers: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
     const aragorn = character("char-aragorn", "Aragorn", 22, 30);
     const foundry = new MockFoundryClient({
       system: "dnd5e",
@@ -136,7 +112,6 @@ describe("summarizeWarmStateForOperator", () => {
     expect(summary).toContain("Aragorn");
     expect(summary).toContain("HP 22/30");
     expect(summary).toContain("no active scene");
-    expect(summary).toContain("Redbrands 2/6");
   });
 
   it("handles empty party gracefully", async () => {

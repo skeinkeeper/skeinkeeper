@@ -7,21 +7,12 @@
  *
  * Per design doc 0007, the warm-state snapshot is sourced from Foundry
  * (via FoundryClient) for mechanical state, plus TenantDb for AI-DM
- * state (clocks, quest flags). This module is a pure function over the
+ * state (quest flags). This module is a pure function over the
  * already-assembled snapshot — see `warm_state.ts` for the assembler.
  */
 
 import type { FoundryActor } from "./foundry/client.js";
 import { renderActorState } from "./foundry/render.js";
-
-export interface ClockSnapshot {
-  id: string;
-  name: string;
-  segmentsFilled: number;
-  segmentsTotal: number;
-  category?: string;
-  visibleToPlayers: boolean;
-}
 
 export interface CampaignSnapshot {
   id: string;
@@ -51,7 +42,6 @@ export interface WarmStateSnapshot {
   party: ReadonlyArray<FoundryActor>;
   activeNpcs: ReadonlyArray<FoundryActor>;
   currentLocation: LocationSnapshot | null;
-  clocks: ReadonlyArray<ClockSnapshot>;
 }
 
 export interface HotContextOptions {
@@ -111,16 +101,6 @@ export function formatHotContextAsText(ctx: HotContext): string {
     lines.push("Active NPCs (on this scene):");
     for (const actor of ctx.activeNpcs) {
       lines.push(`  - ${renderActorState(actor)}`);
-    }
-  }
-
-  if (ctx.clocks.length > 0) {
-    lines.push("");
-    lines.push("Clocks:");
-    for (const c of ctx.clocks) {
-      const visibility = c.visibleToPlayers ? "" : " (GM-only)";
-      const cat = c.category ? ` [${c.category}]` : "";
-      lines.push(`  - ${c.name}${cat}: ${c.segmentsFilled}/${c.segmentsTotal}${visibility}`);
     }
   }
 

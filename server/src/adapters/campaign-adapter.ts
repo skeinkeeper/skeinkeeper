@@ -7,11 +7,10 @@ import type { DeletionAdapter, ErasureScope } from "../erasure.js";
 import { campaigns } from "../schema/index.js";
 
 /**
- * Deleting a campaign cascades via FK to quest_flags, clocks, and
- * sessions. Per design doc 0007, mechanical state (characters, NPCs,
- * locations) lives in Foundry, not Skeinkeeper — its erasure is the
- * operator's responsibility on the Foundry side, surfaced in
- * docs/PRIVACY.md.
+ * Deleting a campaign cascades via FK to quest_flags and sessions.
+ * Per design doc 0007, mechanical state (characters, NPCs, locations)
+ * lives in Foundry, not Skeinkeeper — its erasure is the operator's
+ * responsibility on the Foundry side, surfaced in docs/PRIVACY.md.
  */
 export class CampaignAdapter implements DeletionAdapter {
   readonly name = "campaign";

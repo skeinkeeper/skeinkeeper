@@ -7,8 +7,7 @@
 #
 # Per design doc 0007, Foundry owns characters, NPCs, locations, and the
 # system-mechanical state of your campaign. This seed file carries only
-# Skeinkeeper-side state: the tenant, the campaign metadata, and any
-# starting clocks the AI should track.
+# Skeinkeeper-side state: the tenant and campaign metadata.
 #
 # Characters are *not* defined here — set them up in Foundry, then point
 # Skeinkeeper at your Foundry world via campaigns[].foundryWorldName.
@@ -24,15 +23,3 @@ campaigns:
     behaviorSpecVersion: v0.1
     foundryWorldName: phandelver   # operator-side reference; Skeinkeeper connects via the FoundryClient
     status: active
-    clocks:
-      - id: clk-redbrands
-        name: "Faction: Redbrands"
-        description: "Their hold over Phandalin"
-        category: faction
-        segmentsTotal: 6
-        segmentsFilled: 1
-        visibleToPlayers: false
-      - id: clk-cragmaw-warband
-        name: "Cragmaw warband on the move"
-        category: countdown
-        segmentsTotal: 4

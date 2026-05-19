@@ -8,12 +8,10 @@ import {
   questFlags,
   sessions,
   auditLog,
-  clocks,
   type NewCampaign,
   type NewQuestFlag,
   type NewSession,
   type NewAuditLogEntry,
-  type NewClock,
 } from "./schema/index.js";
 
 /**
@@ -25,7 +23,7 @@ import {
  * Per design doc 0007, mechanical state (characters, NPCs, locations,
  * faction relationships) lives in Foundry, accessed via FoundryClient.
  * This wrapper covers AI-DM-specific state only: campaigns, sessions,
- * audit log, consents (separate adapter), quest flags, clocks.
+ * audit log, consents (separate adapter), and quest flags.
  *
  * Application code that needs to break out (migrations, operator tools
  * that span tenants) uses unsafelyAcrossTenants() — grep-able, code-review
@@ -67,59 +65,6 @@ export class TenantDb {
           target: [questFlags.tenantId, questFlags.campaignId, questFlags.key],
           set: { value: data.value, updatedAt: data.updatedAt },
         })
-        .run(),
-  };
-
-  // ---- clocks ----
-  readonly clocks = {
-    listByCampaign: (campaignId: string) =>
-      this.db
-        .select()
-        .from(clocks)
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.campaignId, campaignId)))
-        .all(),
-    get: (id: string) =>
-      this.db
-        .select()
-        .from(clocks)
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
-        .get(),
-    create: (data: Omit<NewClock, "tenantId">) =>
-      this.db.insert(clocks).values({ ...data, tenantId: this.tenantId }).run(),
-    tick: (id: string, segments: number) => {
-      const existing = this.db
-        .select()
-        .from(clocks)
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
-        .get();
-      if (!existing) throw new Error(`Clock ${id} not found`);
-      const next = Math.max(0, Math.min(existing.segmentsTotal, existing.segmentsFilled + segments));
-      this.db
-        .update(clocks)
-        .set({ segmentsFilled: next, updatedAt: Date.now() })
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
-        .run();
-      return { id, segmentsFilled: next, segmentsTotal: existing.segmentsTotal };
-    },
-    set: (id: string, segmentsFilled: number) => {
-      const existing = this.db
-        .select()
-        .from(clocks)
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
-        .get();
-      if (!existing) throw new Error(`Clock ${id} not found`);
-      const clamped = Math.max(0, Math.min(existing.segmentsTotal, segmentsFilled));
-      this.db
-        .update(clocks)
-        .set({ segmentsFilled: clamped, updatedAt: Date.now() })
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
-        .run();
-      return { id, segmentsFilled: clamped, segmentsTotal: existing.segmentsTotal };
-    },
-    delete: (id: string) =>
-      this.db
-        .delete(clocks)
-        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
         .run(),
   };
 

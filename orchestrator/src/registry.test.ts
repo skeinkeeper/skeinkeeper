@@ -44,14 +44,10 @@ describe("ToolRegistry", () => {
     expect(names).toEqual(
       [
         "advance_time",
-        "create_clock",
-        "delete_clock",
         "fudge_roll",
         "move_party",
         "roll",
-        "set_clock",
         "set_quest_flag",
-        "tick_clock",
         "whisper",
       ].sort(),
     );
@@ -227,32 +223,6 @@ describe("Builtin tools (end-to-end)", () => {
     expect(flags.find((f) => f.key === "party.location")?.value).toBe("scene-tavern");
   });
 
-  it("create_clock + tick_clock + set_clock + delete_clock", async () => {
-    const { tenantDb, dispatcher } = bootstrap();
-    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const };
-
-    await dispatcher.dispatch(
-      {
-        name: "create_clock",
-        input: { id: "clk-1", campaignId: "c1", name: "Threat", segmentsTotal: 4 },
-      },
-      ctx,
-    );
-    const tickRes = await dispatcher.dispatch(
-      { name: "tick_clock", input: { id: "clk-1", segments: 2 } },
-      ctx,
-    );
-    expect((tickRes.ok && (tickRes.output as { segmentsFilled: number }).segmentsFilled) || 0).toBe(2);
-
-    const setRes = await dispatcher.dispatch(
-      { name: "set_clock", input: { id: "clk-1", segmentsFilled: 4 } },
-      ctx,
-    );
-    expect((setRes.ok && (setRes.output as { segmentsFilled: number }).segmentsFilled) || 0).toBe(4);
-
-    await dispatcher.dispatch({ name: "delete_clock", input: { id: "clk-1" } }, ctx);
-    expect(tenantDb.clocks.listByCampaign("c1")).toHaveLength(0);
-  });
 });
 
 describe("rollFormula (legacy local roller)", () => {

@@ -76,20 +76,4 @@ CREATE TABLE `quest_flags` (
 	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `quest_flags_campaign_key` ON `quest_flags` (`tenant_id`,`campaign_id`,`key`);--> statement-breakpoint
-CREATE TABLE `clocks` (
-	`id` text PRIMARY KEY NOT NULL,
-	`tenant_id` text NOT NULL,
-	`campaign_id` text NOT NULL,
-	`name` text NOT NULL,
-	`description` text,
-	`category` text,
-	`segments_filled` integer DEFAULT 0 NOT NULL,
-	`segments_total` integer NOT NULL,
-	`visible_to_players` integer DEFAULT true NOT NULL,
-	`created_at` integer NOT NULL,
-	`updated_at` integer NOT NULL,
-	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE INDEX `clocks_campaign` ON `clocks` (`tenant_id`,`campaign_id`);
+CREATE UNIQUE INDEX `quest_flags_campaign_key` ON `quest_flags` (`tenant_id`,`campaign_id`,`key`);
