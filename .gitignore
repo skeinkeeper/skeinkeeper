@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+
+# Local data
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+.lancedb/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Operating system
+*~
+.cache/
+
+# Belt-and-suspenders: never accidentally commit strategy materials
+# (these live outside the repo by design, but in case of misconfig).
+# Note: gitignore patterns are evaluated against repo-relative paths and
+# don't traverse `..`, so a `../strategy/` entry would be a no-op — the
+# real defense is the pre-commit hook installed by
+# strategy/scripts/install-public-repo-hooks.sh.
+strategy/
+**/competitive-analysis.md
+**/PRD.md
+**/PRD-*.md
+**/task-breakdown*.md
