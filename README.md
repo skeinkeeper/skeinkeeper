@@ -1,4 +1,6 @@
-# Skeinkeeper
+<p align="center">
+  <img src="./branding/wordmark.png" alt="Skeinkeeper" width="720">
+</p>
 
 > _Wyrd bið ful aræd._ — Old English: "Fate remains wholly inexorable."
 
