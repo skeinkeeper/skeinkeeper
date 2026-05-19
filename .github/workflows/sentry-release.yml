@@ -1,0 +1,36 @@
+name: Sentry Release
+
+# Tags every push to main with a Sentry release matching the commit SHA, so
+# errors in production can be attributed to the specific commit that
+# introduced them. Required for the "Suspect PR Comments" GitHub-integration
+# feature (Tier 1 setup).
+#
+# Requires `SENTRY_AUTH_TOKEN` repo secret — an Organization Auth Token from
+# Sentry (Settings → Organization Tokens) with the `org:ci` scope.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # No-op if the SENTRY_AUTH_TOKEN secret hasn't been set yet, so a fresh
+    # clone of the repo doesn't fail CI before the operator has wired Sentry.
+    if: ${{ vars.SENTRY_ENABLED != 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 lets sentry-cli associate commits since the previous
+          # release so Sentry can show "introduced in" links on errors.
+          fetch-depth: 0
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: skeinkeeper
+          SENTRY_PROJECT: skeinkeeper
+        with:
+          environment: main
+          version: ${{ github.sha }}
