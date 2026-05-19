@@ -1,0 +1,19 @@
+{
+  "name": "@skeinkeeper/llm-anthropic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.97.1",
+    "@skeinkeeper/core": "workspace:*",
+    "@skeinkeeper/orchestrator": "workspace:*",
+    "@skeinkeeper/telemetry": "workspace:*"
+  }
+}

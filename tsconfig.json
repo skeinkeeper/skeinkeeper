@@ -5,6 +5,7 @@
     { "path": "./telemetry" },
     { "path": "./server" },
     { "path": "./eval" },
-    { "path": "./orchestrator" }
+    { "path": "./orchestrator" },
+    { "path": "./plugins/llm-anthropic" }
   ]
 }

@@ -143,13 +143,13 @@ Rationale: the model-name landscape changes constantly. Locking orchestrator cod
 
 ### Effort and thinking
 
-`effort` maps to Anthropic's `output_config.effort` parameter (GA, no beta header). For `AnthropicProvider`:
+`effort` maps to Anthropic's `output_config.effort` parameter (GA, no beta header). The parameter is accepted on Opus 4.5+ and Sonnet 4.6 but **rejected on Haiku 4.5 / Sonnet 4.5** with a 400 *"this model does not support the effort parameter."* `AnthropicProvider`:
 
-- `narration` tier defaults to `effort: "xhigh"` on Opus 4.7 — the documented sweet spot for agentic work that needs intelligence but not max cost.
-- `orchestration` tier defaults to `effort: "high"` on Haiku 4.5.
-- Caller can override per request.
+- On `narration` tier (Opus 4.7 by default): sets `effort: "xhigh"` — the documented sweet spot for agentic work that needs intelligence but not max cost.
+- On `orchestration` tier (Haiku 4.5 by default): **omits `output_config` entirely** to avoid the 400. The Haiku tier accepts the caller's `effort` only if the operator has overridden the default model to one that supports it.
+- A custom narration model like `claude-opus-4-5` also gets the configured effort.
 
-Adaptive thinking is enabled on Opus 4.7 (`thinking: { type: "adaptive", display: "summarized" }`). Summarized display means thinking blocks stream with summarized content the operator can see in the audit log, without exposing player-facing thinking. Haiku 4.5 does not support thinking; `AnthropicProvider` omits the parameter on that tier.
+Adaptive thinking is enabled on the same set of models that accept `effort` (Opus 4.5+, Sonnet 4.6) via `thinking: { type: "adaptive", display: "summarized" }`. Summarized display means thinking blocks stream with summarized content the operator can see in the audit log, without exposing player-facing thinking. Haiku 4.5 does not support thinking; `AnthropicProvider` omits the parameter on that tier.
 
 ### Tool use
 

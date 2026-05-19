@@ -38,3 +38,4 @@ export {
 export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
 export { renderActorState } from "./foundry/render.js";
 export * from "./interfaces/index.js";
+export { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
