@@ -10,6 +10,9 @@ import { openDb } from "./db.js";
 import { ErasureService, type ErasureScope } from "./erasure.js";
 import { ExportService } from "./export.js";
 import { ConsentsAdapter } from "./adapters/consents-adapter.js";
+import { CampaignAdapter } from "./adapters/campaign-adapter.js";
+import { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
+import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 import { loadOrCreateSalt } from "./salt.js";
 
 const USAGE = `\
@@ -63,9 +66,19 @@ export async function runCli(argv: ReadonlyArray<string>, env: CliEnv = {}): Pro
     const erasure = new ErasureService({ db, salt });
     const exporter = new ExportService();
 
+    // Register every adapter so each erasure/export scope is fully handled.
+    // (Previously only consents was wired, so campaign:delete and audit-log
+    // erasure silently no-op'd — fixed here alongside the new dialogue store.)
     const consentsAdapter = new ConsentsAdapter(db);
-    erasure.register(consentsAdapter);
+    const campaignAdapter = new CampaignAdapter(db);
+    const auditLogAdapter = new AuditLogAdapter(db);
+    const dialogueAdapter = new DialogueAdapter(db);
+    for (const a of [consentsAdapter, campaignAdapter, auditLogAdapter, dialogueAdapter]) {
+      erasure.register(a);
+    }
+    // Only adapters that implement ExportAdapter are registered for export.
     exporter.register(consentsAdapter);
+    exporter.register(dialogueAdapter);
 
     const scope = scopeFromArgs(command, values);
     if (!scope) {

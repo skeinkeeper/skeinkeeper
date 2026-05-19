@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7ae5052f-503a-4bca-80b2-5fb38eddd183",
+  "id": "b9da76a9-06eb-4bbe-84ca-24ea0591871e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "tenants": {
@@ -193,6 +193,97 @@
           "tableTo": "campaigns",
           "columnsFrom": [
             "campaign_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "dialogue": {
+      "name": "dialogue",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "speaker": {
+          "name": "speaker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "dialogue_session": {
+          "name": "dialogue_session",
+          "columns": [
+            "tenant_id",
+            "session_id",
+            "timestamp"
+          ],
+          "isUnique": false
+        },
+        "dialogue_speaker": {
+          "name": "dialogue_speaker",
+          "columns": [
+            "tenant_id",
+            "speaker"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "dialogue_session_id_sessions_id_fk": {
+          "name": "dialogue_session_id_sessions_id_fk",
+          "tableFrom": "dialogue",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
           ],
           "columnsTo": [
             "id"

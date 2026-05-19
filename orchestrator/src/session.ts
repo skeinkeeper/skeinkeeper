@@ -57,11 +57,64 @@ export interface SessionConfig {
 }
 
 export class Session {
-  /** Mutable dialogue history. Phase 2a keeps this in-memory; 2c+
-   *  persists to TenantDb when restart-resilience matters. */
+  /** Dialogue history, hydrated from TenantDb by startSession and appended
+   *  to (in-memory + persisted) on each turn. */
   readonly dialogue: DialogueTurn[] = [];
+  /** Number of turns processed in this session; used for session.ended. */
+  turnCount = 0;
 
   constructor(readonly config: SessionConfig) {}
+}
+
+/**
+ * Begin a session: create (or resume) the persisted session row, hydrate
+ * the in-memory dialogue from any prior turns, and emit session.started.
+ * The proper entry point before calling runTurn — runTurn persists dialogue
+ * rows that FK-reference the session row created here.
+ */
+export function startSession(config: SessionConfig): Session {
+  const session = new Session(config);
+  const now = Date.now();
+
+  const existing = config.tenantDb.sessions.get(config.sessionId);
+  if (!existing) {
+    config.tenantDb.sessions.create({
+      id: config.sessionId,
+      campaignId: config.campaignId,
+      behaviorSpecVersion: config.behaviorSpec.version,
+      startedAt: now,
+    });
+  }
+
+  // Resume: hydrate in-memory dialogue from persisted turns.
+  for (const row of config.tenantDb.dialogue.listBySession(config.sessionId)) {
+    const t: DialogueTurn = { speaker: row.speaker, text: row.text, timestamp: row.timestamp };
+    if (row.displayName != null) t.displayName = row.displayName;
+    session.dialogue.push(t);
+  }
+
+  const campaign = config.tenantDb.campaigns.get(config.campaignId);
+  config.analytics?.track("session.started", {
+    campaignIdHash: hashHex(config.campaignId, 16),
+    rulesetId: campaign?.rulesetId ?? "unknown",
+  });
+
+  return session;
+}
+
+/** End a session: stamp endedAt, store an optional summary, emit session.ended. */
+export function endSession(session: Session, summaryJson?: string): void {
+  const cfg = session.config;
+  const row = cfg.tenantDb.sessions.get(cfg.sessionId);
+  const endedAt = Date.now();
+  cfg.tenantDb.sessions.end(cfg.sessionId, endedAt, summaryJson);
+  const startedAt = row?.startedAt ?? endedAt;
+  const durationSec = Math.max(0, Math.round((endedAt - startedAt) / 1000));
+  cfg.analytics?.track("session.ended", {
+    campaignIdHash: hashHex(cfg.campaignId, 16),
+    durationSecBucket: bucketDurationSec(durationSec),
+    turnCount: session.turnCount,
+  });
 }
 
 export interface TurnInput {
@@ -117,6 +170,14 @@ export async function runTurn(
   };
   if (input.displayName !== undefined) dialogueTurn.displayName = input.displayName;
   session.dialogue.push(dialogueTurn);
+  session.turnCount += 1;
+  cfg.tenantDb.dialogue.append({
+    sessionId: cfg.sessionId,
+    speaker: input.speaker,
+    ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+    text: input.text,
+    timestamp: startMs,
+  });
 
   // Audit: turn start.
   appendAudit(cfg, {
@@ -125,7 +186,7 @@ export async function runTurn(
     payloadJson: JSON.stringify({
       speaker: input.speaker,
       displayName: input.displayName,
-      textHash: shortHash(input.text),
+      textHash: hashHex(input.text, 12),
     }),
     sessionId: cfg.sessionId,
     turnId,
@@ -252,6 +313,19 @@ export async function runTurn(
     }
   }
 
+  // Persist the AI's narration as a narrator dialogue turn so future turns
+  // see it in hot context (in-memory + DB).
+  if (narration.length > 0) {
+    const narratorTs = Date.now();
+    session.dialogue.push({ speaker: "narrator", text: narration, timestamp: narratorTs });
+    cfg.tenantDb.dialogue.append({
+      sessionId: cfg.sessionId,
+      speaker: "narrator",
+      text: narration,
+      timestamp: narratorTs,
+    });
+  }
+
   // Tools may have mutated state — refresh once at end for the output.
   warmState = await buildWarmStateSnapshot(cfg.foundry, cfg.tenantDb, cfg.campaignId);
 
@@ -296,6 +370,14 @@ function appendAudit(cfg: SessionConfig, entry: AuditEntry): void {
   cfg.tenantDb.auditLog.append(entry);
 }
 
-function shortHash(text: string): string {
-  return createHash("sha256").update(text, "utf8").digest("hex").slice(0, 12);
+function hashHex(s: string, len: number): string {
+  return createHash("sha256").update(s, "utf8").digest("hex").slice(0, len);
+}
+
+function bucketDurationSec(sec: number): string {
+  if (sec < 15 * 60) return "<15m";
+  if (sec < 60 * 60) return "15-60m";
+  if (sec < 2 * 3600) return "1-2h";
+  if (sec < 4 * 3600) return "2-4h";
+  return ">4h";
 }

@@ -12,6 +12,7 @@
 export * from "./tenants";
 export * from "./campaigns";
 export * from "./sessions";
+export * from "./dialogue";
 export * from "./audit_log";
 export * from "./consents";
 export * from "./deletion_log";

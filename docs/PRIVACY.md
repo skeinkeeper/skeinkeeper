@@ -83,7 +83,7 @@ Produces a JSON archive of everything Skeinkeeper has stored involving that Disc
 skeinkeeper player:delete <discord-id>
 ```
 
-Cascades across every storage system (warm state, vector store, audit log, consents). A record of the deletion is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes.
+Cascades across every storage system: dialogue transcripts (the player's spoken/typed lines), quest flags, audit log entries, consent records, and — once the vector store lands — episodic memory. A record of the deletion is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
 
 **Stop voice processing** without leaving the campaign
 

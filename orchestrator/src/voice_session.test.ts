@@ -7,7 +7,7 @@ import type { BehaviorSpec } from "./behavior.js";
 import { MockFoundryClient } from "./foundry/mock.js";
 import { FakeVoiceIO, fakeLlmFromEvents, type VoiceEvent } from "./interfaces/index.js";
 import { ToolDispatcher, ToolRegistry } from "./registry.js";
-import { Session, type SessionConfig } from "./session.js";
+import { startSession, type Session, type SessionConfig } from "./session.js";
 import { runVoiceSession, VOICE_CONSENT_TEXT } from "./voice_session.js";
 
 const SPEC: BehaviorSpec = { content: "AI DM spec.", version: "v0.1", path: "/s.md" };
@@ -42,7 +42,7 @@ function makeSession(): { session: Session } {
     foundry: new MockFoundryClient({ system: "dnd5e" }),
     tenantDb,
   };
-  return { session: new Session(config) };
+  return { session: startSession(config) };
 }
 
 describe("runVoiceSession", () => {
@@ -62,8 +62,9 @@ describe("runVoiceSession", () => {
     expect(count).toBe(1);
     expect(voiceIO.spoken).toHaveLength(1);
     expect(voiceIO.spoken[0]?.text).toBe("Narrated response.");
-    expect(session.dialogue).toHaveLength(1);
-    expect(session.dialogue[0]?.text).toBe("I open the door.");
+    const playerTurns = session.dialogue.filter((d) => d.speaker !== "narrator");
+    expect(playerTurns).toHaveLength(1);
+    expect(playerTurns[0]?.text).toBe("I open the door.");
   });
 
   it("requests consent (and does NOT run a turn) on a consent_needed event", async () => {
@@ -100,7 +101,8 @@ describe("runVoiceSession", () => {
     expect(count).toBe(2);
     expect(voiceIO.spoken).toHaveLength(2);
     expect(voiceIO.consentRequests).toHaveLength(1);
-    expect(session.dialogue.map((d) => d.text)).toEqual(["First.", "Second."]);
+    const playerTexts = session.dialogue.filter((d) => d.speaker !== "narrator").map((d) => d.text);
+    expect(playerTexts).toEqual(["First.", "Second."]);
   });
 
   it("passes a resolved voice ID through to speak()", async () => {

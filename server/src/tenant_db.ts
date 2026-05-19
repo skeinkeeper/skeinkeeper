@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { Db } from "./db.js";
 import {
   campaigns,
   consents,
+  dialogue,
   questFlags,
   sessions,
   auditLog,
   type Action,
   type NewCampaign,
+  type NewDialogueRow,
   type NewQuestFlag,
   type NewSession,
   type NewAuditLogEntry,
@@ -79,8 +81,34 @@ export class TenantDb {
         .from(sessions)
         .where(and(eq(sessions.tenantId, this.tenantId), eq(sessions.campaignId, campaignId)))
         .all(),
+    get: (id: string) =>
+      this.db
+        .select()
+        .from(sessions)
+        .where(and(eq(sessions.tenantId, this.tenantId), eq(sessions.id, id)))
+        .get(),
     create: (data: Omit<NewSession, "tenantId">) =>
       this.db.insert(sessions).values({ ...data, tenantId: this.tenantId }).run(),
+    /** Mark a session ended. Sets endedAt and (optionally) the summary. */
+    end: (id: string, endedAt: number, summaryJson?: string) =>
+      this.db
+        .update(sessions)
+        .set({ endedAt, ...(summaryJson !== undefined ? { summaryJson } : {}) })
+        .where(and(eq(sessions.tenantId, this.tenantId), eq(sessions.id, id)))
+        .run(),
+  };
+
+  // ---- dialogue (append-only transcript) ----
+  readonly dialogue = {
+    append: (entry: Omit<NewDialogueRow, "tenantId" | "id">) =>
+      this.db.insert(dialogue).values({ ...entry, tenantId: this.tenantId }).run(),
+    listBySession: (sessionId: string) =>
+      this.db
+        .select()
+        .from(dialogue)
+        .where(and(eq(dialogue.tenantId, this.tenantId), eq(dialogue.sessionId, sessionId)))
+        .orderBy(asc(dialogue.timestamp), asc(dialogue.id))
+        .all(),
   };
 
   // ---- consents (append-only event log; current state = most recent row) ----

@@ -42,6 +42,8 @@ export { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
 export {
   Session,
   runTurn,
+  startSession,
+  endSession,
   type DispatchedToolCall,
   type SessionConfig,
   type TurnInput,

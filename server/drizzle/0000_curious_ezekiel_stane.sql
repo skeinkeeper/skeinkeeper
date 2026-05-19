@@ -29,6 +29,19 @@ CREATE TABLE `sessions` (
 );
 --> statement-breakpoint
 CREATE INDEX `sessions_campaign` ON `sessions` (`tenant_id`,`campaign_id`);--> statement-breakpoint
+CREATE TABLE `dialogue` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`tenant_id` text NOT NULL,
+	`session_id` text NOT NULL,
+	`speaker` text NOT NULL,
+	`display_name` text,
+	`text` text NOT NULL,
+	`timestamp` integer NOT NULL,
+	FOREIGN KEY (`session_id`) REFERENCES `sessions`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `dialogue_session` ON `dialogue` (`tenant_id`,`session_id`,`timestamp`);--> statement-breakpoint
+CREATE INDEX `dialogue_speaker` ON `dialogue` (`tenant_id`,`speaker`);--> statement-breakpoint
 CREATE TABLE `audit_log` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`tenant_id` text NOT NULL,

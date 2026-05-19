@@ -7,7 +7,13 @@ import type { BehaviorSpec } from "./behavior.js";
 import { MockFoundryClient } from "./foundry/mock.js";
 import { FakeLLMProvider, fakeLlmFromEvents, type LLMEvent } from "./interfaces/index.js";
 import { ToolDispatcher, ToolRegistry, defineTool } from "./registry.js";
-import { runTurn, Session, type SessionConfig } from "./session.js";
+import {
+  endSession,
+  runTurn,
+  startSession,
+  Session,
+  type SessionConfig,
+} from "./session.js";
 import { z } from "zod";
 
 const SPEC: BehaviorSpec = {
@@ -55,7 +61,9 @@ function setupSession(overrides: Partial<SessionConfig> = {}): {
     tenantDb,
     ...overrides,
   };
-  return { session: new Session(config), tenantDb };
+  // startSession creates the session row that runTurn's dialogue inserts
+  // FK-reference.
+  return { session: startSession(config), tenantDb };
 }
 
 function registerToolThatRecordsName(
@@ -98,13 +106,14 @@ describe("runTurn — single iteration (no tool calls)", () => {
     expect(audit[1]?.eventType).toBe("turn_completed");
   });
 
-  it("appends the player turn to session.dialogue", async () => {
+  it("appends the player turn (then the narrator turn) to session.dialogue", async () => {
     const { session } = setupSession();
     await runTurn(session, { speaker: "player1", displayName: "Aragorn", text: "Hello." });
-    expect(session.dialogue).toHaveLength(1);
+    // Player turn first, then the AI's narration as a narrator turn.
     expect(session.dialogue[0]?.speaker).toBe("player1");
     expect(session.dialogue[0]?.displayName).toBe("Aragorn");
     expect(session.dialogue[0]?.text).toBe("Hello.");
+    expect(session.dialogue.some((d) => d.speaker === "narrator")).toBe(true);
   });
 
   it("sends the behavior spec as the system prompt", async () => {
@@ -300,5 +309,59 @@ describe("runTurn — audit log", () => {
     expect(payload.stopReason).toBe("end_turn");
     expect(payload.iterations).toBe(1);
     expect(payload.toolCallCount).toBe(0);
+  });
+});
+
+describe("session lifecycle + dialogue persistence (Phase 2c)", () => {
+  it("startSession creates a session row", () => {
+    const { session, tenantDb } = setupSession();
+    const row = tenantDb.sessions.get(session.config.sessionId);
+    expect(row).toBeDefined();
+    expect(row?.campaignId).toBe("c1");
+    expect(row?.behaviorSpecVersion).toBe("v0.1");
+    expect(row?.endedAt).toBeNull();
+  });
+
+  it("runTurn persists player and narrator dialogue rows", async () => {
+    const { session, tenantDb } = setupSession({
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "A reply." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(session, { speaker: "player1", displayName: "Aragorn", text: "Hi there." });
+    const rows = tenantDb.dialogue.listBySession("sess-1");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.speaker).toBe("player1");
+    expect(rows[0]?.displayName).toBe("Aragorn");
+    expect(rows[0]?.text).toBe("Hi there.");
+    expect(rows[1]?.speaker).toBe("narrator");
+    expect(rows[1]?.text).toBe("A reply.");
+  });
+
+  it("increments turnCount per turn", async () => {
+    const { session } = setupSession();
+    expect(session.turnCount).toBe(0);
+    await runTurn(session, { speaker: "p", text: "one" });
+    await runTurn(session, { speaker: "p", text: "two" });
+    expect(session.turnCount).toBe(2);
+  });
+
+  it("startSession resumes prior dialogue (hydrates from DB)", async () => {
+    const { session } = setupSession();
+    await runTurn(session, { speaker: "p", text: "first turn" });
+    // A new Session over the same sessionId hydrates the persisted dialogue.
+    const resumed = startSession(session.config);
+    const texts = resumed.dialogue.map((d) => d.text);
+    expect(texts).toContain("first turn");
+    expect(texts).toContain("Default narration.");
+  });
+
+  it("endSession stamps endedAt and stores a summary", () => {
+    const { session, tenantDb } = setupSession();
+    endSession(session, JSON.stringify({ beats: ["intro"] }));
+    const row = tenantDb.sessions.get("sess-1");
+    expect(row?.endedAt).toBeGreaterThan(0);
+    expect(row?.summaryJson).toContain("intro");
   });
 });
