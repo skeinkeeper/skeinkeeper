@@ -51,9 +51,7 @@ docker compose up
 
 ## What it doesn't do
 
-- **Replace a human DM you already have.** If you've got a great DM, keep them. Skeinkeeper is for groups that don't.
-- **Run hosted on someone else's infrastructure.** Skeinkeeper is self-hosted. You run it on your own machine. There is no SaaS.
-- **Ship commercial campaign content.** Lost Mine of Phandelver and other commercial WotC content is operator-supplied from your own legally-acquired copy. SRD content (CC-BY-4.0) is included.
+- **Ship commercial campaign content.** Commercial game content is operator-supplied from your own legally-acquired copy.
 - **Lock you into a specific provider.** LLM, voice, and VTT integrations are pluggable. Use Claude, GPT, Gemini, Grok, or whichever provider you prefer.
 
 ## Documentation
@@ -72,5 +70,3 @@ Skeinkeeper is open source under [Apache 2.0](./LICENSE). Contributions welcome 
 ## License
 
 Apache License 2.0. See [`LICENSE`](./LICENSE).
-
-D&D 5e SRD content used by Skeinkeeper is licensed under CC-BY-4.0 from Wizards of the Coast.
