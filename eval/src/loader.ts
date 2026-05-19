@@ -4,7 +4,14 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { Fixture, Expectation, Scenario } from "./fixture.js";
+import type { StopReason } from "@skeinkeeper/orchestrator";
+import type {
+  Expectation,
+  Fixture,
+  LlmScript,
+  Scenario,
+  ScriptedToolCall,
+} from "./fixture.js";
 
 export function loadFixtures(dir: string): Fixture[] {
   const files = walkEvalYaml(dir);
@@ -29,7 +36,62 @@ export function loadFixture(path: string): Fixture {
     fixture.behaviorSpecVersion = obj.behavior_spec_version;
   }
   if (typeof obj.skip === "string" && obj.skip.trim().length > 0) fixture.skip = obj.skip;
+  if (obj.llm_script !== undefined) {
+    fixture.llmScript = parseLlmScript(obj.llm_script, path);
+  }
   return fixture;
+}
+
+function parseLlmScript(raw: unknown, path: string): LlmScript {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`${path}: "llm_script" must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  const script: LlmScript = {};
+  if (obj.narration !== undefined) {
+    if (typeof obj.narration !== "string") {
+      throw new Error(`${path}: "llm_script.narration" must be a string`);
+    }
+    script.narration = obj.narration;
+  }
+  if (obj.tool_calls !== undefined) {
+    if (!Array.isArray(obj.tool_calls)) {
+      throw new Error(`${path}: "llm_script.tool_calls" must be an array`);
+    }
+    script.toolCalls = obj.tool_calls.map((tc, i) => parseScriptedToolCall(tc, path, i));
+  }
+  if (obj.stop_reason !== undefined) {
+    const allowed: ReadonlyArray<StopReason> = [
+      "end_turn",
+      "tool_use",
+      "max_tokens",
+      "compacted",
+      "refusal",
+    ];
+    if (!allowed.includes(obj.stop_reason as StopReason)) {
+      throw new Error(
+        `${path}: "llm_script.stop_reason" must be one of: ${allowed.join(", ")}`,
+      );
+    }
+    script.stopReason = obj.stop_reason as StopReason;
+  }
+  return script;
+}
+
+function parseScriptedToolCall(raw: unknown, path: string, i: number): ScriptedToolCall {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`${path}: llm_script.tool_calls[${i}] must be an object`);
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.name !== "string" || obj.name.length === 0) {
+    throw new Error(`${path}: llm_script.tool_calls[${i}].name must be a non-empty string`);
+  }
+  if (obj.input === undefined) {
+    throw new Error(`${path}: llm_script.tool_calls[${i}].input is required`);
+  }
+  const out: ScriptedToolCall = { name: obj.name, input: obj.input };
+  if (typeof obj.id === "string") out.id = obj.id;
+  return out;
 }
 
 function walkEvalYaml(dir: string): string[] {
@@ -135,6 +197,13 @@ function parseExpectation(raw: unknown, ctx: string): Expectation {
         pattern: obj.pattern,
         ...(description !== undefined ? { description } : {}),
       };
+    }
+    case "tool_called":
+    case "tool_not_called": {
+      if (typeof obj.name !== "string" || obj.name.length === 0) {
+        throw new Error(`${ctx}: "${kind}" requires non-empty string "name"`);
+      }
+      return { kind, name: obj.name, ...(description !== undefined ? { description } : {}) };
     }
     default:
       throw new Error(`${ctx}: unknown expectation kind "${String(kind)}"`);

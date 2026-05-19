@@ -252,14 +252,11 @@ No PII, no prompt content, no model name (operators who care can read their own 
 
 ## Eval implications
 
-Phase 1.5 unblocks the eval harness's real runner. In this commit:
+Phase 1.5 unblocks the eval harness's real runner. Shipped across three commits:
 
-- The `MockRunner` placeholder in `eval/src/runner.ts` (per design doc 0004) stays for now; replacement is a follow-up commit.
-
-In the follow-up commit (also part of Phase 1.5):
-
-- `eval/src/orchestrator_runner.ts` wraps a `FakeLLMProvider` driven by per-fixture scripts. Fixtures gain an `llmScript` field that names a script to load.
-- Existing fixtures continue to pass; new fixtures can assert on tool calls + final text.
+- **Phase 1.5a:** `LLMProvider` interface + `FakeLLMProvider` in the orchestrator package.
+- **Phase 1.5b:** `AnthropicProvider` plugin, verified live.
+- **Phase 1.5c:** Eval harness rewired. `MockRunner` deleted; `eval/src/orchestrator_runner.ts` is now the default. Fixtures gained an `llm_script` field (shorthand: `narration`, `tool_calls`, optional `stop_reason`). `eval/src/llm_script.ts` expands the shorthand into an `LLMEvent[]` stream that drives a `FakeLLMProvider`. Two new expectation kinds — `tool_called` and `tool_not_called` — operate on the captured tool-call list. `eval/fixtures/001-tool-call-smoke.eval.yaml` is the reference fixture for the new path.
 
 Real-API eval runs (against a live Anthropic key) are out of scope for Phase 1.5 — they require a wired behavior spec (Phase 1.6) and meaningful prompt context. A single smoke-test integration test in `plugins/llm-anthropic/` is the only live-API check in this phase.
 

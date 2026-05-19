@@ -54,6 +54,9 @@ importers:
       '@skeinkeeper/core':
         specifier: workspace:*
         version: link:../packages/core
+      '@skeinkeeper/orchestrator':
+        specifier: workspace:*
+        version: link:../orchestrator
       yaml:
         specifier: ^2.6.0
         version: 2.9.0

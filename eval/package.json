@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@skeinkeeper/core": "workspace:*",
+    "@skeinkeeper/orchestrator": "workspace:*",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

@@ -14,10 +14,33 @@
           "status": "pass"
         }
       ]
+    },
+    {
+      "name": "tool-call-smoke",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/001-tool-call-smoke.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "tool_called",
+          "status": "pass"
+        },
+        {
+          "kind": "tool_called",
+          "status": "pass"
+        },
+        {
+          "kind": "tool_not_called",
+          "status": "pass"
+        },
+        {
+          "kind": "contains",
+          "status": "pass"
+        }
+      ]
     }
   ],
   "totals": {
-    "pass": 1,
+    "pass": 2,
     "fail": 0,
     "skipped": 0
   }

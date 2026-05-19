@@ -1,17 +1,20 @@
 name: harness-smoke
 description: |
-  Smoke test that the eval harness can load a fixture, run it through the
-  MockRunner, and verify the output is non-empty. Real behavioral fixtures
-  land once the LLM provider is wired in (Phase 1.5).
+  Smoke test that the eval harness can load a fixture, build an
+  OrchestratorRunner backed by a FakeLLMProvider driven by `llm_script`,
+  and verify the resulting narration. This exercises the Phase 1.5c
+  wiring end-to-end.
 behavior_spec_version: v0.1
 scenario:
   turns:
     - speaker: player
       text: "I look around."
+llm_script:
+  narration: "The dusty room is quiet; motes drift through a single shaft of light."
 expectations:
   - kind: not_empty
     field: narration
   - kind: contains
     field: narration
-    text: "look around"
-    description: "MockRunner echoes the player text, so the player's words should appear in the narration."
+    text: "dusty room"
+    description: "FakeLLMProvider emits the scripted narration verbatim."

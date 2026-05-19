@@ -41,6 +41,29 @@ export function evaluate(fixture: Fixture, output: RunnerOutput): FixtureResult 
 }
 
 function evalExpectation(e: Expectation, output: RunnerOutput): ExpectationResult {
+  if (e.kind === "tool_called") {
+    const hit = (output.toolCalls ?? []).some((tc) => tc.name === e.name);
+    return hit
+      ? { kind: e.kind, status: "pass" }
+      : {
+          kind: e.kind,
+          status: "fail",
+          message: `Tool "${e.name}" was not called. Calls: [${
+            (output.toolCalls ?? []).map((tc) => tc.name).join(", ")
+          }]`,
+        };
+  }
+  if (e.kind === "tool_not_called") {
+    const hit = (output.toolCalls ?? []).some((tc) => tc.name === e.name);
+    return hit
+      ? {
+          kind: e.kind,
+          status: "fail",
+          message: `Tool "${e.name}" was unexpectedly called.`,
+        }
+      : { kind: e.kind, status: "pass" };
+  }
+
   const value = readField(output, e.field);
   switch (e.kind) {
     case "not_empty":

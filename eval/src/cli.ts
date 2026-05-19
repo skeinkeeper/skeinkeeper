@@ -5,8 +5,10 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFixtures } from "./loader.js";
-import { MockRunner } from "./runner.js";
+import { OrchestratorRunner } from "./orchestrator_runner.js";
+import { fakeLlmFromScript } from "./llm_script.js";
 import { evaluate, formatTextReport, summarize } from "./reporter.js";
+import type { FixtureResult } from "./reporter.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(here, "..", "fixtures");
@@ -19,13 +21,28 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const runner = new MockRunner();
-  const results = [];
+  const results: FixtureResult[] = [];
   for (const fixture of fixtures) {
     if (fixture.skip) {
       results.push(evaluate(fixture, { narration: "" }));
       continue;
     }
+    if (!fixture.llmScript) {
+      results.push({
+        name: fixture.name,
+        path: fixture.path,
+        status: "fail",
+        expectations: [
+          {
+            kind: "fixture",
+            status: "fail",
+            message: "Fixture has no `llm_script`; nothing to drive the FakeLLMProvider with.",
+          },
+        ],
+      });
+      continue;
+    }
+    const runner = new OrchestratorRunner(fakeLlmFromScript(fixture.llmScript));
     const output = await runner.run({ fixture });
     results.push(evaluate(fixture, output));
   }

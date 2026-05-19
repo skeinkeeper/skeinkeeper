@@ -1,0 +1,35 @@
+name: tool-call-smoke
+description: |
+  Smoke test for the Phase 1.5c tool-call expectation kinds. The fake LLM
+  emits two tool calls; the fixture asserts one was called and another
+  wasn't. Useful as a template for future behavior fixtures that need to
+  assert what the AI DM dispatched.
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: player
+      text: "I roll perception to spot anyone watching us."
+llm_script:
+  narration: "Roll Perception."
+  tool_calls:
+    - name: roll
+      input:
+        formula: "1d20+3"
+        speaker: "Aragorn"
+        secret: false
+    - name: set_quest_flag
+      input:
+        campaignId: "phandelver"
+        key: "scene.perception.attempted"
+        value: "true"
+expectations:
+  - kind: tool_called
+    name: roll
+  - kind: tool_called
+    name: set_quest_flag
+  - kind: tool_not_called
+    name: fudge_roll
+    description: "Player rolls are never fudged — behavior spec §5.4."
+  - kind: contains
+    field: narration
+    text: "Roll Perception"

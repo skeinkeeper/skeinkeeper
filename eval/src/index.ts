@@ -4,4 +4,6 @@
 export * from "./fixture.js";
 export * from "./loader.js";
 export * from "./runner.js";
+export * from "./orchestrator_runner.js";
+export * from "./llm_script.js";
 export * from "./reporter.js";
