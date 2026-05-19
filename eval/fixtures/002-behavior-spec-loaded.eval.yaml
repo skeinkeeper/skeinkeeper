@@ -1,0 +1,20 @@
+name: behavior-spec-loaded
+description: |
+  Verifies the Phase 1.6 wiring: when a fixture opts in via
+  `behavior_spec: default`, the OrchestratorRunner loads `behavior/default.md`
+  via the loader and asserts version compatibility. This fixture's matcher
+  script also requires the systemPrompt to contain the spec's recognizable
+  preamble before the FakeLLMProvider responds — if the spec didn't load,
+  the matcher fails and the run errors with "no matching script."
+behavior_spec_version: v0.1
+behavior_spec: default
+scenario:
+  turns:
+    - speaker: player
+      text: "I introduce myself to the innkeeper."
+llm_script:
+  narration: "The innkeeper looks up and smiles warmly."
+expectations:
+  - kind: contains
+    field: narration
+    text: "innkeeper"

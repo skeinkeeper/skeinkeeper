@@ -27,6 +27,9 @@ export interface FakeScript {
  */
 export class FakeLLMProvider implements LLMProvider {
   readonly name = "fake";
+  /** Captured requests, in order. Useful for assertions in tests
+   *  ("the runner sent the right system prompt"). */
+  readonly receivedRequests: LLMRequest[] = [];
 
   constructor(private readonly scripts: ReadonlyArray<FakeScript>) {
     if (scripts.length === 0) {
@@ -35,6 +38,7 @@ export class FakeLLMProvider implements LLMProvider {
   }
 
   async *complete(req: LLMRequest, opts: LLMOptions = {}): AsyncIterable<LLMEvent> {
+    this.receivedRequests.push(req);
     const script = this.scripts.find((s) => !s.match || s.match(req));
     if (!script) {
       yield {

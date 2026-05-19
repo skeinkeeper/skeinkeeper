@@ -58,9 +58,6 @@ describe("OrchestratorRunner", () => {
   });
 
   it("collapses multiple scenario turns into a single user message (Phase 1.5c shape)", async () => {
-    // We can't directly inspect the request the provider received from a
-    // generic LLMProvider interface, but we can confirm the runner doesn't
-    // crash on multi-turn scenarios.
     const provider = fakeLlmFromScript({ narration: "ok" });
     const runner = new OrchestratorRunner(provider);
     const out = await runner.run({
@@ -75,5 +72,62 @@ describe("OrchestratorRunner", () => {
       }),
     });
     expect(out.narration).toBe("ok");
+    // Verify all three turns landed in the captured user message.
+    const msg = provider.receivedRequests[0]?.messages[0];
+    expect(msg?.role).toBe("user");
+    const text = msg?.content[0]?.type === "text" ? msg.content[0].text : "";
+    expect(text).toContain("I draw my sword.");
+    expect(text).toContain("(GM aside: the goblin is wary.)");
+    expect(text).toContain("I step forward.");
+  });
+});
+
+describe("OrchestratorRunner — behavior spec (Phase 1.6)", () => {
+  it("uses the placeholder when no behavior_spec is set", async () => {
+    const provider = fakeLlmFromScript({ narration: "ok" });
+    const runner = new OrchestratorRunner(provider);
+    await runner.run({ fixture: fixture() });
+    expect(provider.receivedRequests[0]?.systemPrompt).toContain("placeholder");
+  });
+
+  it("uses the inline string when behavior_spec is { inline }", async () => {
+    const provider = fakeLlmFromScript({ narration: "ok" });
+    const runner = new OrchestratorRunner(provider);
+    await runner.run({
+      fixture: fixture({
+        behaviorSpec: { inline: "You are a terse DM. Reply with one sentence." },
+      }),
+    });
+    expect(provider.receivedRequests[0]?.systemPrompt).toBe(
+      "You are a terse DM. Reply with one sentence.",
+    );
+  });
+
+  it("loads behavior/default.md when behavior_spec is 'default'", async () => {
+    const provider = fakeLlmFromScript({ narration: "ok" });
+    const runner = new OrchestratorRunner(provider);
+    await runner.run({
+      fixture: fixture({
+        behaviorSpec: "default",
+        behaviorSpecVersion: "v0.1",
+      }),
+    });
+    const sp = provider.receivedRequests[0]?.systemPrompt ?? "";
+    expect(sp.length).toBeGreaterThan(1000);
+    expect(sp).toContain("Skeinkeeper");
+    expect(sp).toContain("v0.1");
+  });
+
+  it("throws BehaviorSpecError on version mismatch when 'default' is loaded", async () => {
+    const provider = fakeLlmFromScript({ narration: "ok" });
+    const runner = new OrchestratorRunner(provider);
+    await expect(
+      runner.run({
+        fixture: fixture({
+          behaviorSpec: "default",
+          behaviorSpecVersion: "v9.9",
+        }),
+      }),
+    ).rejects.toThrow(/Spec version mismatch/);
   });
 });

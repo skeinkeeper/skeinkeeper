@@ -52,6 +52,14 @@ export const events = {
       durationMsBucket: string;
     },
   },
+  "behavior_spec.loaded": {
+    v: 1,
+    description: "A Behavior Spec was loaded for a session. Reveals version + coarse size; no spec content.",
+    props: {} as {
+      version: string;
+      sizeKbBucket: string;
+    },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;

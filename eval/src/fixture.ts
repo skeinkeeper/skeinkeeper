@@ -45,12 +45,24 @@ export interface Scenario {
   turns: ReadonlyArray<Turn>;
 }
 
+/**
+ * How the fixture wants the OrchestratorRunner to source its system prompt.
+ * - `"default"`: load `behavior/default.md` via the loader; check version match.
+ * - `{ inline: "..." }`: use the literal string. Skips version check.
+ * - omitted: use the runner's placeholder. Fast harness-only smoke tests.
+ *
+ * Per design doc 0009 § "Eval harness integration."
+ */
+export type BehaviorSpecRef = "default" | { inline: string };
+
 export interface Fixture {
   /** Source file path, populated by the loader. */
   path: string;
   name: string;
   description?: string;
   behaviorSpecVersion?: string;
+  /** Optional opt-in to load the real behavior spec for this fixture. */
+  behaviorSpec?: BehaviorSpecRef;
   /** Non-empty string => skip with this reason. */
   skip?: string;
   scenario: Scenario;

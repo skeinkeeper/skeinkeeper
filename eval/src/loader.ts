@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { StopReason } from "@skeinkeeper/orchestrator";
 import type {
+  BehaviorSpecRef,
   Expectation,
   Fixture,
   LlmScript,
@@ -39,7 +40,23 @@ export function loadFixture(path: string): Fixture {
   if (obj.llm_script !== undefined) {
     fixture.llmScript = parseLlmScript(obj.llm_script, path);
   }
+  if (obj.behavior_spec !== undefined) {
+    fixture.behaviorSpec = parseBehaviorSpecRef(obj.behavior_spec, path);
+  }
   return fixture;
+}
+
+function parseBehaviorSpecRef(raw: unknown, path: string): BehaviorSpecRef {
+  if (raw === "default") return "default";
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.inline === "string" && obj.inline.length > 0) {
+      return { inline: obj.inline };
+    }
+  }
+  throw new Error(
+    `${path}: "behavior_spec" must be either the string "default" or { inline: "<system prompt>" }`,
+  );
 }
 
 function parseLlmScript(raw: unknown, path: string): LlmScript {

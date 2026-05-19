@@ -37,10 +37,21 @@
           "status": "pass"
         }
       ]
+    },
+    {
+      "name": "behavior-spec-loaded",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/002-behavior-spec-loaded.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "contains",
+          "status": "pass"
+        }
+      ]
     }
   ],
   "totals": {
-    "pass": 2,
+    "pass": 3,
     "fail": 0,
     "skipped": 0
   }

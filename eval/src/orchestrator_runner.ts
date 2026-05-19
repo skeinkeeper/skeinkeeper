@@ -2,6 +2,11 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import type { LLMProvider, LLMRequest } from "@skeinkeeper/orchestrator";
+import {
+  assertSpecCompatible,
+  findDefaultBehaviorSpec,
+  loadBehaviorSpec,
+} from "@skeinkeeper/orchestrator";
 import type { Fixture, Turn } from "./fixture.js";
 import type { Runner, RunnerInput, RunnerOutput, ToolCallRecord } from "./runner.js";
 
@@ -48,11 +53,24 @@ export class OrchestratorRunner implements Runner {
 }
 
 function buildSystemPrompt(fixture: Fixture): string {
-  // Phase 1.6 will replace this with a real behavior-spec load. Until then
-  // the system prompt is a placeholder; FakeLLMProvider ignores it anyway.
+  // Per design doc 0009: fixtures opt-in to the real spec via
+  // `behavior_spec: default` (load behavior/default.md) or
+  // `behavior_spec: { inline: "..." }` (use the literal string). Omitting
+  // the field keeps the placeholder for fast harness-only smoke tests.
+  if (fixture.behaviorSpec === "default") {
+    const path = findDefaultBehaviorSpec(import.meta.dirname);
+    const spec = loadBehaviorSpec(path);
+    if (fixture.behaviorSpecVersion) {
+      assertSpecCompatible(spec, fixture.behaviorSpecVersion);
+    }
+    return spec.content;
+  }
+  if (fixture.behaviorSpec && typeof fixture.behaviorSpec === "object") {
+    return fixture.behaviorSpec.inline;
+  }
   return fixture.behaviorSpecVersion
-    ? `[Skeinkeeper behavior spec ${fixture.behaviorSpecVersion}; loader lands in Phase 1.6]`
-    : `[Skeinkeeper behavior spec placeholder; loader lands in Phase 1.6]`;
+    ? `[Skeinkeeper behavior spec ${fixture.behaviorSpecVersion}; load via behavior_spec:default to use the real spec]`
+    : `[Skeinkeeper behavior spec placeholder; set behavior_spec:default to load behavior/default.md]`;
 }
 
 function buildMessages(turns: ReadonlyArray<Turn>): LLMRequest["messages"] {

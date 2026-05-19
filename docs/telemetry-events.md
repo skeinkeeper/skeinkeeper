@@ -62,3 +62,10 @@ Fires once per LLM completion (per `LLMProvider.complete()` call) when the strea
 - `outputTokensBucket: string` — same buckets as input.
 - `cacheReadTokensBucket: string` — same buckets; tells us whether prompt caching is working in practice.
 - `durationMsBucket: string` — coarse bucket (`<500`, `<2000`, `<10000`, `<30000`, `>=30000`).
+
+### `behavior_spec.loaded` (v1)
+
+Fires once per session when the Behavior Spec is loaded. Lets maintainers see which spec versions opted-in operators are running.
+
+- `version: string` — the spec's parsed version, e.g., `v0.1`. No content from the spec is sent — only the version label.
+- `sizeKbBucket: string` — coarse bucket (`<5`, `<15`, `<50`, `>=50`); guards against spec bloat without revealing content shape.
