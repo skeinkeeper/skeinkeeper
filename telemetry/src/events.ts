@@ -37,6 +37,21 @@ export const events = {
     description: "An unexpected error was captured for crash reporting.",
     props: {} as { errorClass: string; module: string },
   },
+  "llm.completed": {
+    v: 1,
+    description:
+      "An LLM completion finished. Tokens and duration are bucketed; no PII or prompt content.",
+    props: {} as {
+      providerName: string;
+      modelTier: string;
+      success: boolean;
+      stopReason: string;
+      inputTokensBucket: string;
+      outputTokensBucket: string;
+      cacheReadTokensBucket: string;
+      durationMsBucket: string;
+    },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;

@@ -49,3 +49,16 @@ Fires when an unexpected error is captured for crash reporting. Crash stream onl
 
 - `errorClass: string` — error constructor name (e.g., `TypeError`, `FoundryConnectionError`).
 - `module: string` — module where the error originated (e.g., `orchestrator/tools`, `plugins/vtt-foundry`).
+
+### `llm.completed` (v1)
+
+Fires once per LLM completion (per `LLMProvider.complete()` call) when the stream terminates with a `done` or `error` event. No PII, no prompt content, no exact token counts.
+
+- `providerName: string` — registered provider name (e.g., `anthropic`, `fake`). Not the model ID — operators who want exact model/cost data read their provider's billing dashboard.
+- `modelTier: string` — `narration` or `orchestration`. Lets maintainers see which tier is exercised in practice.
+- `success: boolean` — whether the stream terminated with `done` (true) or `error` (false).
+- `stopReason: string` — mapped from `StopReason`: `end_turn`, `tool_use`, `max_tokens`, `compacted`, `refusal`, or `error` on failure.
+- `inputTokensBucket: string` — coarse bucket (`<500`, `<2000`, `<10000`, `<50000`, `>=50000`).
+- `outputTokensBucket: string` — same buckets as input.
+- `cacheReadTokensBucket: string` — same buckets; tells us whether prompt caching is working in practice.
+- `durationMsBucket: string` — coarse bucket (`<500`, `<2000`, `<10000`, `<30000`, `>=30000`).

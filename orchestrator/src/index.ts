@@ -37,3 +37,4 @@ export {
 } from "./foundry/client.js";
 export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
 export { renderActorState } from "./foundry/render.js";
+export * from "./interfaces/index.js";
