@@ -65,7 +65,7 @@ export default [
     },
   },
   {
-    files: ["scripts/**/*.{js,mjs}"],
+    files: ["scripts/**/*.{js,mjs}", ".claude/hooks/**/*.{js,mjs}"],
     languageOptions: { globals: { ...globals.node } },
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
