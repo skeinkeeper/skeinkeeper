@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: mailto:chris@henesy.org
+    about: |
+      Found a security vulnerability? Email chris@henesy.org instead of filing a public issue. See docs/PRIVACY.md for our disclosure policy.
+  - name: General discussion or question
+    url: https://github.com/skeinkeeper/skeinkeeper/discussions
+    about: |
+      For open-ended questions, gameplay reports, or design conversations, use GitHub Discussions rather than the issue tracker.

@@ -1,0 +1,67 @@
+name: Plugin proposal
+description: Propose a new LLM provider, ruleset, VTT driver, or voice transport.
+title: "plugin: "
+labels: ["plugin-proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Plugin proposals are the primary contribution surface. See [ADR-0004](../../docs/adr/0004-plugin-interface-pattern.md) for the four interfaces.
+
+        Per [`CONTRIBUTING.md`](../../CONTRIBUTING.md), open an issue first to discuss scope before sending an implementation PR.
+
+        Note for the alpha: new **rulesets** and **VTTs** are deferred to v2+ — those proposals are welcome as discussion threads but won't be merged yet.
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Which plugin interface?
+      options:
+        - LLMProvider (new model provider)
+        - Ruleset (new TTRPG system) — alpha-deferred
+        - VTTDriver (new virtual tabletop) — alpha-deferred
+        - VoiceIO (new transport, STT, or TTS)
+    validations:
+      required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: Proposed plugin name
+      placeholder: "llm-openai / vtt-owlbear / ruleset-pf2e / voice-discord-whisper-local"
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: External dependencies
+      description: |
+        What does this implementation depend on? External APIs, SDKs, native binaries, licenses?
+      placeholder: "OpenAI Node SDK; requires OPENAI_API_KEY env var; OpenAI's terms of service."
+    validations:
+      required: true
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: How will it be tested?
+      description: |
+        Reference the conformance suite per ADR-0004 plus any plugin-specific tests. Mocks for external services should be deterministic.
+
+  - type: textarea
+    id: maintenance
+    attributes:
+      label: Maintenance plan
+      description: |
+        Are you offering to maintain this plugin going forward, or proposing it as a one-time contribution?
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I've read [ADR-0004 (plugin interfaces)](../../docs/adr/0004-plugin-interface-pattern.md).
+          required: true
+        - label: I understand non-trivial implementations require a design doc before code.
+          required: true
