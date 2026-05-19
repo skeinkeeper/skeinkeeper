@@ -25,3 +25,4 @@ export {
   type CampaignSnapshot,
   type DialogueTurn,
 } from "./hot_context.js";
+export { buildWarmStateSnapshot, summarizeWarmStateForOperator } from "./warm_state.js";
