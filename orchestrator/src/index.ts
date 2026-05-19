@@ -13,3 +13,15 @@ export {
 } from "./registry.js";
 export { rollFormula, type RollResult } from "./dice.js";
 export { BUILTIN_TOOLS, registerBuiltinTools, createDefaultRegistry } from "./tools/index.js";
+export {
+  assembleHotContext,
+  formatHotContextAsText,
+  type HotContext,
+  type HotContextOptions,
+  type WarmStateSnapshot,
+  type CharacterSnapshot,
+  type NpcSnapshot,
+  type LocationSnapshot,
+  type CampaignSnapshot,
+  type DialogueTurn,
+} from "./hot_context.js";
