@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-// Eval-harness placeholder. The real harness lands in Task 0.4
-// (eval scaffolding). Until then, this no-ops so CI has something to run.
+// Thin wrapper that invokes the eval harness CLI in the eval/ workspace.
+// The real implementation lives in eval/src/cli.ts.
 
-console.log("eval: placeholder — fixtures not yet implemented (see task 0.4).");
-process.exit(0);
+import { spawnSync } from "node:child_process";
+
+const result = spawnSync("pnpm", ["--filter", "@skeinkeeper/eval", "eval"], {
+  stdio: "inherit",
+});
+process.exit(result.status ?? 1);
