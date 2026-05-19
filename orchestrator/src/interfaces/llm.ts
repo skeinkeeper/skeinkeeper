@@ -51,11 +51,40 @@ export interface LLMCompactionContent {
   opaque: unknown;
 }
 
+export type AudioMediaType =
+  | "audio/wav"
+  | "audio/mp3"
+  | "audio/mpeg"
+  | "audio/ogg"
+  | "audio/webm"
+  | "audio/flac";
+
+/**
+ * Audio content block per design doc 0010. Carries the audio payload
+ * plus an optional pre-computed transcript for providers that don't
+ * accept audio natively (Claude today). Audio-native providers
+ * (OpenAI 4o-realtime, Gemini Live — future plugins) use `source`
+ * directly; the AnthropicProvider falls back to `transcript`.
+ */
+export interface LLMAudioContent {
+  type: "audio";
+  source:
+    | { kind: "base64"; mediaType: AudioMediaType; data: string }
+    | { kind: "url"; url: string };
+  /** Pre-computed STT transcript. Strongly recommended; required when
+   *  the configured provider can't accept audio natively. */
+  transcript?: string;
+  /** Speaker label from STT (e.g., a Discord username). Helps the LLM
+   *  attribute dialogue when the transcript-fallback path is used. */
+  speakerName?: string;
+}
+
 export type LLMContent =
   | LLMTextContent
   | LLMToolUseContent
   | LLMToolResultContent
-  | LLMCompactionContent;
+  | LLMCompactionContent
+  | LLMAudioContent;
 
 export interface LLMMessage {
   role: "user" | "assistant";

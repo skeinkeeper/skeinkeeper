@@ -76,7 +76,6 @@ export class AnthropicProvider implements LLMProvider {
     req: LLMRequest,
     opts: LLMOptions = {},
   ): AsyncIterable<LLMEvent> {
-    const params = translateRequest(req, this.translationConfig);
     const startMs = Date.now();
     let success = false;
     let stopReason: StopReason = "end_turn";
@@ -84,6 +83,10 @@ export class AnthropicProvider implements LLMProvider {
 
     let stream: ReturnType<typeof this.client.beta.messages.stream> | undefined;
     try {
+      // translateRequest is inside the try block so pre-flight translation
+      // errors (e.g., audio without transcript per design doc 0010) become
+      // LLMEvent error events with a typed `kind`, not raw exceptions.
+      const params = translateRequest(req, this.translationConfig);
       stream = this.client.beta.messages.stream(params, {
         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
         headers: { "anthropic-beta": this.betaHeaders.join(",") },

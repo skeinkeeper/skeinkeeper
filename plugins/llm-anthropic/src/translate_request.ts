@@ -13,6 +13,7 @@ import type {
   LLMRequest,
   LLMToolSpec,
 } from "@skeinkeeper/orchestrator";
+import { TranslationError } from "./translate_error.js";
 
 export interface RequestTranslationConfig {
   modelNarration: string;
@@ -131,5 +132,19 @@ function translateContent(c: LLMContent): Anthropic.Messages.ContentBlockParam {
       // Compaction blocks are beta and not in the typed ContentBlockParam
       // union. Round-trip the opaque payload verbatim.
       return c.opaque as Anthropic.Messages.ContentBlockParam;
+    case "audio": {
+      // Anthropic's Messages API doesn't accept audio input (verified
+      // against platform.claude.com docs, 2026-05-19). Per design doc
+      // 0010 we fall back to the pre-computed transcript when present
+      // and reject explicitly when it isn't.
+      if (c.transcript === undefined || c.transcript.length === 0) {
+        throw new TranslationError(
+          "Audio content provided without a transcript, but Claude's Messages API doesn't accept audio. " +
+            "Either set audio.transcript (e.g., from your STT layer) or configure an audio-native LLM provider.",
+        );
+      }
+      const prefix = c.speakerName ? `[${c.speakerName}] ` : "";
+      return { type: "text", text: prefix + c.transcript };
+    }
   }
 }

@@ -127,6 +127,99 @@ describe("translateRequest — task budget", () => {
   });
 });
 
+describe("translateRequest — audio content (design doc 0010)", () => {
+  it("folds audio-with-transcript into a text block (with speaker prefix)", () => {
+    const p = translateRequest(
+      req({
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "audio",
+                source: { kind: "base64", mediaType: "audio/wav", data: "AAAA" },
+                transcript: "I draw my sword.",
+                speakerName: "Aragorn",
+              },
+            ],
+          },
+        ],
+      }),
+      CFG,
+    );
+    const block = p.messages[0]?.content as Array<{ type: string; text?: string }>;
+    expect(block[0]?.type).toBe("text");
+    expect(block[0]?.text).toBe("[Aragorn] I draw my sword.");
+  });
+
+  it("falls back without speaker prefix when speakerName is absent", () => {
+    const p = translateRequest(
+      req({
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "audio",
+                source: { kind: "url", url: "https://example.com/clip.wav" },
+                transcript: "Just text, no speaker.",
+              },
+            ],
+          },
+        ],
+      }),
+      CFG,
+    );
+    const block = p.messages[0]?.content as Array<{ type: string; text?: string }>;
+    expect(block[0]?.text).toBe("Just text, no speaker.");
+  });
+
+  it("throws TranslationError when audio has no transcript", async () => {
+    const { TranslationError } = await import("./translate_error.js");
+    expect(() =>
+      translateRequest(
+        req({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "audio",
+                  source: { kind: "base64", mediaType: "audio/ogg", data: "AAAA" },
+                },
+              ],
+            },
+          ],
+        }),
+        CFG,
+      ),
+    ).toThrow(TranslationError);
+  });
+
+  it("throws when audio.transcript is the empty string", async () => {
+    const { TranslationError } = await import("./translate_error.js");
+    expect(() =>
+      translateRequest(
+        req({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "audio",
+                  source: { kind: "base64", mediaType: "audio/wav", data: "AAAA" },
+                  transcript: "",
+                },
+              ],
+            },
+          ],
+        }),
+        CFG,
+      ),
+    ).toThrow(TranslationError);
+  });
+});
+
 describe("translateRequest — messages and tool_result content", () => {
   it("translates tool_result blocks including isError", () => {
     const p = translateRequest(

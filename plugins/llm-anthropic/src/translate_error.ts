@@ -2,7 +2,26 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { LLMErrorInfo } from "@skeinkeeper/orchestrator";
+import type { LLMErrorInfo, LLMErrorKind } from "@skeinkeeper/orchestrator";
+
+/**
+ * Pre-flight translation error — thrown by `translateRequest` when the
+ * provider-neutral LLMRequest contains content this provider can't render
+ * (e.g., audio content with no transcript, since Anthropic doesn't accept
+ * audio input). Distinct from runtime SDK errors so callers see a clear
+ * `invalid_request` kind rather than a generic `unknown`.
+ *
+ * Per design doc 0010 § "Provider behavior."
+ */
+export class TranslationError extends Error {
+  constructor(
+    message: string,
+    readonly errorKind: LLMErrorKind = "invalid_request",
+  ) {
+    super(message);
+    this.name = "TranslationError";
+  }
+}
 
 /**
  * Map an arbitrary error from the Anthropic SDK (or below) to our structured
@@ -10,6 +29,10 @@ import type { LLMErrorInfo } from "@skeinkeeper/orchestrator";
  * orchestrator's turn loop decides retry policy.
  */
 export function translateError(err: unknown): LLMErrorInfo {
+  if (err instanceof TranslationError) {
+    return { kind: err.errorKind, message: err.message };
+  }
+
   // AbortError from a fetch signal, or our own cancellation path.
   if (err instanceof Error && (err.name === "AbortError" || err.name === "APIUserAbortError")) {
     return { kind: "cancelled", message: err.message };

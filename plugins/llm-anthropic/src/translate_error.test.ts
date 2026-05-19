@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
-import { translateError } from "./translate_error.js";
+import { TranslationError, translateError } from "./translate_error.js";
 
 describe("translateError", () => {
   it("maps RateLimitError to rate_limited", () => {
@@ -61,5 +61,16 @@ describe("translateError", () => {
   it("maps a thrown non-Error value to unknown", () => {
     expect(translateError("just a string").kind).toBe("unknown");
     expect(translateError("just a string").message).toContain("just a string");
+  });
+
+  it("maps a TranslationError to its declared errorKind (defaults to invalid_request)", () => {
+    const info = translateError(new TranslationError("audio without transcript"));
+    expect(info.kind).toBe("invalid_request");
+    expect(info.message).toContain("audio without transcript");
+  });
+
+  it("respects a non-default errorKind on TranslationError", () => {
+    const info = translateError(new TranslationError("simulated rate-limit pre-flight", "rate_limited"));
+    expect(info.kind).toBe("rate_limited");
   });
 });

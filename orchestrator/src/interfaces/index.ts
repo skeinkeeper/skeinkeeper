@@ -4,7 +4,9 @@
 export {
   bucketDurationMs,
   bucketTokens,
+  type AudioMediaType,
   type Effort,
+  type LLMAudioContent,
   type LLMCompactionContent,
   type LLMContent,
   type LLMErrorInfo,
