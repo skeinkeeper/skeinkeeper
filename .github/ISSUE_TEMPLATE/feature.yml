@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a new capability or improvement to an existing one.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, check [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — non-trivial features go through a design doc before implementation, and some categories are explicitly out of scope for the alpha (new rulesets, new VTTs).
+
+        For new plugin proposals, use the **Plugin proposal** template instead.
+
+        For changes to what the AI DM says or does, see [`behavior/default.md`](../../behavior/default.md) — most behavior changes don't need a code change, just a spec edit with an eval fixture.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user need or operator pain point, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: How would you address it? Multiple alternatives are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Who is this for?
+      description: |
+        Operator-facing? Player-facing (via Discord)? Maintainer/contributor-facing?
+        Whose workflow changes?
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I've read the [architecture overview](../../docs/ARCHITECTURE.md) and relevant ADRs.
+          required: true
+        - label: This isn't a plugin proposal (those have their own template).
+          required: true

@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in Skeinkeeper doesn't work as documented.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Before submitting, please skim existing issues to avoid duplicates.
+
+        If this is a **security vulnerability**, do not file a public issue — see [`docs/PRIVACY.md`](../../docs/PRIVACY.md) for disclosure instructions.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you see instead?
+      placeholder: "When I ran X with config Y, I expected Z but got W."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. `docker compose up`
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Skeinkeeper version or commit
+      placeholder: "v0.0.0 or commit SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: providers
+    attributes:
+      label: Provider stack
+      description: Which providers were active when the bug occurred?
+      multiple: true
+      options:
+        - LLM — Anthropic Claude
+        - LLM — other
+        - TTS — ElevenLabs
+        - TTS — other
+        - STT — Deepgram
+        - STT — other
+        - VTT — Foundry (self-hosted)
+        - VTT — Foundry (The Forge)
+        - Not applicable
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or audit-log entries
+      description: |
+        Paste any relevant log output. Redact anything you consider personal. The audit log lives under your local data dir; entries are structured JSON.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version (if running outside Docker), Foundry version.
+      placeholder: "macOS 14, Node 22, Foundry v12"
