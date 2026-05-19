@@ -1,0 +1,38 @@
+{
+  "name": "skeinkeeper",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted, open-source AI Dungeon Master.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc -b --pretty",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval": "node scripts/run-eval.mjs",
+    "check:headers": "node scripts/check-license-headers.mjs",
+    "check:telemetry-events": "node scripts/validate-telemetry-events.mjs",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-import": "^2.31.0",
+    "globals": "^15.14.0",
+    "lefthook": "^1.10.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
+  }
+}

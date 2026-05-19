@@ -28,6 +28,11 @@ logs/
 npm-debug.log*
 pnpm-debug.log*
 
+# Per-machine lefthook overrides (auto-merged by lefthook). Used by the
+# strategy-side installer to add a forbidden-string pre-commit check whose
+# content is intentionally kept out of the public repo.
+lefthook-local.yml
+
 # IDE and editor
 .vscode/
 .idea/

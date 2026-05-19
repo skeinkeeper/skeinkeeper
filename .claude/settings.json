@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=process.env.CLAUDE_FILE_PATH||'';const ok=/\\\\.(ts|tsx|js|mjs|cjs|json|md|yml|yaml)$/.test(f);if(!ok||!f)process.exit(0);const{execSync}=require('child_process');try{execSync(\\`pnpm prettier --write '${f}'\\`,{stdio:'inherit'});if(/\\\\.(ts|tsx|js|mjs|cjs)$/.test(f)){execSync(\\`pnpm eslint --fix '${f}'\\`,{stdio:'inherit'});}}catch(e){process.exit(2);}\""
+          }
+        ]
+      }
+    ]
+  }
+}

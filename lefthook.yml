@@ -1,0 +1,23 @@
+# Lefthook config. Runs per-package lint/format on commit.
+# The forbidden-string pre-commit hook is installed separately by
+# strategy/scripts/install-public-repo-hooks.sh and is not managed here.
+
+pre-commit:
+  parallel: true
+  commands:
+    prettier:
+      glob: "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}"
+      run: pnpm prettier --write {staged_files} && git add {staged_files}
+    eslint:
+      glob: "*.{ts,tsx,js,mjs,cjs}"
+      run: pnpm eslint --fix {staged_files} && git add {staged_files}
+
+commit-msg:
+  commands:
+    dco-signoff:
+      run: |
+        if ! grep -qE "^Signed-off-by: .+ <.+@.+>" {1}; then
+          echo "Commit message is missing a DCO sign-off line."
+          echo "Use 'git commit -s' or add 'Signed-off-by: Your Name <email>' manually."
+          exit 1
+        fi

@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+coverage
+.tsbuildinfo
+*.tsbuildinfo
+pnpm-lock.yaml
+LICENSE
+behavior/
