@@ -15,8 +15,9 @@ build/
 *.pem
 secrets/
 
-# Local data
-data/
+# Local data — but keep seed.example.yaml committed
+data/*
+!data/seed.example.yaml
 *.sqlite
 *.sqlite-journal
 *.db

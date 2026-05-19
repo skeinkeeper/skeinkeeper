@@ -1,7 +1,7 @@
 # ADR-0009: Telemetry Off By Default, Opt-In Only
 
 ## Status
-Proposed (2026-05-18)
+Accepted (2026-05-18)
 
 ## Context
 

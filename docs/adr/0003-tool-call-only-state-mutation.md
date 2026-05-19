@@ -1,7 +1,7 @@
 # ADR-0003: All State Mutations and Dice Rolls Occur via Typed Tool Calls
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17)
 
 ## Context
 

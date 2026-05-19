@@ -1,4 +1,10 @@
 {
   "files": [],
-  "references": [{ "path": "./packages/core" }, { "path": "./telemetry" }]
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./telemetry" },
+    { "path": "./server" },
+    { "path": "./eval" },
+    { "path": "./orchestrator" }
+  ]
 }

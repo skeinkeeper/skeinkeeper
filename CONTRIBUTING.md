@@ -45,6 +45,41 @@ Before making non-trivial changes, read:
 
 These documents represent decisions the project has made and the reasoning behind them. If you find yourself wanting to do something that contradicts them, that's a signal to start a discussion (GitHub Issue) rather than just submitting a PR.
 
+### Architectural reviews at phase boundaries
+
+Before starting work on a new development phase (or a substantial new subsystem), take a short architectural review pass: re-read the relevant ADRs and design docs; check whether the assumptions made in earlier phases still hold; look at whether new dependencies, OSS alternatives, or upstream learnings have surfaced. Pause to question before building. Architectural mistakes compound across phases — the cost of changing direction one message into a refactor is much smaller than the cost of unwinding decisions after a phase has built on top of them.
+
+ADRs and design docs are accepted decisions, not immutable ones. If new information shows that an earlier decision was wrong (a dependency's license, a competitor's better approach, a constraint that wasn't visible at the time), say so and propose the revision in a new design doc or a superseding ADR.
+
+### Docs update alongside the code that breaks them
+
+When a code change makes any of these stale, the doc update is part of the same PR — not a follow-up, not a sweep-later TODO:
+
+- ADRs and design docs (the substance, not the typos)
+- `README.md`, `docs/ARCHITECTURE.md`, `docs/PRIVACY.md`, `docs/INSTALL.md`, `CONTRIBUTING.md`, the project's `CLAUDE.md`
+- `behavior/default.md`
+- Schemas/configs that other docs reference: `.env.example`, `data/seed.example.yaml`
+
+Before opening the PR, run through the docs that name the concepts you touched (deleted tables, renamed types, dropped tools, swapped dependencies, revised flows). Update what's now wrong. For ADRs in `Accepted` status, that means writing a superseding ADR (next section); for evergreen docs, that means editing in place.
+
+The doc work can land as a second commit in the same PR if it's substantial. What it cannot do is land in a later PR. Reviewers reject doc-drift PRs the same way they reject test-less feature PRs — both are forms of "this change wasn't finished."
+
+If you find yourself thinking *"I'll fix the docs in a follow-up"*: stop. That follow-up nearly always becomes a sanity-sweep weeks later, and in the meantime contributors and operators are reading wrong information. Catching it now is much cheaper.
+
+### Never edit an accepted ADR in place — supersede it
+
+The ADR README is explicit: ADRs are append-only and immutable once accepted. When a decision changes, the procedure is:
+
+1. **Write a new ADR with the next sequential number** that captures the new context, decision, and consequences. Include a `Supersedes: ADR-NNNN` line at the top.
+2. **On the old ADR, change only its `Status:` line** to `Superseded by ADR-MMMM (date)`. Do not rewrite the body, do not update the recommendation, do not "modernize" the consequences. The original text is the historical record of *what we decided and why, given what we knew at the time*. Rewriting it destroys the signal future readers need.
+3. **Update the [ADR README index](./docs/adr/) to reflect the new state on both rows**, and update any design docs that referenced the old ADR's substance to point at the superseding one.
+
+Light editorial touch-ups are fine (typos, broken links, flipping `Proposed` → `Accepted`, recording a supersession). Anything that changes the substance of the decision is a superseding ADR, not an edit.
+
+The same principle applies to design docs: substantive revisions go in a new design doc that supersedes the old one. Edit-in-place is reserved for docs still in `Draft` state.
+
+A worked example lives in the repo: [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md) supersedes [ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)'s bridge-choice recommendation after fully-OSS alternatives surfaced. ADR-0001's body remains as originally written; only its status changed.
+
 ### Design-doc-first for non-trivial changes
 
 For any change that meets at least one of these criteria, write a design doc in `/docs/design/` and get it reviewed before writing implementation code:
@@ -77,6 +112,10 @@ Every PR includes:
 - Eval fixtures for new behavioral logic
 - Telemetry event definitions for new user-visible features
 - Deletion-path tests for any new persistent storage
+
+### New persistent storage requires a DeletionAdapter
+
+Any PR that adds a new persistent data store (table, file, vector collection) must also register a `DeletionAdapter` for it under `server/src/adapters/` before merge. Reviewers will reject otherwise. The mechanism is `ErasureService.register(adapter)` per [design doc 0003](./docs/design/0003-erasure-and-export.md). The same applies to `ExportAdapter` so the new data shows up in operator exports.
 
 ### Commits
 
@@ -112,14 +151,15 @@ If you're using Claude Code or similar, the file tells the tool about the projec
 
 ## Plugin contributions
 
-The four plugin interfaces are the main contribution surface for new providers:
+Three plugin interfaces are the main contribution surface for new providers:
 
 - `LLMProvider` — for a new model provider (OpenAI, Grok, Gemini, local models)
-- `Ruleset` — for a new TTRPG ruleset (Pathfinder 2e, Call of Cthulhu, etc.)
 - `VTTDriver` — for a new virtual tabletop (Owlbear Rodeo, Roll20, etc.)
 - `VoiceIO` — for a new transport or voice stack
 
 See [ADR-0004](./docs/adr/0004-plugin-interface-pattern.md) for the architectural pattern. Implementations live in `/plugins/{kind}-{name}/`.
+
+A `Ruleset` interface was originally planned (see ADR-0004's history) but dropped per [ADR-0012](./docs/adr/0012-drop-ruleset-plugin-interface.md) — Foundry's per-system data models already provide that abstraction, so support for a new TTRPG system is done by (a) ensuring the Foundry-side system module exposes what we need, (b) adding a per-system renderer in `orchestrator/src/foundry/render.ts`, and (c) registering per-system mutation tools in `plugins/vtt-foundry/`. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md) for the architecture.
 
 When proposing a new plugin, open an issue first to discuss scope. A good plugin proposal covers: which interface, what the implementation depends on (external APIs, licenses), and how it'll be tested.
 

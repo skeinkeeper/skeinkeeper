@@ -164,5 +164,5 @@ No behavioral evals required — this is mechanical infrastructure. Unit tests c
 ## Open questions
 
 - **Sampling.** Should `tool.called` sample at high call rates (e.g., 1-in-10) to bound payload volume? Probably yes long term; defer until a real session generates representative data.
-- **Cost dashboard wiring.** The local cost dashboard (PRD §5.4) needs LLM/TTS/STT usage events. Those are operator-visible local-only metrics, not telemetry sends — design that separately under `server/cost-tracking/` later. This design doc explicitly scopes only the maintainer-facing two-stream telemetry library.
+- **Cost dashboard wiring.** A future local cost dashboard will need LLM/TTS/STT usage events. Those are operator-visible local-only metrics, not telemetry sends — design that separately under `server/cost-tracking/` later. This design doc explicitly scopes only the maintainer-facing two-stream telemetry library.
 - **Installation-ID rotation UX.** Whether to surface this in the alpha config flag or wait for the v0.5 web UI. Defer to web-UI design.

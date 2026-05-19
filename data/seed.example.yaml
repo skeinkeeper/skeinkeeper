@@ -1,0 +1,25 @@
+# Skeinkeeper seed file.
+#
+# Copy to data/seed.yaml (gitignored) and fill in your own values, then
+# run `pnpm tsx server/src/seed-cli.ts` to apply.
+#
+# Idempotent: re-running won't duplicate rows. Existing rows aren't updated.
+#
+# Per design doc 0007, Foundry owns characters, NPCs, locations, and the
+# system-mechanical state of your campaign. This seed file carries only
+# Skeinkeeper-side state: the tenant and campaign metadata.
+#
+# Characters are *not* defined here — set them up in Foundry, then point
+# Skeinkeeper at your Foundry world via campaigns[].foundryWorldName.
+
+tenant:
+  id: default
+  name: "My Group"
+
+campaigns:
+  - id: phandelver
+    name: "Lost Mine of Phandelver"
+    rulesetId: dnd5e               # informational; the active Foundry system overrides
+    behaviorSpecVersion: v0.1
+    foundryWorldName: phandelver   # operator-side reference; Skeinkeeper connects via the FoundryClient
+    status: active

@@ -20,10 +20,15 @@
     "eval": "node scripts/run-eval.mjs",
     "check:headers": "node scripts/check-license-headers.mjs",
     "check:telemetry-events": "node scripts/validate-telemetry-events.mjs",
+    "skeinkeeper": "tsx scripts/skeinkeeper.mjs",
     "prepare": "lefthook install"
+  },
+  "dependencies": {
+    "@skeinkeeper/server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.17.0",

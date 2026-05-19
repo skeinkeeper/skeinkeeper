@@ -1,7 +1,7 @@
 # ADR-0008: Tenant Scoping in the Data Model
 
 ## Status
-Proposed (2026-05-18)
+Accepted (2026-05-18)
 
 ## Context
 

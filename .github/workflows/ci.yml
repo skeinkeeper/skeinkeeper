@@ -38,4 +38,25 @@ jobs:
         run: pnpm test
 
       - name: Eval harness
+        id: eval
+        continue-on-error: true
         run: pnpm eval
+
+      - name: Post eval failures as PR comment
+        if: ${{ github.event_name == 'pull_request' && steps.eval.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f eval/last-run.json ]; then
+            node -e "
+              const r = JSON.parse(require('fs').readFileSync('eval/last-run.json','utf8'));
+              const { formatMarkdownReport } = await import('./eval/src/reporter.ts');
+              process.stdout.write(formatMarkdownReport(r));
+            " > /tmp/eval-comment.md 2>/dev/null || cat eval/last-run.json > /tmp/eval-comment.md
+            gh pr comment "$PR_NUMBER" --body-file /tmp/eval-comment.md
+          fi
+
+      - name: Fail if eval failed
+        if: ${{ steps.eval.outcome == 'failure' }}
+        run: exit 1

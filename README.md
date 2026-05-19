@@ -18,7 +18,7 @@ To run Skeinkeeper, you need:
 
 - A machine to run it on (Linux, macOS, or Windows with Docker)
 - A Discord account, with a [bot you've registered](https://discord.com/developers/applications) in your own Discord developer account
-- A Foundry VTT instance (self-hosted or via The Forge) with the [Foundry API Bridge / MCP module](https://github.com/alexivenkov/foundry-api-bridge-module) installed
+- A Foundry VTT instance (self-hosted or via The Forge) with a Foundry MCP bridge installed. We recommend [adambdooley/foundry-vtt-mcp](https://github.com/adambdooley/foundry-vtt-mcp) (fully OSS, no API keys); [laurigates/foundryvtt-mcp](https://github.com/laurigates/foundryvtt-mcp) is supported as a simpler alternative. See [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md).
 - An API key for an LLM provider (Anthropic Claude recommended; OpenAI also supported)
 - An API key for a TTS provider (ElevenLabs recommended) and an STT provider (Deepgram recommended)
 - Comfort with `docker compose up` and editing environment variables
@@ -45,15 +45,13 @@ docker compose up
 - **Runs the DM side of a tabletop RPG session.** Narrates scenes, voices NPCs, manages combat, calls for rolls, adjudicates rules, tracks state.
 - **Joins your Discord voice channel** and speaks aloud. Per-NPC voice profiles. Configurable wake-word.
 - **Operates Foundry VTT autonomously** — moves tokens, manages combat tracker, rolls dice, reveals fog, switches scenes.
-- **Remembers your campaign.** Persistent state across sessions: party HP, inventory, quest flags, NPC relationships, faction reputations, who said what three sessions ago.
+- **Remembers your campaign.** Foundry remains authoritative for the mechanical state of your campaign — character sheets, NPCs, scenes — and Skeinkeeper adds the AI-DM layer on top: quest flags the AI tracks, session transcripts, who said what three sessions ago, post-session summaries, and the audit trail of every tool call. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md).
 - **Treats the dice with respect.** Open rolls stay open. The AI never fudges player rolls, death saves, or final-blow rolls. The fudging policy (described in [`behavior/default.md`](./behavior/default.md)) is narrow, secret, and exclusively for the players' benefit.
 - **Stays out of your data.** Self-hosted; nothing leaves your machine except calls to the providers you've configured. Zero phone-home by default. See [`docs/PRIVACY.md`](./docs/PRIVACY.md).
 
 ## What it doesn't do
 
-- **Replace a human DM you already have.** If you've got a great DM, keep them. Skeinkeeper is for groups that don't.
-- **Run hosted on someone else's infrastructure.** Skeinkeeper is self-hosted. You run it on your own machine. There is no SaaS.
-- **Ship commercial campaign content.** Lost Mine of Phandelver and other commercial WotC content is operator-supplied from your own legally-acquired copy. SRD content (CC-BY-4.0) is included.
+- **Ship commercial campaign content.** Commercial game content is operator-supplied from your own legally-acquired copy.
 - **Lock you into a specific provider.** LLM, voice, and VTT integrations are pluggable. Use Claude, GPT, Gemini, Grok, or whichever provider you prefer.
 
 ## Documentation
@@ -72,5 +70,3 @@ Skeinkeeper is open source under [Apache 2.0](./LICENSE). Contributions welcome 
 ## License
 
 Apache License 2.0. See [`LICENSE`](./LICENSE).
-
-D&D 5e SRD content used by Skeinkeeper is licensed under CC-BY-4.0 from Wizards of the Coast.

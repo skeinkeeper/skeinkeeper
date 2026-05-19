@@ -1,7 +1,7 @@
 # ADR-0002: Four-Tier Memory Model
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17). **Warm-tier contents description superseded by [ADR-0013](./0013-warm-tier-after-foundry-source-of-truth.md) (2026-05-19)** following the Foundry-as-source-of-truth shift; the four-tier framing itself remains current.
 
 ## Context
 

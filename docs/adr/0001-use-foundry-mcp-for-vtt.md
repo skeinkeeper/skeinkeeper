@@ -1,7 +1,7 @@
 # ADR-0001: Use the Foundry MCP Module for VTT Integration
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17). **Superseded by [ADR-0011](./0011-prefer-oss-foundry-mcp-bridges.md) (2026-05-19)** — the recommendation of the Patreon-gated `alexivenkov` bridge was reversed once fully-OSS alternatives were surveyed. The historical content below is preserved unchanged.
 
 ## Context
 

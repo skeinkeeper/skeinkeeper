@@ -1,7 +1,7 @@
 # ADR-0005: Apache License 2.0
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17)
 
 ## Context
 
@@ -22,7 +22,7 @@ This is an LLM-adjacent project. The space has active patent activity, and the u
 
 **Positive**
 - **Explicit patent grant.** Contributors grant a patent license to everyone receiving the work. This is the most important property for an LLM-tooling project in 2026.
-- **Permissive enough to allow commercial use, forks, and proprietary integrations** without the friction GPL introduces. This matches the project's goal of broad adoption — including by people who want to bolt on commercial campaign marketplaces or hosted services.
+- **Permissive enough to allow third-party forks, integrations, and derivative works** without the friction GPL introduces. This matches the project's goal of broad community adoption. Apache 2.0 *permits* downstream commercial use by third parties; it does not commit Skeinkeeper itself to any particular distribution model — the project is and remains self-hosted, open-source software.
 - **Compatible with the broad set of plugins** we expect contributors to write (most permissive and weak-copyleft licenses combine fine).
 - **NOTICE file handling and attribution requirements** are well-understood and tooling-supported.
 
