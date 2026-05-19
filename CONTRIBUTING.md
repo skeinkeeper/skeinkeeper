@@ -14,7 +14,7 @@ Skeinkeeper is a TypeScript monorepo using pnpm workspaces. You'll need:
 - A Discord bot token, Foundry instance, and API keys for any providers you want to exercise
 
 ```bash
-git clone https://github.com/.../skeinkeeper.git
+git clone https://github.com/skeinkeeper/skeinkeeper.git
 cd skeinkeeper
 pnpm install
 cp .env.example .env
@@ -72,6 +72,7 @@ PRs should be small enough to review in ten minutes. If your change has multiple
 ### Tests alongside features
 
 Every PR includes:
+
 - Unit tests for new deterministic logic
 - Eval fixtures for new behavioral logic
 - Telemetry event definitions for new user-visible features

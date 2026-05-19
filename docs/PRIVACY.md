@@ -102,7 +102,7 @@ A "Local mode only" badge appears in the web UI when both streams are off, as a 
 
 ## Security disclosure
 
-If you find a security vulnerability in Skeinkeeper, please email [security contact TBD] rather than opening a public issue. We aim to acknowledge reports within 72 hours and ship fixes via a coordinated security advisory.
+If you find a security vulnerability in Skeinkeeper, please email chris@henesy.org rather than opening a public issue. We aim to acknowledge reports within 72 hours and ship fixes via a coordinated security advisory.
 
 ## Questions?
 

@@ -1,6 +1,6 @@
 # Skeinkeeper
 
-> *Wyrd bið ful aræd.* — Old English: "Fate remains wholly inexorable."
+> _Wyrd bið ful aræd._ — Old English: "Fate remains wholly inexorable."
 
 **Skeinkeeper** is a self-hosted AI Dungeon Master for your friend group's tabletop RPG sessions. It joins your Discord voice channel, speaks aloud in distinct character voices, autonomously operates Foundry VTT (maps, tokens, combat, dice), and maintains persistent campaign state across sessions.
 
@@ -16,7 +16,7 @@ To run Skeinkeeper, you need:
 
 - A machine to run it on (Linux, macOS, or Windows with Docker)
 - A Discord account, with a [bot you've registered](https://discord.com/developers/applications) in your own Discord developer account
-- A Foundry VTT instance (self-hosted or via The Forge) with the [Foundry MCP module](https://github.com/...) installed
+- A Foundry VTT instance (self-hosted or via The Forge) with the [Foundry API Bridge / MCP module](https://github.com/alexivenkov/foundry-api-bridge-module) installed
 - An API key for an LLM provider (Anthropic Claude recommended; OpenAI also supported)
 - An API key for a TTS provider (ElevenLabs recommended) and an STT provider (Deepgram recommended)
 - Comfort with `docker compose up` and editing environment variables
@@ -28,8 +28,9 @@ All API costs are paid directly to those providers by you. Skeinkeeper itself is
 See [`docs/INSTALL.md`](./docs/INSTALL.md) for full setup instructions.
 
 Quick start:
+
 ```bash
-git clone https://github.com/.../skeinkeeper.git
+git clone https://github.com/skeinkeeper/skeinkeeper.git
 cd skeinkeeper
 cp .env.example .env
 # edit .env with your API keys and Discord bot token
