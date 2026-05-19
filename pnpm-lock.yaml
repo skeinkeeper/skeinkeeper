@@ -103,6 +103,15 @@ importers:
         specifier: workspace:*
         version: link:../../telemetry
 
+  plugins/vtt-foundry:
+    dependencies:
+      '@skeinkeeper/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@skeinkeeper/orchestrator':
+        specifier: workspace:*
+        version: link:../../orchestrator
+
   server:
     dependencies:
       '@skeinkeeper/core':

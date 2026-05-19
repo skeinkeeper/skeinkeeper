@@ -6,6 +6,7 @@
     { "path": "./server" },
     { "path": "./eval" },
     { "path": "./orchestrator" },
-    { "path": "./plugins/llm-anthropic" }
+    { "path": "./plugins/llm-anthropic" },
+    { "path": "./plugins/vtt-foundry" }
   ]
 }
