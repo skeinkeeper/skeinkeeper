@@ -45,6 +45,12 @@ Before making non-trivial changes, read:
 
 These documents represent decisions the project has made and the reasoning behind them. If you find yourself wanting to do something that contradicts them, that's a signal to start a discussion (GitHub Issue) rather than just submitting a PR.
 
+### Architectural reviews at phase boundaries
+
+Before starting work on a new development phase (or a substantial new subsystem), take a short architectural review pass: re-read the relevant ADRs and design docs; check whether the assumptions made in earlier phases still hold; look at whether new dependencies, OSS alternatives, or upstream learnings have surfaced. Pause to question before building. Architectural mistakes compound across phases — the cost of changing direction one message into a refactor is much smaller than the cost of unwinding decisions after a phase has built on top of them.
+
+ADRs and design docs are accepted decisions, not immutable ones. If new information shows that an earlier decision was wrong (a dependency's license, a competitor's better approach, a constraint that wasn't visible at the time), say so and propose the revision in a new design doc or a superseding ADR.
+
 ### Design-doc-first for non-trivial changes
 
 For any change that meets at least one of these criteria, write a design doc in `/docs/design/` and get it reviewed before writing implementation code:

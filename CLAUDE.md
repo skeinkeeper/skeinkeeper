@@ -44,19 +44,23 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 
 8. **Privacy by design** ([ADR-0010](./docs/adr/0010-privacy-as-architecture.md)). Every persistent data store has a documented deletion path. Every PII field is annotated with the `PII<>` type marker. Voice audio is strictly ephemeral. PRs that add new storage require a deletion adapter before merge.
 
+9. **Don't reinvent abstractions an integrated dependency already provides.** Before designing a new plugin interface or schema layer, check whether a system we're integrating with already provides it. The clearest example: Foundry's per-system data models *are* the ruleset abstraction — we don't build a parallel one. If we find ourselves designing an interface that mirrors a system we already depend on, use theirs instead.
+
+10. **Evaluate alternatives before committing to a third-party dependency.** Every new dependency added in a design doc or ADR must list at least one evaluated alternative, with explicit notes on licensing, cost, and maintenance posture. Prefer fully-OSS, self-hostable options. Patreon-gated, subscription-gated, or single-vendor-hosted dependencies require a written justification, not silent inclusion.
+
 ## Hard rules (process)
 
-9. **Design doc before code for any non-trivial feature.** "Non-trivial" = more than ~100 lines, or touches more than one module, or introduces a new external dependency, or changes a data model, or introduces new processing of personal data. The design doc lives in `/docs/design/` and is reviewed before implementation begins. For small bug fixes and refactors, skip this.
+11. **Design doc before code for any non-trivial feature.** "Non-trivial" = more than ~100 lines, or touches more than one module, or introduces a new external dependency, or changes a data model, or introduces new processing of personal data. The design doc lives in `/docs/design/` and is reviewed before implementation begins. For small bug fixes and refactors, skip this.
 
-10. **Tests alongside features, not after.** Every PR includes:
+12. **Tests alongside features, not after.** Every PR includes:
    - Unit tests for new deterministic logic (dice, state mutations, parsing).
    - Eval fixture for new behavioral logic (anything the LLM does).
    - Telemetry event reference for any new user-visible feature (even though events fire only when opted in).
    - Deletion-path test for any new persistent storage.
 
-11. **One task per PR.** PRs reviewers can read in ten minutes or less.
+13. **One task per PR.** PRs reviewers can read in ten minutes or less.
 
-12. **Plan mode for anything ambiguous.** If the request is open to interpretation, produce a plan and confirm before writing code. Better to ask once than to rewrite twice.
+14. **Plan mode for anything ambiguous.** If the request is open to interpretation, produce a plan and confirm before writing code. Better to ask once than to rewrite twice.
 
 ## Tech stack
 
