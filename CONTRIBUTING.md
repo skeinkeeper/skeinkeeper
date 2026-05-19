@@ -51,6 +51,20 @@ Before starting work on a new development phase (or a substantial new subsystem)
 
 ADRs and design docs are accepted decisions, not immutable ones. If new information shows that an earlier decision was wrong (a dependency's license, a competitor's better approach, a constraint that wasn't visible at the time), say so and propose the revision in a new design doc or a superseding ADR.
 
+### Never edit an accepted ADR in place — supersede it
+
+The ADR README is explicit: ADRs are append-only and immutable once accepted. When a decision changes, the procedure is:
+
+1. **Write a new ADR with the next sequential number** that captures the new context, decision, and consequences. Include a `Supersedes: ADR-NNNN` line at the top.
+2. **On the old ADR, change only its `Status:` line** to `Superseded by ADR-MMMM (date)`. Do not rewrite the body, do not update the recommendation, do not "modernize" the consequences. The original text is the historical record of *what we decided and why, given what we knew at the time*. Rewriting it destroys the signal future readers need.
+3. **Update the [ADR README index](./docs/adr/) to reflect the new state on both rows**, and update any design docs that referenced the old ADR's substance to point at the superseding one.
+
+Light editorial touch-ups are fine (typos, broken links, flipping `Proposed` → `Accepted`, recording a supersession). Anything that changes the substance of the decision is a superseding ADR, not an edit.
+
+The same principle applies to design docs: substantive revisions go in a new design doc that supersedes the old one. Edit-in-place is reserved for docs still in `Draft` state.
+
+A worked example lives in the repo: [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md) supersedes [ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)'s bridge-choice recommendation after fully-OSS alternatives surfaced. ADR-0001's body remains as originally written; only its status changed.
+
 ### Design-doc-first for non-trivial changes
 
 For any change that meets at least one of these criteria, write a design doc in `/docs/design/` and get it reviewed before writing implementation code:

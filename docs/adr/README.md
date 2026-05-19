@@ -36,7 +36,7 @@ What follows from this decision — good, bad, neutral?
 
 | # | Title | Status |
 |---|---|---|
-| [0001](./0001-use-foundry-mcp-for-vtt.md) | Use the Foundry MCP module for VTT integration | Proposed |
+| [0001](./0001-use-foundry-mcp-for-vtt.md) | Use the Foundry MCP module for VTT integration | Superseded by [0011](./0011-prefer-oss-foundry-mcp-bridges.md) |
 | [0002](./0002-four-tier-memory-model.md) | Four-tier memory model (hot / warm / cold / episodic) | Proposed |
 | [0003](./0003-tool-call-only-state-mutation.md) | All state mutations occur via typed tool calls | Proposed |
 | [0004](./0004-plugin-interface-pattern.md) | Plugin interfaces for LLM / Ruleset / VTT / Voice | Proposed |
@@ -46,3 +46,4 @@ What follows from this decision — good, bad, neutral?
 | [0008](./0008-tenant-scoping.md) | Tenant scoping in the data model | Proposed |
 | [0009](./0009-telemetry-opt-in.md) | Telemetry off by default, opt-in only | Proposed |
 | [0010](./0010-privacy-as-architecture.md) | Privacy as architecture, not operational commitment | Proposed |
+| [0011](./0011-prefer-oss-foundry-mcp-bridges.md) | Prefer fully-OSS Foundry MCP bridges (supersedes 0001's bridge choice) | Proposed |

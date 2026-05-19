@@ -3,7 +3,7 @@
 > Status: Accepted
 > Author: maintainers
 > Date: 2026-05-19
-> Related ADRs: [ADR-0001 (Foundry MCP bridge)](../adr/0001-use-foundry-mcp-for-vtt.md), [ADR-0002 (four-tier memory)](../adr/0002-four-tier-memory-model.md), [ADR-0003 (tool-call-only mutation)](../adr/0003-tool-call-only-state-mutation.md), [ADR-0004 (plugin interfaces)](../adr/0004-plugin-interface-pattern.md), [ADR-0008 (tenant scoping)](../adr/0008-tenant-scoping.md)
+> Related ADRs: [ADR-0011 (Foundry MCP bridge — supersedes 0001)](../adr/0011-prefer-oss-foundry-mcp-bridges.md), [ADR-0002 (four-tier memory)](../adr/0002-four-tier-memory-model.md), [ADR-0003 (tool-call-only mutation)](../adr/0003-tool-call-only-state-mutation.md), [ADR-0004 (plugin interfaces)](../adr/0004-plugin-interface-pattern.md), [ADR-0008 (tenant scoping)](../adr/0008-tenant-scoping.md)
 > Supersedes: parts of design doc [0005 (state schema)](./0005-state-schema.md)
 
 ## Context
@@ -77,7 +77,7 @@ export interface FoundryClient {
 
 Two implementations:
 - `MockFoundryClient` — in-memory; used by orchestrator unit tests. No network or Foundry process required.
-- `McpFoundryClient` (Phase 3) — wraps the MCP bridge selected per ADR-0001 (adambdooley default).
+- `McpFoundryClient` (Phase 3) — wraps the MCP bridge selected per ADR-0011 (adambdooley default).
 
 ### Per-system rendering, not per-system schema
 
@@ -130,14 +130,14 @@ That's it. No `characterSheet: ZodSchema`, no `dice: DiceMechanic` plugin interf
 
 ### Why not Roll20 / Owlbear?
 
-Foundry is a deliberate bet — see ADR-0001's revised context. Roll20 is more popular but its character-sheet model is closed and not ruleset-pluggable the way Foundry's is. If a future v2+ port to Roll20 is wanted, that adapter would have to re-introduce something like the dropped `Ruleset` interface inside the Roll20-specific plugin — because the data won't come from Roll20 in a usable per-system shape. The core orchestrator stays unaffected.
+Foundry is a deliberate bet — see ADR-0001 (the underlying "use a Foundry MCP bridge" decision) and ADR-0011 (the bridge selection). Roll20 is more popular but its character-sheet model is closed and not ruleset-pluggable the way Foundry's is. If a future v2+ port to Roll20 is wanted, that adapter would have to re-introduce something like the dropped `Ruleset` interface inside the Roll20-specific plugin — because the data won't come from Roll20 in a usable per-system shape. The core orchestrator stays unaffected.
 
 ## Alternatives considered
 
 - **Keep our own characters/npcs/locations tables and sync to Foundry.** Rejected: sync bugs ("we say HP 22, Foundry says 18") are a class of failures we can avoid entirely by deferring to Foundry. Adds latency we measured at <100ms via MCP, acceptable.
 - **Build our own `Ruleset` plugin interface from scratch.** Rejected: re-implementing what Foundry already provides. ~50+ ruleset systems live and maintained by Foundry's community would have to be redone.
-- **Use the alexivenkov MCP bridge** (Patreon-gated). Rejected per ADR-0001 revision: conflicts with project's OSS-first stance.
-- **Build our own MCP bridge from scratch.** Rejected: 2–4 weeks of work duplicating what adambdooley and laurigates already provide. The fork-as-Plan-B clause in ADR-0001 covers the case where we can't get upstream changes accepted.
+- **Use the alexivenkov MCP bridge** (Patreon-gated). Rejected per ADR-0011: conflicts with project's OSS-first stance.
+- **Build our own MCP bridge from scratch.** Rejected: 2–4 weeks of work duplicating what adambdooley and laurigates already provide. The fork-as-Plan-B clause in ADR-0011 covers the case where we can't get upstream changes accepted.
 
 ## Telemetry implications
 
