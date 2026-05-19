@@ -1,6 +1,6 @@
 # Lefthook config. Runs per-package lint/format on commit.
-# The forbidden-string pre-commit hook is installed separately by
-# strategy/scripts/install-public-repo-hooks.sh and is not managed here.
+# Maintainers may add additional hooks locally via lefthook-local.yml
+# (gitignored).
 
 pre-commit:
   parallel: true
