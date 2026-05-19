@@ -54,7 +54,7 @@ Why Drizzle over Prisma / Kysely / raw SQL:
 
 - Schema-as-code in TypeScript, no separate schema DSL to learn.
 - Generates SQL migrations deterministically; we commit them.
-- First-class SQLite (the OSS default) and Postgres (the SaaS-readiness option) support.
+- First-class SQLite and Postgres support, so multi-campaign-group deployments can move dialects without rewriting.
 - Light runtime; no codegen step in the hot path.
 
 Why `better-sqlite3` as the driver: synchronous (which matches the in-process embedded-database use case), fast, the most-used SQLite driver in the Node ecosystem, prebuilt binaries available for all common platforms.
