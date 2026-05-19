@@ -5,21 +5,15 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "./db.js";
 import {
   campaigns,
-  characters,
-  npcs,
-  locations,
   questFlags,
-  factionReputation,
   sessions,
   auditLog,
+  clocks,
   type NewCampaign,
-  type NewCharacter,
-  type NewNpc,
-  type NewLocation,
   type NewQuestFlag,
-  type NewFactionReputation,
   type NewSession,
   type NewAuditLogEntry,
+  type NewClock,
 } from "./schema/index.js";
 
 /**
@@ -27,6 +21,11 @@ import {
  * receive a TenantDb instance from the bootstrap layer and never see the
  * raw Db — every read and write goes through here and is implicitly
  * scoped by tenantId. Per ADR-0008.
+ *
+ * Per design doc 0007, mechanical state (characters, NPCs, locations,
+ * faction relationships) lives in Foundry, accessed via FoundryClient.
+ * This wrapper covers AI-DM-specific state only: campaigns, sessions,
+ * audit log, consents (separate adapter), quest flags, clocks.
  *
  * Application code that needs to break out (migrations, operator tools
  * that span tenants) uses unsafelyAcrossTenants() — grep-able, code-review
@@ -52,54 +51,6 @@ export class TenantDb {
       this.db.insert(campaigns).values({ ...data, tenantId: this.tenantId }).run(),
   };
 
-  // ---- characters ----
-  readonly characters = {
-    listByCampaign: (campaignId: string) =>
-      this.db
-        .select()
-        .from(characters)
-        .where(and(eq(characters.tenantId, this.tenantId), eq(characters.campaignId, campaignId)))
-        .all(),
-    get: (id: string) =>
-      this.db
-        .select()
-        .from(characters)
-        .where(and(eq(characters.tenantId, this.tenantId), eq(characters.id, id)))
-        .get(),
-    create: (data: Omit<NewCharacter, "tenantId">) =>
-      this.db.insert(characters).values({ ...data, tenantId: this.tenantId }).run(),
-  };
-
-  // ---- npcs ----
-  readonly npcs = {
-    listByCampaign: (campaignId: string) =>
-      this.db
-        .select()
-        .from(npcs)
-        .where(and(eq(npcs.tenantId, this.tenantId), eq(npcs.campaignId, campaignId)))
-        .all(),
-    get: (id: string) =>
-      this.db
-        .select()
-        .from(npcs)
-        .where(and(eq(npcs.tenantId, this.tenantId), eq(npcs.id, id)))
-        .get(),
-    create: (data: Omit<NewNpc, "tenantId">) =>
-      this.db.insert(npcs).values({ ...data, tenantId: this.tenantId }).run(),
-  };
-
-  // ---- locations ----
-  readonly locations = {
-    listByCampaign: (campaignId: string) =>
-      this.db
-        .select()
-        .from(locations)
-        .where(and(eq(locations.tenantId, this.tenantId), eq(locations.campaignId, campaignId)))
-        .all(),
-    create: (data: Omit<NewLocation, "tenantId">) =>
-      this.db.insert(locations).values({ ...data, tenantId: this.tenantId }).run(),
-  };
-
   // ---- quest flags ----
   readonly questFlags = {
     listByCampaign: (campaignId: string) =>
@@ -119,27 +70,56 @@ export class TenantDb {
         .run(),
   };
 
-  // ---- faction reputation ----
-  readonly factionReputation = {
+  // ---- clocks ----
+  readonly clocks = {
     listByCampaign: (campaignId: string) =>
       this.db
         .select()
-        .from(factionReputation)
-        .where(
-          and(
-            eq(factionReputation.tenantId, this.tenantId),
-            eq(factionReputation.campaignId, campaignId),
-          ),
-        )
+        .from(clocks)
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.campaignId, campaignId)))
         .all(),
-    upsert: (data: Omit<NewFactionReputation, "tenantId" | "id"> & { reputation: number }) =>
+    get: (id: string) =>
       this.db
-        .insert(factionReputation)
-        .values({ ...data, tenantId: this.tenantId })
-        .onConflictDoUpdate({
-          target: [factionReputation.tenantId, factionReputation.campaignId, factionReputation.faction],
-          set: { reputation: data.reputation, updatedAt: data.updatedAt },
-        })
+        .select()
+        .from(clocks)
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
+        .get(),
+    create: (data: Omit<NewClock, "tenantId">) =>
+      this.db.insert(clocks).values({ ...data, tenantId: this.tenantId }).run(),
+    tick: (id: string, segments: number) => {
+      const existing = this.db
+        .select()
+        .from(clocks)
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
+        .get();
+      if (!existing) throw new Error(`Clock ${id} not found`);
+      const next = Math.max(0, Math.min(existing.segmentsTotal, existing.segmentsFilled + segments));
+      this.db
+        .update(clocks)
+        .set({ segmentsFilled: next, updatedAt: Date.now() })
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
+        .run();
+      return { id, segmentsFilled: next, segmentsTotal: existing.segmentsTotal };
+    },
+    set: (id: string, segmentsFilled: number) => {
+      const existing = this.db
+        .select()
+        .from(clocks)
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
+        .get();
+      if (!existing) throw new Error(`Clock ${id} not found`);
+      const clamped = Math.max(0, Math.min(existing.segmentsTotal, segmentsFilled));
+      this.db
+        .update(clocks)
+        .set({ segmentsFilled: clamped, updatedAt: Date.now() })
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
+        .run();
+      return { id, segmentsFilled: clamped, segmentsTotal: existing.segmentsTotal };
+    },
+    delete: (id: string) =>
+      this.db
+        .delete(clocks)
+        .where(and(eq(clocks.tenantId, this.tenantId), eq(clocks.id, id)))
         .run(),
   };
 

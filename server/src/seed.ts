@@ -7,9 +7,9 @@ import type { Db } from "./db.js";
 import {
   tenants,
   campaigns,
-  characters,
+  clocks,
   type NewCampaign,
-  type NewCharacter,
+  type NewClock,
   type NewTenant,
 } from "./schema/index.js";
 
@@ -21,12 +21,15 @@ interface SeedFile {
     rulesetId: string;
     behaviorSpecVersion: string;
     status?: "active" | "paused" | "archived";
-    characters?: ReadonlyArray<{
+    foundryWorldName?: string; // not stored; for operator reference only
+    clocks?: ReadonlyArray<{
       id: string;
       name: string;
-      playerDiscordId: string;
-      hp: number;
-      maxHp: number;
+      description?: string;
+      category?: string;
+      segmentsTotal: number;
+      segmentsFilled?: number;
+      visibleToPlayers?: boolean;
     }>;
   }>;
 }
@@ -34,6 +37,11 @@ interface SeedFile {
 /**
  * Idempotently seed from a YAML file. Inserts only rows that don't
  * already exist (matched by primary key).
+ *
+ * Per design doc 0007, mechanical state (characters, NPCs, locations)
+ * lives in Foundry, not Skeinkeeper. The seed file therefore carries
+ * only Skeinkeeper-owned state: the tenant, campaigns, and any starting
+ * clocks the AI should be aware of.
  */
 export function seedFromFile(db: Db, path: string): { inserted: number } {
   if (!existsSync(path)) {
@@ -58,8 +66,8 @@ export function seedFromFile(db: Db, path: string): { inserted: number } {
   }
 
   for (const c of file.campaigns ?? []) {
-    const existing = db.select().from(campaigns).all().find((x) => x.id === c.id);
-    if (!existing) {
+    const existingCampaign = db.select().from(campaigns).all().find((x) => x.id === c.id);
+    if (!existingCampaign) {
       const newCampaign: NewCampaign = {
         id: c.id,
         tenantId: file.tenant.id,
@@ -73,22 +81,23 @@ export function seedFromFile(db: Db, path: string): { inserted: number } {
       db.insert(campaigns).values(newCampaign).run();
       inserted++;
     }
-    for (const ch of c.characters ?? []) {
-      const existing = db.select().from(characters).all().find((x) => x.id === ch.id);
-      if (!existing) {
-        const newCharacter: NewCharacter = {
-          id: ch.id,
+    for (const clk of c.clocks ?? []) {
+      const existingClock = db.select().from(clocks).all().find((x) => x.id === clk.id);
+      if (!existingClock) {
+        const newClock: NewClock = {
+          id: clk.id,
           tenantId: file.tenant.id,
           campaignId: c.id,
-          name: ch.name,
-          playerDiscordId: ch.playerDiscordId,
-          hp: ch.hp,
-          maxHp: ch.maxHp,
-          rulesetDataJson: "{}",
+          name: clk.name,
+          ...(clk.description !== undefined ? { description: clk.description } : {}),
+          ...(clk.category !== undefined ? { category: clk.category } : {}),
+          segmentsTotal: clk.segmentsTotal,
+          segmentsFilled: clk.segmentsFilled ?? 0,
+          visibleToPlayers: clk.visibleToPlayers ?? true,
           createdAt: now,
           updatedAt: now,
         };
-        db.insert(characters).values(newCharacter).run();
+        db.insert(clocks).values(newClock).run();
         inserted++;
       }
     }

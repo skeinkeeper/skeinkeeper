@@ -38,22 +38,20 @@ describe("ToolRegistry", () => {
     expect(() => r.register(echoTool)).toThrow(/already registered/);
   });
 
-  it("createDefaultRegistry registers all 12 builtin tools", () => {
+  it("createDefaultRegistry registers the core (system-agnostic) tools", () => {
     const r = createDefaultRegistry();
     const names = r.list().map((t) => t.name).sort();
     expect(names).toEqual(
       [
         "advance_time",
-        "apply_damage",
-        "clear_condition",
+        "create_clock",
+        "delete_clock",
         "fudge_roll",
-        "heal",
         "move_party",
         "roll",
-        "set_condition",
+        "set_clock",
         "set_quest_flag",
-        "update_inventory",
-        "update_npc_disposition",
+        "tick_clock",
         "whisper",
       ].sort(),
     );
@@ -66,7 +64,10 @@ describe("ToolDispatcher", () => {
     analytics = { track: vi.fn(), flush: vi.fn().mockResolvedValue(undefined) };
   });
 
-  function makeCtx(tenantDb: TenantDb, overrides: Partial<{ caller: "llm" | "operator"; flags: { fudgeAllowed?: boolean } }> = {}) {
+  function makeCtx(
+    tenantDb: TenantDb,
+    overrides: Partial<{ caller: "llm" | "operator"; flags: { fudgeAllowed?: boolean } }> = {},
+  ) {
     return {
       tenantDb,
       sessionId: "sess-1",
@@ -94,10 +95,10 @@ describe("ToolDispatcher", () => {
     expect(entries[0]?.actor).toBe("tool:echo");
     expect(entries[0]?.eventType).toBe("tool_called");
 
-    expect(analytics.track).toHaveBeenCalledWith("tool.called", expect.objectContaining({
-      toolName: "echo",
-      success: true,
-    }));
+    expect(analytics.track).toHaveBeenCalledWith(
+      "tool.called",
+      expect.objectContaining({ toolName: "echo", success: true }),
+    );
   });
 
   it("reports unknown_tool without crashing", async () => {
@@ -113,7 +114,10 @@ describe("ToolDispatcher", () => {
     const r = new ToolRegistry();
     r.register(echoTool);
     const d = new ToolDispatcher({ registry: r });
-    const result = await d.dispatch({ name: "echo", input: {} }, makeCtx(tenantDb, { caller: "operator" }));
+    const result = await d.dispatch(
+      { name: "echo", input: {} },
+      makeCtx(tenantDb, { caller: "operator" }),
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.kind).toBe("invalid_input");
   });
@@ -166,7 +170,10 @@ describe("ToolDispatcher", () => {
     const r = new ToolRegistry();
     r.register(throwTool);
     const d = new ToolDispatcher({ registry: r });
-    const result = await d.dispatch({ name: "throw", input: { x: 1 } }, makeCtx(tenantDb, { caller: "operator" }));
+    const result = await d.dispatch(
+      { name: "throw", input: { x: 1 } },
+      makeCtx(tenantDb, { caller: "operator" }),
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.kind).toBe("handler_error");
@@ -190,69 +197,8 @@ describe("Builtin tools (end-to-end)", () => {
         updatedAt: Date.now(),
       })
       .run();
-    db.insert(schema.characters)
-      .values({
-        id: "char-1",
-        tenantId: "default",
-        campaignId: "c1",
-        name: "Aragorn",
-        playerDiscordId: "discord:111",
-        hp: 20,
-        maxHp: 30,
-        rulesetDataJson: "{}",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      })
-      .run();
     return { tenantDb, dispatcher: new ToolDispatcher({ registry: createDefaultRegistry() }) };
   }
-
-  it("apply_damage and heal clamp correctly", async () => {
-    const { tenantDb, dispatcher } = bootstrap();
-    const ctx = {
-      tenantDb,
-      sessionId: "s",
-      turnId: "t",
-      caller: "operator" as const,
-    };
-    const dmg = await dispatcher.dispatch(
-      { name: "apply_damage", input: { characterId: "char-1", amount: 50 } },
-      ctx,
-    );
-    expect(dmg.ok).toBe(true);
-    if (dmg.ok) expect((dmg.output as { after: number }).after).toBe(0);
-
-    const heal = await dispatcher.dispatch(
-      { name: "heal", input: { characterId: "char-1", amount: 100 } },
-      ctx,
-    );
-    expect(heal.ok).toBe(true);
-    if (heal.ok) expect((heal.output as { after: number }).after).toBe(30); // capped at maxHp
-  });
-
-  it("set/clear_condition round-trips the conditions list", async () => {
-    const { tenantDb, dispatcher } = bootstrap();
-    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const };
-    await dispatcher.dispatch(
-      { name: "set_condition", input: { characterId: "char-1", condition: "frightened" } },
-      ctx,
-    );
-    const setRes = await dispatcher.dispatch(
-      { name: "set_condition", input: { characterId: "char-1", condition: "prone" } },
-      ctx,
-    );
-    expect((setRes.ok && (setRes.output as { conditions: string[] }).conditions) || []).toEqual([
-      "frightened",
-      "prone",
-    ]);
-    const clearRes = await dispatcher.dispatch(
-      { name: "clear_condition", input: { characterId: "char-1", condition: "frightened" } },
-      ctx,
-    );
-    expect((clearRes.ok && (clearRes.output as { conditions: string[] }).conditions) || []).toEqual([
-      "prone",
-    ]);
-  });
 
   it("advance_time accumulates across calls", async () => {
     const { tenantDb, dispatcher } = bootstrap();
@@ -264,9 +210,52 @@ describe("Builtin tools (end-to-end)", () => {
     );
     expect((r.ok && (r.output as { minutesElapsed: number }).minutesElapsed) || 0).toBe(45);
   });
+
+  it("set_quest_flag persists and move_party records party.location", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const };
+    await dispatcher.dispatch(
+      { name: "set_quest_flag", input: { campaignId: "c1", key: "cragmaw.cleared", value: "true" } },
+      ctx,
+    );
+    await dispatcher.dispatch(
+      { name: "move_party", input: { campaignId: "c1", locationId: "scene-tavern" } },
+      ctx,
+    );
+    const flags = tenantDb.questFlags.listByCampaign("c1");
+    expect(flags.map((f) => f.key).sort()).toEqual(["cragmaw.cleared", "party.location"]);
+    expect(flags.find((f) => f.key === "party.location")?.value).toBe("scene-tavern");
+  });
+
+  it("create_clock + tick_clock + set_clock + delete_clock", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const };
+
+    await dispatcher.dispatch(
+      {
+        name: "create_clock",
+        input: { id: "clk-1", campaignId: "c1", name: "Threat", segmentsTotal: 4 },
+      },
+      ctx,
+    );
+    const tickRes = await dispatcher.dispatch(
+      { name: "tick_clock", input: { id: "clk-1", segments: 2 } },
+      ctx,
+    );
+    expect((tickRes.ok && (tickRes.output as { segmentsFilled: number }).segmentsFilled) || 0).toBe(2);
+
+    const setRes = await dispatcher.dispatch(
+      { name: "set_clock", input: { id: "clk-1", segmentsFilled: 4 } },
+      ctx,
+    );
+    expect((setRes.ok && (setRes.output as { segmentsFilled: number }).segmentsFilled) || 0).toBe(4);
+
+    await dispatcher.dispatch({ name: "delete_clock", input: { id: "clk-1" } }, ctx);
+    expect(tenantDb.clocks.listByCampaign("c1")).toHaveLength(0);
+  });
 });
 
-describe("rollFormula", () => {
+describe("rollFormula (legacy local roller)", () => {
   it("rolls within bounds", async () => {
     const { rollFormula } = await import("./dice.js");
     for (let i = 0; i < 20; i++) {

@@ -2,104 +2,85 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import type { TenantDb } from "@skeinkeeper/server";
-import type {
-  WarmStateSnapshot,
-  CharacterSnapshot,
-  NpcSnapshot,
-  LocationSnapshot,
-} from "./hot_context.js";
+import type { FoundryClient } from "./foundry/client.js";
+import type { ClockSnapshot, LocationSnapshot, WarmStateSnapshot } from "./hot_context.js";
+import { renderActorState } from "./foundry/render.js";
 
 /**
- * Warm-tier reader (per ADR-0002). The orchestrator calls this once per
- * turn to assemble the snapshot it then hands to assembleHotContext.
+ * Warm-tier reader (per ADR-0002). The orchestrator calls this once
+ * per turn to assemble the snapshot it then hands to
+ * assembleHotContext.
  *
- * No writes here. Per ADR-0003, warm-state mutations occur only via the
- * tool dispatcher. The lint rule for `no-restricted-imports` on Drizzle
- * schema gates direct writes from non-server packages; this module is
- * read-only by construction.
+ * Per design doc 0007, mechanical state (party, NPCs, scene) is read
+ * from Foundry via the FoundryClient. AI-DM-specific state (clocks,
+ * campaign metadata) is read from TenantDb. The orchestrator stitches
+ * the two sources together and produces a single snapshot.
+ *
+ * No writes here. Per ADR-0003, warm-state mutations occur only via
+ * the tool dispatcher.
  */
-export function buildWarmStateSnapshot(
+export async function buildWarmStateSnapshot(
+  foundry: FoundryClient,
   tenantDb: TenantDb,
   campaignId: string,
-): WarmStateSnapshot {
+): Promise<WarmStateSnapshot> {
   const campaign = tenantDb.campaigns.get(campaignId);
   if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
 
-  const rawCharacters = tenantDb.characters.listByCampaign(campaignId);
-  const party: CharacterSnapshot[] = rawCharacters.map((ch) => ({
-    id: ch.id,
-    name: ch.name,
-    hp: ch.hp,
-    maxHp: ch.maxHp,
-    conditions: extractConditions(ch.rulesetDataJson),
-  }));
+  const party = await foundry.listPartyActors();
+  const scene = await foundry.getActiveScene();
+  const activeNpcs = scene
+    ? (await foundry.listSceneActors(scene.id)).filter((a) => a.type === "npc")
+    : [];
 
-  const rawNpcs = tenantDb.npcs.listByCampaign(campaignId).filter((n) => n.alive);
-  const activeNpcs: NpcSnapshot[] = rawNpcs.map((n) => {
-    const out: NpcSnapshot = {
-      id: n.id,
-      name: n.name,
-      disposition: (n.disposition as NpcSnapshot["disposition"]) ?? "neutral",
+  let currentLocation: LocationSnapshot | null = null;
+  if (scene) {
+    currentLocation = { id: scene.id, name: scene.name };
+    if (scene.description) currentLocation.description = scene.description;
+  }
+
+  const clockRows = tenantDb.clocks.listByCampaign(campaignId);
+  const clocks: ReadonlyArray<ClockSnapshot> = clockRows.map((c) => {
+    const out: ClockSnapshot = {
+      id: c.id,
+      name: c.name,
+      segmentsFilled: c.segmentsFilled,
+      segmentsTotal: c.segmentsTotal,
+      visibleToPlayers: Boolean(c.visibleToPlayers),
     };
-    if (n.mannerism) out.mannerism = n.mannerism;
-    if (n.motivation) out.motivation = n.motivation;
+    if (c.category) out.category = c.category;
     return out;
   });
-
-  const currentLocation = resolveCurrentLocation(tenantDb, campaignId);
 
   return {
     campaign: { id: campaign.id, name: campaign.name, rulesetId: campaign.rulesetId },
     party,
-    currentLocation,
     activeNpcs,
+    currentLocation,
+    clocks,
   };
 }
 
 /**
- * Build a one-paragraph natural-language summary of the warm state,
- * suitable for surfacing in the operator's web UI or the audit log.
+ * Build a one-line natural-language summary of the warm state,
+ * suitable for the operator-facing UI or audit-log surfaces.
  * Distinct from formatHotContextAsText (which targets the LLM prompt).
  */
 export function summarizeWarmStateForOperator(snapshot: WarmStateSnapshot): string {
   const partyStr =
     snapshot.party.length === 0
-      ? "no characters created yet"
-      : snapshot.party
-          .map((c) => {
-            const cond = c.conditions.length > 0 ? ` (${c.conditions.join(", ")})` : "";
-            return `${c.name} ${c.hp}/${c.maxHp} HP${cond}`;
-          })
-          .join("; ");
-  const loc = snapshot.currentLocation ? `in ${snapshot.currentLocation.name}` : "with no set location";
+      ? "no party loaded"
+      : snapshot.party.map((a) => renderActorState(a)).join("; ");
+  const loc = snapshot.currentLocation
+    ? `in ${snapshot.currentLocation.name}`
+    : "with no active scene";
   const npcs =
     snapshot.activeNpcs.length === 0
       ? ""
       : ` Active NPCs: ${snapshot.activeNpcs.map((n) => n.name).join(", ")}.`;
-  return `Campaign "${snapshot.campaign.name}" ${loc}. Party: ${partyStr}.${npcs}`;
-}
-
-function extractConditions(rulesetDataJson: string): ReadonlyArray<string> {
-  try {
-    const data = JSON.parse(rulesetDataJson || "{}") as Record<string, unknown>;
-    const conds = data.conditions;
-    return Array.isArray(conds) ? (conds as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function resolveCurrentLocation(
-  tenantDb: TenantDb,
-  campaignId: string,
-): LocationSnapshot | null {
-  const flags = tenantDb.questFlags.listByCampaign(campaignId);
-  const partyLocFlag = flags.find((f) => f.key === "party.location");
-  if (!partyLocFlag) return null;
-  const locations = tenantDb.locations.listByCampaign(campaignId);
-  const loc = locations.find((l) => l.id === partyLocFlag.value);
-  if (!loc) return { id: partyLocFlag.value, name: partyLocFlag.value };
-  const out: LocationSnapshot = { id: loc.id, name: loc.name };
-  if (loc.description) out.description = loc.description;
-  return out;
+  const clocks =
+    snapshot.clocks.length === 0
+      ? ""
+      : ` Clocks: ${snapshot.clocks.map((c) => `${c.name} ${c.segmentsFilled}/${c.segmentsTotal}`).join(", ")}.`;
+  return `Campaign "${snapshot.campaign.name}" ${loc}. Party: ${partyStr}.${npcs}${clocks}`;
 }

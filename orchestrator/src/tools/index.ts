@@ -2,190 +2,53 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
-import { characters, npcs, questFlags } from "@skeinkeeper/server/schema";
 import { defineTool, ToolRegistry, type AnyToolDefinition } from "../registry.js";
-import { rollFormula } from "../dice.js";
+
+/**
+ * Core tools — system-agnostic, owned by Skeinkeeper. Per design doc
+ * 0007, system-specific mutation tools (apply_damage, heal,
+ * set_condition for D&D; apply_stress, take_consequence for Fate;
+ * apply_harm, tick_harm_clock for PbtA) are registered by the
+ * Foundry plugin at session start based on the active Foundry system.
+ *
+ * The tools here are universal:
+ *  - Dice: thin wrapper that delegates to FoundryClient.rollDice() in
+ *    Phase 3 so rolls land in Foundry's chat log. Until then, no-op.
+ *  - World state: quest flags, party movement, in-game time.
+ *  - Clocks: PbtA-style segmented progress bars, useful in any system.
+ *  - Player whisper: Discord side, not VTT side.
+ *  - Fudge: meta-mechanic, not system-specific.
+ */
 
 // ---- roll ----
 const rollDef = defineTool({
   name: "roll",
   description:
-    "Roll dice. formula is NdM[+|-K] (e.g., '1d20+5'). secret=true means only the GM sees the dice.",
+    "Roll dice. The active Foundry system's roller handles formula interpretation and outcome — D&D 5e parses d20+modifier vs DC; Fate handles 4dF+skill; PbtA games handle 2d6+stat with 6-/7-9/10+ thresholds. Set secret=true for GM-only rolls.",
   inputSchema: z.object({
     formula: z.string(),
-    advantage: z.boolean().optional(),
-    disadvantage: z.boolean().optional(),
+    speaker: z.string().optional(),
     secret: z.boolean().optional(),
   }),
   outputSchema: z.object({
     total: z.number(),
-    dice: z.array(z.number()),
+    rolls: z.array(z.number()),
     formula: z.string(),
-    modifier: z.number(),
-    advantage: z.boolean(),
     secret: z.boolean(),
   }),
   async handle(input) {
-    const opts: { advantage?: boolean; disadvantage?: boolean } = {};
-    if (input.advantage !== undefined) opts.advantage = input.advantage;
-    if (input.disadvantage !== undefined) opts.disadvantage = input.disadvantage;
-    const result = rollFormula(input.formula, opts);
-    return { ...result, secret: input.secret ?? false };
-  },
-});
-
-// ---- apply_damage ----
-const damageInput = z.object({
-  characterId: z.string(),
-  amount: z.number().int().nonnegative(),
-  source: z.string().optional(),
-});
-const damageOutput = z.object({
-  characterId: z.string(),
-  before: z.number(),
-  after: z.number(),
-});
-
-const applyDamageDef = defineTool({
-  name: "apply_damage",
-  description: "Reduce a character's HP by amount (clamped at 0).",
-  inputSchema: damageInput,
-  outputSchema: damageOutput,
-  async handle(input, ctx) {
-    const ch = ctx.tenantDb.characters.get(input.characterId);
-    if (!ch) throw new Error(`Character ${input.characterId} not found`);
-    const after = Math.max(0, ch.hp - input.amount);
-    ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .update(characters)
-        .set({ hp: after, updatedAt: Date.now() })
-        .where(and(eq(characters.tenantId, ctx.tenantDb.tenantId), eq(characters.id, input.characterId)))
-        .run(),
-    );
-    return { characterId: input.characterId, before: ch.hp, after };
-  },
-});
-
-// ---- heal ----
-const healDef = defineTool({
-  name: "heal",
-  description: "Restore a character's HP by amount (capped at maxHp).",
-  inputSchema: damageInput,
-  outputSchema: damageOutput,
-  async handle(input, ctx) {
-    const ch = ctx.tenantDb.characters.get(input.characterId);
-    if (!ch) throw new Error(`Character ${input.characterId} not found`);
-    const after = Math.min(ch.maxHp, ch.hp + input.amount);
-    ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .update(characters)
-        .set({ hp: after, updatedAt: Date.now() })
-        .where(and(eq(characters.tenantId, ctx.tenantDb.tenantId), eq(characters.id, input.characterId)))
-        .run(),
-    );
-    return { characterId: input.characterId, before: ch.hp, after };
-  },
-});
-
-// ---- conditions ----
-const conditionInput = z.object({ characterId: z.string(), condition: z.string() });
-const conditionOutput = z.object({ characterId: z.string(), conditions: z.array(z.string()) });
-
-function withConditions(ch: { rulesetDataJson: string }, mutator: (conds: string[]) => string[]): string {
-  const data: Record<string, unknown> = JSON.parse(ch.rulesetDataJson || "{}");
-  const current = Array.isArray(data.conditions) ? (data.conditions as string[]) : [];
-  data.conditions = mutator(current);
-  return JSON.stringify(data);
-}
-
-const setConditionDef = defineTool({
-  name: "set_condition",
-  description: "Add a named condition to a character (e.g., 'frightened').",
-  inputSchema: conditionInput,
-  outputSchema: conditionOutput,
-  async handle(input, ctx) {
-    const ch = ctx.tenantDb.characters.get(input.characterId);
-    if (!ch) throw new Error(`Character ${input.characterId} not found`);
-    const next = withConditions(ch, (cs) => (cs.includes(input.condition) ? cs : [...cs, input.condition]));
-    ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .update(characters)
-        .set({ rulesetDataJson: next, updatedAt: Date.now() })
-        .where(and(eq(characters.tenantId, ctx.tenantDb.tenantId), eq(characters.id, input.characterId)))
-        .run(),
-    );
-    return {
-      characterId: input.characterId,
-      conditions: (JSON.parse(next) as { conditions: string[] }).conditions,
-    };
-  },
-});
-
-const clearConditionDef = defineTool({
-  name: "clear_condition",
-  description: "Remove a named condition from a character.",
-  inputSchema: conditionInput,
-  outputSchema: conditionOutput,
-  async handle(input, ctx) {
-    const ch = ctx.tenantDb.characters.get(input.characterId);
-    if (!ch) throw new Error(`Character ${input.characterId} not found`);
-    const next = withConditions(ch, (cs) => cs.filter((c) => c !== input.condition));
-    ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .update(characters)
-        .set({ rulesetDataJson: next, updatedAt: Date.now() })
-        .where(and(eq(characters.tenantId, ctx.tenantDb.tenantId), eq(characters.id, input.characterId)))
-        .run(),
-    );
-    return {
-      characterId: input.characterId,
-      conditions: (JSON.parse(next) as { conditions: string[] }).conditions,
-    };
-  },
-});
-
-// ---- update_inventory ----
-const updateInventoryDef = defineTool({
-  name: "update_inventory",
-  description: "Change an inventory item's count by delta (negative to remove). Removes the entry at 0.",
-  inputSchema: z.object({
-    characterId: z.string(),
-    item: z.string(),
-    delta: z.number().int(),
-  }),
-  outputSchema: z.object({
-    characterId: z.string(),
-    item: z.string(),
-    before: z.number(),
-    after: z.number(),
-  }),
-  async handle(input, ctx) {
-    const ch = ctx.tenantDb.characters.get(input.characterId);
-    if (!ch) throw new Error(`Character ${input.characterId} not found`);
-    const data: Record<string, unknown> = JSON.parse(ch.rulesetDataJson || "{}");
-    const inv = (data.inventory as Record<string, number> | undefined) ?? {};
-    const before = inv[input.item] ?? 0;
-    const after = Math.max(0, before + input.delta);
-    if (after === 0) delete inv[input.item];
-    else inv[input.item] = after;
-    data.inventory = inv;
-    const next = JSON.stringify(data);
-    ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .update(characters)
-        .set({ rulesetDataJson: next, updatedAt: Date.now() })
-        .where(and(eq(characters.tenantId, ctx.tenantDb.tenantId), eq(characters.id, input.characterId)))
-        .run(),
-    );
-    return { characterId: input.characterId, item: input.item, before, after };
+    // Phase 3 wires this through to FoundryClient.rollDice(). For now,
+    // an interim no-op response so the tool dispatcher's audit log path
+    // still works for orchestrator tests.
+    return { total: 0, rolls: [], formula: input.formula, secret: input.secret ?? false };
   },
 });
 
 // ---- set_quest_flag ----
 const setQuestFlagDef = defineTool({
   name: "set_quest_flag",
-  description: "Set a campaign quest flag by string key. Replaces any existing value.",
+  description:
+    "Set a Skeinkeeper-internal quest flag by string key. AI-DM-side state, distinct from Foundry's world state.",
   inputSchema: z.object({
     campaignId: z.string(),
     key: z.string().min(1),
@@ -210,7 +73,8 @@ const setQuestFlagDef = defineTool({
 // ---- move_party ----
 const movePartyDef = defineTool({
   name: "move_party",
-  description: "Move the party to a new location. Records as quest flag 'party.location'.",
+  description:
+    "Move the party to a new location (Foundry scene ID or symbolic name). Records as the 'party.location' quest flag; Phase 3 also activates the matching Foundry scene.",
   inputSchema: z.object({
     campaignId: z.string(),
     locationId: z.string(),
@@ -230,35 +94,11 @@ const movePartyDef = defineTool({
   },
 });
 
-// ---- update_npc_disposition ----
-const updateNpcDispositionDef = defineTool({
-  name: "update_npc_disposition",
-  description: "Set an NPC's disposition toward the party.",
-  inputSchema: z.object({
-    npcId: z.string(),
-    disposition: z.enum(["friendly", "neutral", "hostile"]),
-  }),
-  outputSchema: z.object({
-    npcId: z.string(),
-    disposition: z.enum(["friendly", "neutral", "hostile"]),
-  }),
-  async handle(input, ctx) {
-    ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .update(npcs)
-        .set({ disposition: input.disposition, updatedAt: Date.now() })
-        .where(and(eq(npcs.tenantId, ctx.tenantDb.tenantId), eq(npcs.id, input.npcId)))
-        .run(),
-    );
-    return input;
-  },
-});
-
 // ---- advance_time ----
 const advanceTimeDef = defineTool({
   name: "advance_time",
   description:
-    "Advance in-game time by the given number of minutes. Increments quest flag 'time.minutes_elapsed'.",
+    "Advance in-game time by the given number of minutes. Increments the 'time.minutes_elapsed' quest flag. The active Foundry system may have its own time-tracking; this is the Skeinkeeper-side counter for AI awareness.",
   inputSchema: z.object({
     campaignId: z.string(),
     minutes: z.number().int().nonnegative(),
@@ -268,19 +108,9 @@ const advanceTimeDef = defineTool({
     minutesElapsed: z.number(),
   }),
   async handle(input, ctx) {
-    const existing = ctx.tenantDb.unsafelyAcrossTenants((db) =>
-      db
-        .select()
-        .from(questFlags)
-        .where(
-          and(
-            eq(questFlags.tenantId, ctx.tenantDb.tenantId),
-            eq(questFlags.campaignId, input.campaignId),
-            eq(questFlags.key, "time.minutes_elapsed"),
-          ),
-        )
-        .get(),
-    );
+    const existing = ctx.tenantDb.questFlags
+      .listByCampaign(input.campaignId)
+      .find((f) => f.key === "time.minutes_elapsed");
     const current = existing ? Number.parseInt(existing.value, 10) || 0 : 0;
     const next = current + input.minutes;
     ctx.tenantDb.questFlags.set({
@@ -296,7 +126,8 @@ const advanceTimeDef = defineTool({
 // ---- whisper ----
 const whisperDef = defineTool({
   name: "whisper",
-  description: "Send a private message to one player. The voice plugin picks this up from the audit log.",
+  description:
+    "Send a private message to one player via Discord. The voice plugin picks this up from the audit log.",
   inputSchema: z.object({
     targetPlayerDiscordId: z.string(),
     content: z.string().min(1),
@@ -307,11 +138,11 @@ const whisperDef = defineTool({
   },
 });
 
-// ---- fudge_roll (operator-gated) ----
+// ---- fudge_roll ----
 const fudgeRollDef = defineTool({
   name: "fudge_roll",
   description:
-    "Override the mechanical outcome of a previous secret roll. Operator-gated; the LLM may not call this unless the orchestrator has flipped the per-session fudge flag.",
+    "Override the mechanical outcome of a previous secret roll. Operator-gated; the LLM may not call this unless the orchestrator has flipped the per-session fudge flag. See behavior/default.md §5.4.",
   inputSchema: z.object({
     originalTotal: z.number(),
     newTotal: z.number(),
@@ -324,19 +155,108 @@ const fudgeRollDef = defineTool({
   },
 });
 
+// ---- clocks ----
+const createClockDef = defineTool({
+  name: "create_clock",
+  description:
+    "Create a segmented progress clock for the campaign. Common categories: 'harm' (PbtA harm clocks), 'countdown' (looming threats), 'faction' (group progress), 'mystery' (revelation tracking), 'progress' (party objectives). visibleToPlayers=false keeps it GM-only.",
+  inputSchema: z.object({
+    id: z.string().min(1),
+    campaignId: z.string(),
+    name: z.string().min(1),
+    segmentsTotal: z.number().int().min(1),
+    segmentsFilled: z.number().int().nonnegative().optional(),
+    category: z.string().optional(),
+    description: z.string().optional(),
+    visibleToPlayers: z.boolean().optional(),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    name: z.string(),
+    segmentsFilled: z.number(),
+    segmentsTotal: z.number(),
+  }),
+  async handle(input, ctx) {
+    const now = Date.now();
+    ctx.tenantDb.clocks.create({
+      id: input.id,
+      campaignId: input.campaignId,
+      name: input.name,
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.category !== undefined ? { category: input.category } : {}),
+      segmentsTotal: input.segmentsTotal,
+      segmentsFilled: input.segmentsFilled ?? 0,
+      visibleToPlayers: input.visibleToPlayers ?? true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return {
+      id: input.id,
+      name: input.name,
+      segmentsFilled: input.segmentsFilled ?? 0,
+      segmentsTotal: input.segmentsTotal,
+    };
+  },
+});
+
+const tickClockDef = defineTool({
+  name: "tick_clock",
+  description:
+    "Advance (or reverse) a clock by a number of segments. Positive ticks fill the clock; negative ticks unfill it. Clamped at 0 and at the clock's total.",
+  inputSchema: z.object({
+    id: z.string(),
+    segments: z.number().int(),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    segmentsFilled: z.number(),
+    segmentsTotal: z.number(),
+  }),
+  async handle(input, ctx) {
+    return ctx.tenantDb.clocks.tick(input.id, input.segments);
+  },
+});
+
+const setClockDef = defineTool({
+  name: "set_clock",
+  description:
+    "Set a clock's filled segments to an explicit value. Clamped at 0 and at the clock's total.",
+  inputSchema: z.object({
+    id: z.string(),
+    segmentsFilled: z.number().int().nonnegative(),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    segmentsFilled: z.number(),
+    segmentsTotal: z.number(),
+  }),
+  async handle(input, ctx) {
+    return ctx.tenantDb.clocks.set(input.id, input.segmentsFilled);
+  },
+});
+
+const deleteClockDef = defineTool({
+  name: "delete_clock",
+  description: "Delete a clock from the campaign.",
+  inputSchema: z.object({ id: z.string() }),
+  outputSchema: z.object({ id: z.string() }),
+  async handle(input, ctx) {
+    ctx.tenantDb.clocks.delete(input.id);
+    return { id: input.id };
+  },
+});
+
 export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   rollDef,
-  applyDamageDef,
-  healDef,
-  setConditionDef,
-  clearConditionDef,
-  updateInventoryDef,
   setQuestFlagDef,
   movePartyDef,
-  updateNpcDispositionDef,
   advanceTimeDef,
   whisperDef,
   fudgeRollDef,
+  createClockDef,
+  tickClockDef,
+  setClockDef,
+  deleteClockDef,
 ];
 
 export function registerBuiltinTools(registry: ToolRegistry): void {

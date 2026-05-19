@@ -5,36 +5,35 @@
  * Hot tier of the four-tier memory model (ADR-0002). Assembles per-turn
  * prompt context from a warm-state snapshot and a dialogue history.
  *
- * Pure function. No DB reads. The caller (orchestrator) gathers the
- * snapshot from TenantDb and passes it in.
+ * Per design doc 0007, the warm-state snapshot is sourced from Foundry
+ * (via FoundryClient) for mechanical state, plus TenantDb for AI-DM
+ * state (clocks, quest flags). This module is a pure function over the
+ * already-assembled snapshot — see `warm_state.ts` for the assembler.
  */
 
-export interface CharacterSnapshot {
-  id: string;
-  name: string;
-  hp: number;
-  maxHp: number;
-  conditions: ReadonlyArray<string>;
-}
+import type { FoundryActor } from "./foundry/client.js";
+import { renderActorState } from "./foundry/render.js";
 
-export interface NpcSnapshot {
+export interface ClockSnapshot {
   id: string;
   name: string;
-  mannerism?: string;
-  motivation?: string;
-  disposition: "friendly" | "neutral" | "hostile";
-}
-
-export interface LocationSnapshot {
-  id: string;
-  name: string;
-  description?: string;
+  segmentsFilled: number;
+  segmentsTotal: number;
+  category?: string;
+  visibleToPlayers: boolean;
 }
 
 export interface CampaignSnapshot {
   id: string;
   name: string;
   rulesetId: string;
+}
+
+export interface LocationSnapshot {
+  /** Foundry scene ID. */
+  id: string;
+  name: string;
+  description?: string;
 }
 
 export interface DialogueTurn {
@@ -49,9 +48,10 @@ export interface DialogueTurn {
 
 export interface WarmStateSnapshot {
   campaign: CampaignSnapshot;
-  party: ReadonlyArray<CharacterSnapshot>;
+  party: ReadonlyArray<FoundryActor>;
+  activeNpcs: ReadonlyArray<FoundryActor>;
   currentLocation: LocationSnapshot | null;
-  activeNpcs: ReadonlyArray<NpcSnapshot>;
+  clocks: ReadonlyArray<ClockSnapshot>;
 }
 
 export interface HotContextOptions {
@@ -59,11 +59,7 @@ export interface HotContextOptions {
   windowSize?: number;
 }
 
-export interface HotContext {
-  campaign: CampaignSnapshot;
-  party: ReadonlyArray<CharacterSnapshot>;
-  currentLocation: LocationSnapshot | null;
-  activeNpcs: ReadonlyArray<NpcSnapshot>;
+export interface HotContext extends WarmStateSnapshot {
   recentDialogue: ReadonlyArray<DialogueTurn>;
 }
 
@@ -81,13 +77,7 @@ export function assembleHotContext(
       ? dialogueHistory
       : dialogueHistory.slice(dialogueHistory.length - windowSize);
 
-  return {
-    campaign: warm.campaign,
-    party: warm.party,
-    currentLocation: warm.currentLocation,
-    activeNpcs: warm.activeNpcs,
-    recentDialogue,
-  };
+  return { ...warm, recentDialogue };
 }
 
 /**
@@ -98,32 +88,39 @@ export function assembleHotContext(
 export function formatHotContextAsText(ctx: HotContext): string {
   const lines: string[] = [];
   lines.push(`Campaign: ${ctx.campaign.name} (${ctx.campaign.rulesetId})`);
+
   if (ctx.currentLocation) {
     lines.push(`Current location: ${ctx.currentLocation.name}`);
     if (ctx.currentLocation.description) {
       lines.push(`  ${ctx.currentLocation.description}`);
     }
   } else {
-    lines.push("Current location: (unset)");
+    lines.push("Current location: (no active scene)");
   }
 
   if (ctx.party.length > 0) {
     lines.push("");
     lines.push("Party:");
-    for (const ch of ctx.party) {
-      const conditions = ch.conditions.length > 0 ? ` [${ch.conditions.join(", ")}]` : "";
-      lines.push(`  - ${ch.name}: HP ${ch.hp}/${ch.maxHp}${conditions}`);
+    for (const actor of ctx.party) {
+      lines.push(`  - ${renderActorState(actor)}`);
     }
   }
 
   if (ctx.activeNpcs.length > 0) {
     lines.push("");
-    lines.push("Active NPCs:");
-    for (const npc of ctx.activeNpcs) {
-      const parts = [`${npc.name} (${npc.disposition})`];
-      if (npc.mannerism) parts.push(`mannerism: ${npc.mannerism}`);
-      if (npc.motivation) parts.push(`wants: ${npc.motivation}`);
-      lines.push(`  - ${parts.join("; ")}`);
+    lines.push("Active NPCs (on this scene):");
+    for (const actor of ctx.activeNpcs) {
+      lines.push(`  - ${renderActorState(actor)}`);
+    }
+  }
+
+  if (ctx.clocks.length > 0) {
+    lines.push("");
+    lines.push("Clocks:");
+    for (const c of ctx.clocks) {
+      const visibility = c.visibleToPlayers ? "" : " (GM-only)";
+      const cat = c.category ? ` [${c.category}]` : "";
+      lines.push(`  - ${c.name}${cat}: ${c.segmentsFilled}/${c.segmentsTotal}${visibility}`);
     }
   }
 

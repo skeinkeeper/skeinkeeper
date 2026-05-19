@@ -4,6 +4,14 @@
 # run `pnpm tsx server/src/seed-cli.ts` to apply.
 #
 # Idempotent: re-running won't duplicate rows. Existing rows aren't updated.
+#
+# Per design doc 0007, Foundry owns characters, NPCs, locations, and the
+# system-mechanical state of your campaign. This seed file carries only
+# Skeinkeeper-side state: the tenant, the campaign metadata, and any
+# starting clocks the AI should track.
+#
+# Characters are *not* defined here — set them up in Foundry, then point
+# Skeinkeeper at your Foundry world via campaigns[].foundryWorldName.
 
 tenant:
   id: default
@@ -12,17 +20,19 @@ tenant:
 campaigns:
   - id: phandelver
     name: "Lost Mine of Phandelver"
-    rulesetId: dnd5e
+    rulesetId: dnd5e               # informational; the active Foundry system overrides
     behaviorSpecVersion: v0.1
+    foundryWorldName: phandelver   # operator-side reference; Skeinkeeper connects via the FoundryClient
     status: active
-    characters:
-      - id: char-alice
-        name: "Alice's Character"
-        playerDiscordId: "000000000000000001"   # replace with the real Discord user ID
-        hp: 22
-        maxHp: 22
-      - id: char-bob
-        name: "Bob's Character"
-        playerDiscordId: "000000000000000002"
-        hp: 18
-        maxHp: 18
+    clocks:
+      - id: clk-redbrands
+        name: "Faction: Redbrands"
+        description: "Their hold over Phandalin"
+        category: faction
+        segmentsTotal: 6
+        segmentsFilled: 1
+        visibleToPlayers: false
+      - id: clk-cragmaw-warband
+        name: "Cragmaw warband on the move"
+        category: countdown
+        segmentsTotal: 4

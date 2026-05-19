@@ -12,17 +12,29 @@ export {
   type ToolDispatcherOptions,
 } from "./registry.js";
 export { rollFormula, type RollResult } from "./dice.js";
-export { BUILTIN_TOOLS, registerBuiltinTools, createDefaultRegistry } from "./tools/index.js";
+export {
+  BUILTIN_TOOLS,
+  registerBuiltinTools,
+  createDefaultRegistry,
+} from "./tools/index.js";
 export {
   assembleHotContext,
   formatHotContextAsText,
   type HotContext,
   type HotContextOptions,
   type WarmStateSnapshot,
-  type CharacterSnapshot,
-  type NpcSnapshot,
+  type ClockSnapshot,
   type LocationSnapshot,
   type CampaignSnapshot,
   type DialogueTurn,
 } from "./hot_context.js";
 export { buildWarmStateSnapshot, summarizeWarmStateForOperator } from "./warm_state.js";
+export {
+  type FoundryClient,
+  type FoundryActor,
+  type FoundryScene,
+  type FoundrySceneToken,
+  type RollResult as FoundryRollResult,
+} from "./foundry/client.js";
+export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
+export { renderActorState } from "./foundry/render.js";

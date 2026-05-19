@@ -8,22 +8,53 @@ import {
   type DialogueTurn,
   type WarmStateSnapshot,
 } from "./hot_context.js";
+import type { FoundryActor } from "./foundry/client.js";
+
+function dnd5eCharacter(
+  name: string,
+  hp: number,
+  maxHp: number,
+  conditions: string[] = [],
+): FoundryActor {
+  return {
+    id: `ch-${name}`,
+    name,
+    type: "character",
+    system: "dnd5e",
+    sheet: {
+      attributes: { hp: { value: hp, max: maxHp }, ac: { value: 16 } },
+      conditions,
+    },
+  };
+}
+
+function dnd5eNpc(name: string): FoundryActor {
+  return {
+    id: `npc-${name}`,
+    name,
+    type: "npc",
+    system: "dnd5e",
+    sheet: { attributes: { hp: { value: 12, max: 12 } } },
+  };
+}
 
 function warm(): WarmStateSnapshot {
   return {
     campaign: { id: "phandelver", name: "Lost Mine of Phandelver", rulesetId: "dnd5e" },
     party: [
-      { id: "ch-1", name: "Aragorn", hp: 22, maxHp: 30, conditions: [] },
-      { id: "ch-2", name: "Gimli", hp: 8, maxHp: 28, conditions: ["frightened"] },
+      dnd5eCharacter("Aragorn", 22, 30),
+      dnd5eCharacter("Gimli", 8, 28, ["frightened"]),
     ],
-    currentLocation: { id: "loc-1", name: "Phandalin Town Square", description: "Dusty and quiet." },
-    activeNpcs: [
+    activeNpcs: [dnd5eNpc("Sildar")],
+    currentLocation: { id: "scene-1", name: "Phandalin Town Square", description: "Dusty and quiet." },
+    clocks: [
       {
-        id: "npc-1",
-        name: "Sildar Hallwinter",
-        mannerism: "rubs his graying beard",
-        motivation: "find his missing friend",
-        disposition: "friendly",
+        id: "clk-redbrands",
+        name: "Faction: Redbrands",
+        category: "faction",
+        segmentsFilled: 1,
+        segmentsTotal: 6,
+        visibleToPlayers: false,
       },
     ],
   };
@@ -42,8 +73,9 @@ describe("assembleHotContext", () => {
     const ctx = assembleHotContext(warm(), turns(3));
     expect(ctx.campaign.name).toBe("Lost Mine of Phandelver");
     expect(ctx.party).toHaveLength(2);
-    expect(ctx.activeNpcs[0]?.name).toBe("Sildar Hallwinter");
+    expect(ctx.activeNpcs[0]?.name).toBe("Sildar");
     expect(ctx.currentLocation?.name).toBe("Phandalin Town Square");
+    expect(ctx.clocks).toHaveLength(1);
   });
 
   it("takes the most recent N turns when history exceeds the window", () => {
@@ -77,34 +109,40 @@ describe("assembleHotContext", () => {
 });
 
 describe("formatHotContextAsText", () => {
-  it("renders the campaign, location, party (with conditions), and NPCs", () => {
+  it("renders campaign, location, party via dnd5e renderer, NPCs, clocks, dialogue", () => {
     const text = formatHotContextAsText(assembleHotContext(warm(), turns(2)));
     expect(text).toContain("Lost Mine of Phandelver");
     expect(text).toContain("Phandalin Town Square");
-    expect(text).toContain("Aragorn: HP 22/30");
-    expect(text).toContain("Gimli: HP 8/28 [frightened]");
-    expect(text).toContain("Sildar Hallwinter (friendly)");
-    expect(text).toContain("rubs his graying beard");
-    expect(text).toContain("wants: find his missing friend");
+    expect(text).toContain("Aragorn");
+    expect(text).toContain("HP 22/30");
+    expect(text).toContain("Gimli");
+    expect(text).toContain("HP 8/28");
+    expect(text).toContain("[frightened]");
+    expect(text).toContain("Active NPCs (on this scene):");
+    expect(text).toContain("Sildar");
+    expect(text).toContain("Faction: Redbrands");
+    expect(text).toContain("1/6");
+    expect(text).toContain("(GM-only)");
     expect(text).toContain("[player] turn 0");
-    expect(text).toContain("[player] turn 1");
   });
 
-  it("handles empty party / no NPCs / no location gracefully", () => {
+  it("handles empty party / no NPCs / no scene / no clocks gracefully", () => {
     const text = formatHotContextAsText(
       assembleHotContext(
         {
           campaign: { id: "c", name: "Empty", rulesetId: "dnd5e" },
           party: [],
-          currentLocation: null,
           activeNpcs: [],
+          currentLocation: null,
+          clocks: [],
         },
         [],
       ),
     );
-    expect(text).toContain("Current location: (unset)");
+    expect(text).toContain("Current location: (no active scene)");
     expect(text).not.toContain("Party:");
-    expect(text).not.toContain("Active NPCs:");
+    expect(text).not.toContain("Active NPCs");
+    expect(text).not.toContain("Clocks:");
     expect(text).not.toContain("Recent dialogue:");
   });
 });

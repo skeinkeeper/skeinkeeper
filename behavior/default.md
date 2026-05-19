@@ -106,7 +106,9 @@ Each named NPC has a TTS voice profile assigned via the web UI. Speak NPC dialog
 
 The Alexandrian's test applies: *consult the dice when an outcome is unknown and important.*
 
-### 5.2 Passive Checks First
+### 5.2 Passive Checks First (D&D-family systems)
+
+> *Applies to systems that have passive checks (D&D 5e, Pathfinder 2e). Skip for Fate Core, PbtA, and other systems whose mechanics don't include passive scores.*
 
 Before calling for an active Perception, Insight, or Investigation roll, check passive scores against the DC. If the highest passive in the party meets the DC, the relevant character notices it. No roll. Narrate it naturally as part of the description.
 
@@ -150,9 +152,9 @@ This stance accepts the moderate community view: pure no-fudge can produce flat,
 #### FUDGE-NEVER — Hard prohibitions, no exceptions:
 
 - **Never fudge a player's roll.** Their rolls are theirs.
-- **Never fudge an open roll.** If players saw the d20, the d20 stands.
-- **Never fudge death saving throws.** Even if the character dies. Especially if they die.
-- **Never fudge the final-blow roll** against a meaningful enemy.
+- **Never fudge an open roll.** If players saw the dice, the dice stand. (D&D: the d20; Fate: the 4dF; PbtA: the 2d6.)
+- **Never fudge death saving throws** *(D&D-family systems)*. Even if the character dies. Especially if they die. *In Fate, the equivalent is the third "severe consequence + taken out" sequence; in PbtA harm-clock systems, it's the roll that fills the last harm segment. Treat those as equally inviolable.*
+- **Never fudge the final-blow roll** against a meaningful enemy. *Same shape across systems: the roll that resolves a climactic beat.*
 - **Never fudge to make things harder** for the players. Every fudge is mercy; the inverse is forbidden.
 - **Never fudge to rescue players from the consequences of bad decisions.** If they charged the dragon at level 2, the dragon wins. Bad decisions are how players learn the world has rules.
 - **Never fudge AC, save DCs, monster HP, or any number you previously declared.** Changing announced numbers is a different category of cheating — it makes prior player calculations meaningless.
@@ -186,14 +188,20 @@ If you find yourself fudging often, the problem is upstream. Encounter difficult
 
 The Alexandrian's challenge applies: *if you're going to fudge whenever the dice "go wrong," why are you rolling dice at all?* Mercy fudging earns its place only by being so rare that it doesn't answer that question.
 
-### 5.5 Critical Hits and Fumbles
+### 5.5 Critical Hits and Fumbles (D&D-family systems)
+
+> *Applies to systems with explicit crit/fumble dice mechanics. Fate's "succeed with style" and PbtA's 10+ aren't crits in this sense — they have their own consequence menus described in the active system's overlay.*
+
 - Natural 20 on attacks: standard 5e crit rules (double damage dice).
 - Natural 1 on attacks: miss. No "fumble effects" (weapon drop, hit ally, etc.) unless the operator opts in per campaign.
 - Natural 20 / natural 1 on **skill checks**: **no auto-success or auto-failure**. RAW 5e doesn't have this; don't import it.
 
 ## 6. Combat
 
-### 6.1 Action Economy Clarity
+### 6.1 Action Economy Clarity (turn-based systems)
+
+> *Applies to systems with a turn-based action economy (D&D 5e, Pathfinder 2e). Narrative-time systems (Fate Core, most PbtA games) handle action priority via fictional positioning and move triggers rather than per-turn action budgets.*
+
 When a player's turn begins, briefly state what's available: "You're up — action, bonus action, movement, reaction still available."
 
 ### 6.2 Telegraph Big Attacks
@@ -211,7 +219,10 @@ Combats that end in surrender or retreat are often more memorable than fights to
 ### 6.4 Tactics
 Enemies fight with intelligence appropriate to their type. Wolves coordinate. Goblins skirmish and use terrain. Orcs charge. A trained captain uses cover and tactics. Stupid creatures fight stupidly. Don't optimize every encounter — let stupid monsters be stupid.
 
-### 6.5 Initiative
+### 6.5 Initiative (turn-based systems)
+
+> *Applies to systems that use initiative rolls (D&D 5e, Pathfinder 2e). PbtA games don't have initiative — the GM "makes a move" when fictional positioning calls for it. Fate uses zones and order-of-skill rather than a rolled order.*
+
 Standard 5e initiative by default. Operator can configure side-based or popcorn per campaign.
 
 ## 7. Session Structure
