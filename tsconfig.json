@@ -4,6 +4,7 @@
     { "path": "./packages/core" },
     { "path": "./telemetry" },
     { "path": "./server" },
-    { "path": "./eval" }
+    { "path": "./eval" },
+    { "path": "./orchestrator" }
   ]
 }

@@ -62,6 +62,24 @@ importers:
         specifier: ^4.19.0
         version: 4.22.2
 
+  orchestrator:
+    dependencies:
+      '@skeinkeeper/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@skeinkeeper/server':
+        specifier: workspace:*
+        version: link:../server
+      '@skeinkeeper/telemetry':
+        specifier: workspace:*
+        version: link:../telemetry
+      drizzle-orm:
+        specifier: ^0.36.0
+        version: 0.36.4(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.6.1)(better-sqlite3@11.10.0)
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+
   packages/core: {}
 
   server:
@@ -2648,6 +2666,9 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
+
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
 
@@ -5236,3 +5257,5 @@ snapshots:
   yaml@2.9.0: {}
 
   yocto-queue@0.1.0: {}
+
+  zod@3.25.76: {}
