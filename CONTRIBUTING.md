@@ -51,6 +51,21 @@ Before starting work on a new development phase (or a substantial new subsystem)
 
 ADRs and design docs are accepted decisions, not immutable ones. If new information shows that an earlier decision was wrong (a dependency's license, a competitor's better approach, a constraint that wasn't visible at the time), say so and propose the revision in a new design doc or a superseding ADR.
 
+### Docs update alongside the code that breaks them
+
+When a code change makes any of these stale, the doc update is part of the same PR — not a follow-up, not a sweep-later TODO:
+
+- ADRs and design docs (the substance, not the typos)
+- `README.md`, `docs/ARCHITECTURE.md`, `docs/PRIVACY.md`, `docs/INSTALL.md`, `CONTRIBUTING.md`, the project's `CLAUDE.md`
+- `behavior/default.md`
+- Schemas/configs that other docs reference: `.env.example`, `data/seed.example.yaml`
+
+Before opening the PR, run through the docs that name the concepts you touched (deleted tables, renamed types, dropped tools, swapped dependencies, revised flows). Update what's now wrong. For ADRs in `Accepted` status, that means writing a superseding ADR (next section); for evergreen docs, that means editing in place.
+
+The doc work can land as a second commit in the same PR if it's substantial. What it cannot do is land in a later PR. Reviewers reject doc-drift PRs the same way they reject test-less feature PRs — both are forms of "this change wasn't finished."
+
+If you find yourself thinking *"I'll fix the docs in a follow-up"*: stop. That follow-up nearly always becomes a sanity-sweep weeks later, and in the meantime contributors and operators are reading wrong information. Catching it now is much cheaper.
+
 ### Never edit an accepted ADR in place — supersede it
 
 The ADR README is explicit: ADRs are append-only and immutable once accepted. When a decision changes, the procedure is:

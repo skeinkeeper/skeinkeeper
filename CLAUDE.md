@@ -62,6 +62,14 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 
 14. **Plan mode for anything ambiguous.** If the request is open to interpretation, produce a plan and confirm before writing code. Better to ask once than to rewrite twice.
 
+15. **Docs update alongside the code that breaks them.** When a code change makes any of these stale — an ADR's substance, a design doc's claims, [`README.md`](./README.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), [`docs/PRIVACY.md`](./docs/PRIVACY.md), [`docs/INSTALL.md`](./docs/INSTALL.md), [`CONTRIBUTING.md`](./CONTRIBUTING.md), this file, [`behavior/default.md`](./behavior/default.md), or schemas/configs that doc examples reference (`.env.example`, `data/seed.example.yaml`) — the doc update is part of the same PR. Not a follow-up commit, not a TODO, not a "sweep later." Before treating a task as complete:
+    - List every doc/example/comment that names a concept you changed (deleted tables, renamed types, dropped tools, swapped dependencies, revised flows). Use `grep` or a search agent — don't rely on memory.
+    - For ADRs/design docs in `Accepted` status, follow hard rule #15-adjacent: supersede with a new doc, don't rewrite substance in place (see [hard rule about ADR immutability](#hard-rules-process) and [CONTRIBUTING.md](./CONTRIBUTING.md)).
+    - For evergreen user-facing docs (README, ARCHITECTURE, PRIVACY, INSTALL, CONTRIBUTING, behavior spec), edit in place.
+    - Include the doc changes in the same commit when they're small (typo, link fix, one-line correction); split them into a second commit in the same PR when the doc work is substantial (a rewrite, a new ADR). The PR doesn't land until docs catch up.
+    
+    Past example: the Foundry-as-source-of-truth refactor changed schemas, dropped tables, swapped a recommended dependency — and shipped without touching README, ARCHITECTURE, PRIVACY, or CONTRIBUTING. A separate doc-sanity-sweep had to be done days later. That sweep should have been part of the refactor PR. Avoid the lag.
+
 ## Tech stack
 
 - **Language:** TypeScript end-to-end (Node 22+ on server, Next.js or similar for the local web UI).
