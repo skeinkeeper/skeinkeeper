@@ -12,16 +12,30 @@ Skeinkeeper is software you run on your own machine. This document explains what
 
 ## What Skeinkeeper stores locally
 
-The Skeinkeeper database holds:
+Skeinkeeper's local database holds **AI-DM-side state** only. Per [design doc 0007](./design/0007-foundry-as-source-of-truth.md), the mechanical state of your campaign — character sheets, NPCs, scenes — lives in your Foundry VTT instance, not in Skeinkeeper. Skeinkeeper reads from Foundry per turn; it does not duplicate that data.
 
-- **Campaign state** — characters, NPCs, locations, quest flags, faction reputations, current scene
+What Skeinkeeper stores:
+
+- **Campaign metadata** — campaign name, ruleset, which Foundry world it points at
+- **Quest flags** — AI-DM-internal plot state (e.g., "cragmaw.cleared = true"), kept separate from Foundry's official world state so the operator can curate what's visible to players
 - **Session transcripts** — the text of what was said, both player utterances and AI narration
 - **Audit log** — every tool call, state mutation, and AI decision, with timestamps
-- **Episodic memory** — structured summaries of past sessions, embedded for retrieval
+- **Episodic memory** — structured summaries of past sessions, embedded for retrieval (lands in Phase 4)
 - **Consent records** — per-player records of voice processing consent
+- **Deletion log** — anonymous record that an erasure happened (no personally-identifying content)
 - **Configuration** — your Discord bot token, Foundry credentials, LLM/voice API keys (all encrypted at rest using your OS keyring)
 
-What it does **not** store:
+What lives in **Foundry** (not in Skeinkeeper's database):
+
+- Character sheets — HP, stats, inventory, conditions per the active Foundry system module
+- NPCs — sheets, dispositions, scene placement
+- Scenes / locations — the visual tabletop, fog of war, tokens
+- Combat tracker — initiative, current turn, active effects
+- Dice rolls — handled and audited on Foundry's side via its chat log
+
+If you erase a player's data from Skeinkeeper, the Skeinkeeper-side erasure does *not* reach into Foundry. You as the operator are responsible for any matching erasure in Foundry — those are separate stores.
+
+What Skeinkeeper does **not** store, anywhere:
 
 - **Voice audio.** Audio is streamed to your STT provider, transcribed, and the bytes are discarded immediately.
 - **Voiceprints or biometric data.** Skeinkeeper does not perform voice identification.

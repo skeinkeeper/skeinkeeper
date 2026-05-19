@@ -1,7 +1,7 @@
 # ADR-0010: Privacy as Architecture, Not Operational Commitment
 
 ## Status
-Proposed (2026-05-18)
+Accepted (2026-05-18)
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR-0004: Plugin Interfaces for LLM / Ruleset / VTT / Voice
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17). **`Ruleset` portion superseded by [ADR-0012](./0012-drop-ruleset-plugin-interface.md) (2026-05-19)** — Foundry's per-system data models replace the planned `Ruleset` interface. The `LLMProvider`, `VTTDriver`, and `VoiceIO` interfaces from this ADR remain current.
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR-0006: DM Behavior Spec Lives in a Separately-Versioned Document
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17)
 
 ## Context
 

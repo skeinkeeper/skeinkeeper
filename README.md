@@ -18,7 +18,7 @@ To run Skeinkeeper, you need:
 
 - A machine to run it on (Linux, macOS, or Windows with Docker)
 - A Discord account, with a [bot you've registered](https://discord.com/developers/applications) in your own Discord developer account
-- A Foundry VTT instance (self-hosted or via The Forge) with the [Foundry API Bridge / MCP module](https://github.com/alexivenkov/foundry-api-bridge-module) installed
+- A Foundry VTT instance (self-hosted or via The Forge) with a Foundry MCP bridge installed. We recommend [adambdooley/foundry-vtt-mcp](https://github.com/adambdooley/foundry-vtt-mcp) (fully OSS, no API keys); [laurigates/foundryvtt-mcp](https://github.com/laurigates/foundryvtt-mcp) is supported as a simpler alternative. See [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md).
 - An API key for an LLM provider (Anthropic Claude recommended; OpenAI also supported)
 - An API key for a TTS provider (ElevenLabs recommended) and an STT provider (Deepgram recommended)
 - Comfort with `docker compose up` and editing environment variables
@@ -45,7 +45,7 @@ docker compose up
 - **Runs the DM side of a tabletop RPG session.** Narrates scenes, voices NPCs, manages combat, calls for rolls, adjudicates rules, tracks state.
 - **Joins your Discord voice channel** and speaks aloud. Per-NPC voice profiles. Configurable wake-word.
 - **Operates Foundry VTT autonomously** — moves tokens, manages combat tracker, rolls dice, reveals fog, switches scenes.
-- **Remembers your campaign.** Persistent state across sessions: party HP, inventory, quest flags, NPC relationships, faction reputations, who said what three sessions ago.
+- **Remembers your campaign.** Foundry remains authoritative for the mechanical state of your campaign — character sheets, NPCs, scenes — and Skeinkeeper adds the AI-DM layer on top: quest flags the AI tracks, session transcripts, who said what three sessions ago, post-session summaries, and the audit trail of every tool call. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md).
 - **Treats the dice with respect.** Open rolls stay open. The AI never fudges player rolls, death saves, or final-blow rolls. The fudging policy (described in [`behavior/default.md`](./behavior/default.md)) is narrow, secret, and exclusively for the players' benefit.
 - **Stays out of your data.** Self-hosted; nothing leaves your machine except calls to the providers you've configured. Zero phone-home by default. See [`docs/PRIVACY.md`](./docs/PRIVACY.md).
 

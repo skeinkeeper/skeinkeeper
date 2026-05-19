@@ -1,7 +1,7 @@
 # ADR-0007: Commercial Campaign Content Stays Operator-Supplied
 
 ## Status
-Proposed (2026-05-17)
+Accepted (2026-05-17)
 
 ## Context
 

@@ -3,8 +3,10 @@
 > Status: Accepted
 > Author: maintainers
 > Date: 2026-05-19
-> Related ADRs: [ADR-0003 (tool-call-only mutation)](../adr/0003-tool-call-only-state-mutation.md), [ADR-0008 (tenant scoping)](../adr/0008-tenant-scoping.md), [ADR-0009 (telemetry opt-in)](../adr/0009-telemetry-opt-in.md)
-> Related design docs: [0005 (state schema)](./0005-state-schema.md)
+> Related ADRs: [ADR-0003 (tool-call-only mutation)](../adr/0003-tool-call-only-state-mutation.md), [ADR-0008 (tenant scoping)](../adr/0008-tenant-scoping.md), [ADR-0009 (telemetry opt-in)](../adr/0009-telemetry-opt-in.md), [ADR-0012 (Ruleset drop)](../adr/0012-drop-ruleset-plugin-interface.md), [ADR-0013 (warm-tier post-Foundry)](../adr/0013-warm-tier-after-foundry-source-of-truth.md)
+> Related design docs: [0005 (state schema — superseded)](./0005-state-schema.md), [0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md)
+>
+> **Amendment (2026-05-19):** The "Starter tools" table below was rewritten after design doc 0007 moved mechanical state to Foundry. The dispatcher mechanics (registry shape, validation, audit, telemetry, operator-gating) are unchanged. The set of *which tools ship as core in alpha* shrank — D&D-specific mutation tools were deferred to the Foundry plugin (Phase 3, in `plugins/vtt-foundry/`) where they're registered conditionally at session start based on Foundry's active system. Skeinkeeper's core registers only system-agnostic tools.
 
 ## Context
 
@@ -66,26 +68,32 @@ For every dispatch the dispatcher:
 5. Writes an audit-log row: `actor = "tool:" + tool.name`, `eventType = "tool_called"`, `payloadJson = { input, output, durationMs }`. Per ADR-0003 every mutation is auditable.
 6. Emits `tool.called { toolName, success, latencyMsBucket }` via the analytics client when present. Bucket boundaries: `<50`, `<250`, `<1000`, `<5000`, `>=5000`.
 
-### Starter tools
+### Starter tools (post-Foundry-as-source-of-truth)
 
-The alpha needs these to play. Each lives in `orchestrator/src/tools/<name>.ts`:
+Two categories of tools:
 
-| Tool | Input | Output | Mutates |
+**Core, system-agnostic** — registered by `createDefaultRegistry()` in `orchestrator/src/tools/index.ts`. These mutate Skeinkeeper's SQLite or signal the voice/audit layers.
+
+| Tool | Input | Output | Effect |
 |---|---|---|---|
-| `roll` | `{ formula: string, advantage?: bool, secret?: bool }` | `{ total: number, dice: number[], secret: bool }` | — (audit only) |
-| `apply_damage` | `{ characterId: string, amount: int, source?: string }` | `{ characterId, before: number, after: number }` | `characters.hp` |
-| `heal` | symmetric to `apply_damage` | symmetric | `characters.hp` (capped at maxHp) |
-| `set_condition` | `{ characterId, condition: string }` | `{ characterId, conditions: string[] }` | `characters.rulesetDataJson.conditions` |
-| `clear_condition` | symmetric | symmetric | same |
-| `update_inventory` | `{ characterId, item: string, delta: int }` | `{ characterId, item, before, after }` | `characters.rulesetDataJson.inventory` |
-| `set_quest_flag` | `{ campaignId, key, value: string }` | `{ key, value }` | `quest_flags` upsert |
-| `move_party` | `{ campaignId, locationId }` | `{ locationId }` | quest flag `"party.location" = locationId` |
-| `update_npc_disposition` | `{ npcId, disposition }` | `{ npcId, disposition }` | `npcs.disposition` |
-| `advance_time` | `{ minutes: int }` | `{ minutesElapsed }` | quest flag `"time.minutes_elapsed"` increment |
-| `whisper` | `{ targetPlayerDiscordId: PII<string>, content }` | `{ delivered: bool }` | — (audit + stash for VoiceIO) |
-| `fudge_roll` | `{ originalTotal, newTotal, reason }` | `{ accepted: bool }` | — (audit + signal to roll system) |
+| `roll` | `{ formula: string, speaker?: string, secret?: bool }` | `{ total: number, rolls: number[], formula: string, secret: bool }` | Phase 3: delegates to `FoundryClient.rollDice()` so rolls land in Foundry's chat log. Until then, audit-only stub. |
+| `set_quest_flag` | `{ campaignId, key, value: string }` | `{ campaignId, key, value }` | `quest_flags` upsert (Skeinkeeper-internal plot state). |
+| `move_party` | `{ campaignId, locationId }` | `{ campaignId, locationId }` | Records `party.location` quest flag; Phase 3 also activates the matching Foundry scene. |
+| `advance_time` | `{ campaignId, minutes: int }` | `{ campaignId, minutesElapsed }` | Accumulates `time.minutes_elapsed` quest flag for AI-side time awareness. |
+| `whisper` | `{ targetPlayerDiscordId: PII<string>, content }` | `{ delivered: bool }` | Audit entry; voice plugin consumes from audit log to DM the target player. |
+| `fudge_roll` | `{ originalTotal, newTotal, reason }` | `{ accepted: bool }` | Operator-gated meta-mechanic; the LLM may not invoke it unless the orchestrator flips the per-session "fudge allowed" flag. |
 
-For alpha all twelve are real (non-stub) implementations against the SQLite store from Phase 1.1. `roll` uses Node's `crypto.randomInt` until Phase 3.2 routes it through Foundry MCP. `whisper` writes an audit entry tagged for the voice plugin to consume later. `fudge_roll` is `operatorGated: true` — the LLM may not invoke it unless the orchestrator has flipped the per-session "fudge allowed" flag, which Phase 5 wires.
+**Foundry-routed, system-specific** — registered at session start by `plugins/vtt-foundry/` (Phase 3) once the active Foundry system is known. These translate to MCP calls and mutate state on Foundry's side. Examples:
+
+| Foundry system | Tools |
+|---|---|
+| `dnd5e` | `apply_damage`, `heal`, `set_condition`, `clear_condition`, `update_inventory`, `update_npc_disposition` |
+| `fate-core` | `apply_stress`, `take_consequence`, `invoke_aspect`, `compel_aspect` |
+| `dungeon-world` | `apply_harm`, `tick_harm_clock`, `mark_debility`, `tick_progress_clock` |
+
+The Foundry-routed tools land in Phase 3 alongside the real `McpFoundryClient` implementation. They're tested today via the orchestrator's `MockFoundryClient` (per design doc 0007).
+
+`fudge_roll` is `operatorGated: true` — the LLM may not invoke it unless the orchestrator has flipped the per-session "fudge allowed" flag, which Phase 5 wires.
 
 ### Schemas live with the tools
 

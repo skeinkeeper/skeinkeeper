@@ -37,13 +37,15 @@ What follows from this decision — good, bad, neutral?
 | # | Title | Status |
 |---|---|---|
 | [0001](./0001-use-foundry-mcp-for-vtt.md) | Use the Foundry MCP module for VTT integration | Superseded by [0011](./0011-prefer-oss-foundry-mcp-bridges.md) |
-| [0002](./0002-four-tier-memory-model.md) | Four-tier memory model (hot / warm / cold / episodic) | Proposed |
-| [0003](./0003-tool-call-only-state-mutation.md) | All state mutations occur via typed tool calls | Proposed |
-| [0004](./0004-plugin-interface-pattern.md) | Plugin interfaces for LLM / Ruleset / VTT / Voice | Proposed |
-| [0005](./0005-apache-2-license.md) | Apache License 2.0 | Proposed |
-| [0006](./0006-behavior-spec-separate-doc.md) | DM Behavior Spec lives in a separately-versioned document | Proposed |
-| [0007](./0007-phandelver-content-operator-supplied.md) | Commercial campaign content stays operator-supplied | Proposed |
-| [0008](./0008-tenant-scoping.md) | Tenant scoping in the data model | Proposed |
-| [0009](./0009-telemetry-opt-in.md) | Telemetry off by default, opt-in only | Proposed |
-| [0010](./0010-privacy-as-architecture.md) | Privacy as architecture, not operational commitment | Proposed |
-| [0011](./0011-prefer-oss-foundry-mcp-bridges.md) | Prefer fully-OSS Foundry MCP bridges (supersedes 0001's bridge choice) | Proposed |
+| [0002](./0002-four-tier-memory-model.md) | Four-tier memory model (hot / warm / cold / episodic) | Accepted; warm-tier contents superseded by [0013](./0013-warm-tier-after-foundry-source-of-truth.md) |
+| [0003](./0003-tool-call-only-state-mutation.md) | All state mutations occur via typed tool calls | Accepted |
+| [0004](./0004-plugin-interface-pattern.md) | Plugin interfaces for LLM / Ruleset / VTT / Voice | Accepted; Ruleset portion superseded by [0012](./0012-drop-ruleset-plugin-interface.md) |
+| [0005](./0005-apache-2-license.md) | Apache License 2.0 | Accepted |
+| [0006](./0006-behavior-spec-separate-doc.md) | DM Behavior Spec lives in a separately-versioned document | Accepted |
+| [0007](./0007-phandelver-content-operator-supplied.md) | Commercial campaign content stays operator-supplied | Accepted |
+| [0008](./0008-tenant-scoping.md) | Tenant scoping in the data model | Accepted |
+| [0009](./0009-telemetry-opt-in.md) | Telemetry off by default, opt-in only | Accepted |
+| [0010](./0010-privacy-as-architecture.md) | Privacy as architecture, not operational commitment | Accepted |
+| [0011](./0011-prefer-oss-foundry-mcp-bridges.md) | Prefer fully-OSS Foundry MCP bridges (supersedes 0001's bridge choice) | Accepted |
+| [0012](./0012-drop-ruleset-plugin-interface.md) | Drop the `Ruleset` plugin interface (supersedes 0004's Ruleset portion) | Accepted |
+| [0013](./0013-warm-tier-after-foundry-source-of-truth.md) | Warm-tier state after Foundry-as-source-of-truth (supersedes 0002's warm-tier description) | Accepted |

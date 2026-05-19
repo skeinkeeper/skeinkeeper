@@ -136,14 +136,15 @@ If you're using Claude Code or similar, the file tells the tool about the projec
 
 ## Plugin contributions
 
-The four plugin interfaces are the main contribution surface for new providers:
+Three plugin interfaces are the main contribution surface for new providers:
 
 - `LLMProvider` — for a new model provider (OpenAI, Grok, Gemini, local models)
-- `Ruleset` — for a new TTRPG ruleset (Pathfinder 2e, Call of Cthulhu, etc.)
 - `VTTDriver` — for a new virtual tabletop (Owlbear Rodeo, Roll20, etc.)
 - `VoiceIO` — for a new transport or voice stack
 
 See [ADR-0004](./docs/adr/0004-plugin-interface-pattern.md) for the architectural pattern. Implementations live in `/plugins/{kind}-{name}/`.
+
+A `Ruleset` interface was originally planned (see ADR-0004's history) but dropped per [ADR-0012](./docs/adr/0012-drop-ruleset-plugin-interface.md) — Foundry's per-system data models already provide that abstraction, so support for a new TTRPG system is done by (a) ensuring the Foundry-side system module exposes what we need, (b) adding a per-system renderer in `orchestrator/src/foundry/render.ts`, and (c) registering per-system mutation tools in `plugins/vtt-foundry/`. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md) for the architecture.
 
 When proposing a new plugin, open an issue first to discuss scope. A good plugin proposal covers: which interface, what the implementation depends on (external APIs, licenses), and how it'll be tested.
 

@@ -13,27 +13,35 @@ Skeinkeeper is a single-process application that an operator runs on one machine
 5. **Local persistence** — campaign state, episodic memory, audit log
 
 ```
-                     ┌──────────────────────────────────┐
-                     │         Orchestrator             │
-                     │  (memory, state, tool dispatch,  │
-                     │   prompt assembly, audit log)    │
-                     └──────────────────────────────────┘
-                          │     │      │       │
-              ┌───────────┘     │      │       └───────────┐
-              │                 │      │                   │
-        ┌─────▼─────┐    ┌─────▼──┐ ┌─▼─────┐      ┌──────▼──────┐
-        │ LLMProvider│    │Ruleset │ │VTTDriver│    │  VoiceIO    │
-        │  (Claude,  │    │(D&D 5e)│ │(Foundry)│   │ (Discord +  │
-        │   GPT, …)  │    │        │ │         │   │ Deepgram +  │
-        └────────────┘    └────────┘ └─────────┘   │ ElevenLabs) │
-                                                   └─────────────┘
-                          │                              │
-                  ┌───────▼────────┐              ┌──────▼────────┐
-                  │  Local State   │              │   Players     │
-                  │ (SQLite,       │              │   (Discord)   │
-                  │  LanceDB,      │              └───────────────┘
-                  │  audit log)    │
-                  └────────────────┘
+                       ┌──────────────────────────────────┐
+                       │         Orchestrator             │
+                       │  (memory, state, tool dispatch,  │
+                       │   prompt assembly, audit log)    │
+                       └──────────────────────────────────┘
+                              │            │            │
+                  ┌───────────┘            │            └───────────┐
+                  │                        │                        │
+            ┌─────▼──────┐           ┌─────▼─────┐            ┌─────▼──────┐
+            │ LLMProvider│           │ VTTDriver │            │  VoiceIO   │
+            │  (Claude,  │           │ (Foundry  │            │ (Discord + │
+            │   GPT, …)  │           │  via OSS  │            │ Deepgram + │
+            │            │           │   MCP)    │            │ElevenLabs) │
+            └────────────┘           └─────┬─────┘            └─────┬──────┘
+                                           │                        │
+                                  ┌────────▼──────────┐      ┌──────▼──────┐
+                                  │   Foundry VTT     │      │   Players   │
+                                  │  (authoritative   │      │  (Discord)  │
+                                  │  mechanical state │      └─────────────┘
+                                  │  per ADR-0011 +   │
+                                  │  design doc 0007) │
+                                  └───────────────────┘
+              │
+      ┌───────▼────────┐
+      │  Local State   │
+      │ (SQLite +      │   AI-DM-side state only — campaign metadata,
+      │  LanceDB +     │   sessions, audit log, consents, quest flags,
+      │  audit log)    │   episodic memory (LanceDB lands in Phase 4)
+      └────────────────┘
 ```
 
 ## Core principles
@@ -48,7 +56,7 @@ These guide most of the architectural decisions:
 
 4. **Behavior is data, not code.** How the AI DM behaves lives in [`/behavior/default.md`](../behavior/default.md), loaded as the system prompt. Iterates separately from the engine. [ADR-0006](./adr/0006-behavior-spec-separate-doc.md).
 
-5. **Modular boundaries are real.** Plugin interfaces (`LLMProvider`, `Ruleset`, `VTTDriver`, `VoiceIO`) keep the orchestrator vendor-independent. [ADR-0004](./adr/0004-plugin-interface-pattern.md).
+5. **Modular boundaries are real.** Plugin interfaces (`LLMProvider`, `VTTDriver`, `VoiceIO`) keep the orchestrator vendor-independent. [ADR-0004](./adr/0004-plugin-interface-pattern.md), with the `Ruleset` interface dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md) — Foundry's per-system data models replace it.
 
 6. **Audit everything.** Every state mutation, tool call, and AI decision is logged. The operator can answer "why did the AI do that?" for any session.
 
@@ -58,13 +66,13 @@ These guide most of the architectural decisions:
 
 ## The four-tier memory model
 
-The LLM's "memory" across sessions is split into four tiers with different mechanisms ([ADR-0002](./adr/0002-four-tier-memory-model.md)):
+The LLM's "memory" across sessions is split into four tiers with different mechanisms ([ADR-0002](./adr/0002-four-tier-memory-model.md), revised by [ADR-0013](./adr/0013-warm-tier-after-foundry-source-of-truth.md)):
 
 | Tier | Contents | Mechanism |
 |---|---|---|
-| **Hot** | Current scene, last ~20 turns, active NPCs, active rules | In-prompt, sliding window |
-| **Warm** | HP, slots, inventory, conditions, location, quest flags, faction reputation | SQLite, mutated only via tool calls |
-| **Cold** | Campaign content, SRD rules, monster stat blocks | LanceDB vector store, retrieved per turn |
+| **Hot** | Current scene, last ~20 turns, party, active NPCs, active rules | In-prompt, sliding window |
+| **Warm** | *From Foundry:* character sheets, NPCs on scene, active scene, combat tracker — whatever the active Foundry system module exposes. *From Skeinkeeper SQLite:* campaign metadata, sessions, audit log, consents, quest flags | Per-turn read from `FoundryClient` + `TenantDb`; mutations always via typed tool calls |
+| **Cold** | Campaign content, SRD rules, monster stat blocks | LanceDB vector store, retrieved per turn (lands in Phase 4) |
 | **Episodic** | Per-session summaries, key beats, NPC deltas | Generated post-session; consolidated over time |
 
 The classic mistake is stuffing everything into the context window. This four-tier split keeps prompts small, costs predictable, and state authoritative.
@@ -75,16 +83,17 @@ Every persistent record carries a `tenant_id`. The default tenant for a fresh in
 
 ## Plugin interfaces
 
-Four pluggable surfaces, each with a stable interface and one default implementation:
+Three pluggable surfaces, each with a stable interface and one default implementation:
 
 | Interface | Default | Purpose |
 |---|---|---|
 | `LLMProvider` | `AnthropicProvider` | Generate narration and tool calls |
-| `Ruleset` | `DnD5eRuleset` | Skills, dice mechanics, character schema, encounter scaling |
-| `VTTDriver` | `FoundryDriver` (via Foundry MCP) | Operate the visual tabletop |
-| `VoiceIO` | `DiscordVoiceIO` | Bridge to players |
+| `VTTDriver` | `FoundryDriver` (via the OSS Foundry MCP bridge of ADR-0011) | Operate the visual tabletop; authoritative for mechanical state |
+| `VoiceIO` | `DiscordVoiceIO` | Bridge to players (STT + TTS + Discord transport) |
 
-See [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md) for the Foundry choice, [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
+A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts` and per-system mutation tools are registered by the Foundry plugin at session start based on the active Foundry system. See [design doc 0007](./design/0007-foundry-as-source-of-truth.md).
+
+See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP bridge choice (supersedes [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md)) and [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
 
 ## How a turn works
 
@@ -92,11 +101,11 @@ A simplified flow:
 
 1. **Player speaks** in Discord voice channel.
 2. **VoiceIO** transcribes via STT, attributes to player by Discord user ID.
-3. **Orchestrator** assembles hot context: warm state snapshot + retrieved cold knowledge + dialogue window + behavior spec.
-4. **LLM call** with tools available (`roll`, `apply_damage`, `set_quest_flag`, `whisper`, etc.).
-5. **Tool calls dispatched** to deterministic code. Each one mutates state, writes audit log, and returns results to the model.
+3. **Orchestrator** assembles hot context: warm-state snapshot (Foundry read + Skeinkeeper SQLite read) + retrieved cold knowledge + dialogue window + behavior spec.
+4. **LLM call** with tools available. Core tools (system-agnostic): `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`. Foundry-routed tools (registered by the Foundry plugin at session start based on the active system): for D&D 5e, `apply_damage`, `heal`, `set_condition`, etc.
+5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to MCP calls and mutate Foundry's state. Either way, the dispatcher writes an audit-log row and returns results to the model.
 6. **Model narrates** over the deterministic outcome.
-7. **VoiceIO** streams TTS back to Discord. **VTTDriver** mirrors relevant changes to Foundry.
+7. **VoiceIO** streams TTS back to Discord. Foundry's chat log reflects any rolls or actor changes that routed through MCP.
 
 Every step is logged; the operator can replay any session from the audit log.
 

@@ -1,7 +1,7 @@
 # ADR-0011: Prefer Fully-OSS Foundry MCP Bridges
 
 ## Status
-Proposed (2026-05-19). **Supersedes [ADR-0001](./0001-use-foundry-mcp-for-vtt.md)** insofar as ADR-0001 endorsed the Patreon-gated `alexivenkov` bridge. The "use a Foundry MCP bridge rather than build our own" portion of ADR-0001 is retained — only the choice of bridge changes.
+Accepted (2026-05-19). **Supersedes [ADR-0001](./0001-use-foundry-mcp-for-vtt.md)** insofar as ADR-0001 endorsed the Patreon-gated `alexivenkov` bridge. The "use a Foundry MCP bridge rather than build our own" portion of ADR-0001 is retained — only the choice of bridge changes.
 
 ## Context
 

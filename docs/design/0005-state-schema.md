@@ -1,10 +1,12 @@
 # Design Doc 0005: State Schema
 
-> Status: Accepted
+> **Status: Superseded by [Design Doc 0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md) (2026-05-19).** The body below describes the pre-pivot schema (a first-class `characters` / `npcs` / `locations` / `faction_reputation` schema in Skeinkeeper's SQLite). Per design doc 0007 those tables were deleted; Foundry now owns mechanical state. Skeinkeeper's current schema (`tenants`, `campaigns`, `sessions`, `audit_log`, `consents`, `deletion_log`, `quest_flags`) is described in design doc 0007. The `TenantDb` tenant-scoping pattern from this doc *is* retained — see [ADR-0008](../adr/0008-tenant-scoping.md). Content below preserved unchanged as historical record.
+>
+> Original Status: Accepted
 > Author: maintainers
 > Date: 2026-05-19
-> Related ADRs: [ADR-0002 (four-tier memory)](../adr/0002-four-tier-memory-model.md), [ADR-0003 (tool-call-only mutation)](../adr/0003-tool-call-only-state-mutation.md), [ADR-0008 (tenant scoping)](../adr/0008-tenant-scoping.md), [ADR-0010 (privacy as architecture)](../adr/0010-privacy-as-architecture.md)
-> Related design docs: [0002 (privacy foundation)](./0002-privacy-foundation.md)
+> Related ADRs: [ADR-0002 (four-tier memory)](../adr/0002-four-tier-memory-model.md), [ADR-0003 (tool-call-only mutation)](../adr/0003-tool-call-only-state-mutation.md), [ADR-0008 (tenant scoping)](../adr/0008-tenant-scoping.md), [ADR-0010 (privacy as architecture)](../adr/0010-privacy-as-architecture.md), [ADR-0011 (OSS MCP bridge)](../adr/0011-prefer-oss-foundry-mcp-bridges.md), [ADR-0013 (warm-tier post-Foundry)](../adr/0013-warm-tier-after-foundry-source-of-truth.md)
+> Related design docs: [0002 (privacy foundation)](./0002-privacy-foundation.md), [0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md)
 
 ## Context
 
