@@ -78,6 +78,10 @@ Every PR includes:
 - Telemetry event definitions for new user-visible features
 - Deletion-path tests for any new persistent storage
 
+### New persistent storage requires a DeletionAdapter
+
+Any PR that adds a new persistent data store (table, file, vector collection) must also register a `DeletionAdapter` for it under `server/src/adapters/` before merge. Reviewers will reject otherwise. The mechanism is `ErasureService.register(adapter)` per [design doc 0003](./docs/design/0003-erasure-and-export.md). The same applies to `ExportAdapter` so the new data shows up in operator exports.
+
 ### Commits
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):
