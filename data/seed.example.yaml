@@ -1,0 +1,28 @@
+# Skeinkeeper seed file.
+#
+# Copy to data/seed.yaml (gitignored) and fill in your own values, then
+# run `pnpm tsx server/src/seed-cli.ts` to apply.
+#
+# Idempotent: re-running won't duplicate rows. Existing rows aren't updated.
+
+tenant:
+  id: default
+  name: "My Group"
+
+campaigns:
+  - id: phandelver
+    name: "Lost Mine of Phandelver"
+    rulesetId: dnd5e
+    behaviorSpecVersion: v0.1
+    status: active
+    characters:
+      - id: char-alice
+        name: "Alice's Character"
+        playerDiscordId: "000000000000000001"   # replace with the real Discord user ID
+        hp: 22
+        maxHp: 22
+      - id: char-bob
+        name: "Bob's Character"
+        playerDiscordId: "000000000000000002"
+        hp: 18
+        maxHp: 18

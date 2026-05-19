@@ -17,5 +17,9 @@ export {
   type ExportBundle,
 } from "./export.js";
 export { ConsentsAdapter } from "./adapters/consents-adapter.js";
+export { CampaignAdapter } from "./adapters/campaign-adapter.js";
+export { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 export { loadOrCreateSalt } from "./salt.js";
 export { runCli } from "./cli.js";
+export { TenantDb } from "./tenant_db.js";
+export { seedFromFile } from "./seed.js";
