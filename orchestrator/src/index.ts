@@ -49,6 +49,12 @@ export {
   type TurnStopReason,
 } from "./session.js";
 export {
+  runVoiceSession,
+  VOICE_CONSENT_TEXT,
+  VOICE_CONSENT_TEXT_VERSION,
+  type VoiceSessionConfig,
+} from "./voice_session.js";
+export {
   BehaviorSpecError,
   assertSpecCompatible,
   bucketSpecSizeKb,

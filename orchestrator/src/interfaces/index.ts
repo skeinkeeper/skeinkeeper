@@ -29,3 +29,14 @@ export {
   fakeLlmFromEvents,
   type FakeScript,
 } from "./fake_llm_provider.js";
+export {
+  type STTOptions,
+  type STTProvider,
+  type SpeakOptions,
+  type TTSOptions,
+  type TTSProvider,
+  type Utterance,
+  type VoiceEvent,
+  type VoiceIO,
+} from "./voice.js";
+export { FakeVoiceIO } from "./fake_voice_io.js";

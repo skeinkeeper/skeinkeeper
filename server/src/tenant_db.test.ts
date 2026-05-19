@@ -68,6 +68,66 @@ describe("TenantDb — quest flags upsert", () => {
   });
 });
 
+describe("TenantDb — consents", () => {
+  it("returns undefined when no consent event exists", () => {
+    const { t } = setup();
+    expect(t.consents.currentState("discord:1", "voice_processing")).toBeUndefined();
+    expect(t.consents.isGranted("discord:1", "voice_processing")).toBe(false);
+  });
+
+  it("reflects the most recent action as current state", () => {
+    const { t } = setup();
+    const now = Date.now();
+    t.consents.record({
+      subjectId: "discord:1",
+      purpose: "voice_processing",
+      action: "granted",
+      consentTextVersion: "v1",
+      timestamp: now,
+    });
+    expect(t.consents.isGranted("discord:1", "voice_processing")).toBe(true);
+
+    t.consents.record({
+      subjectId: "discord:1",
+      purpose: "voice_processing",
+      action: "withdrawn",
+      consentTextVersion: "v1",
+      timestamp: now + 1000,
+    });
+    expect(t.consents.currentState("discord:1", "voice_processing")).toBe("withdrawn");
+    expect(t.consents.isGranted("discord:1", "voice_processing")).toBe(false);
+  });
+
+  it("scopes consent state by subject", () => {
+    const { t } = setup();
+    t.consents.record({
+      subjectId: "discord:1",
+      purpose: "voice_processing",
+      action: "granted",
+      consentTextVersion: "v1",
+      timestamp: Date.now(),
+    });
+    expect(t.consents.isGranted("discord:1", "voice_processing")).toBe(true);
+    expect(t.consents.isGranted("discord:2", "voice_processing")).toBe(false);
+  });
+
+  it("does not leak consent state across tenants", () => {
+    const { db } = setup("alpha");
+    db.insert(tenants).values({ id: "beta", name: "Beta", createdAt: Date.now() }).run();
+    const alpha = new TenantDb(db, "alpha");
+    const beta = new TenantDb(db, "beta");
+    alpha.consents.record({
+      subjectId: "shared",
+      purpose: "voice_processing",
+      action: "granted",
+      consentTextVersion: "v1",
+      timestamp: Date.now(),
+    });
+    expect(alpha.consents.isGranted("shared", "voice_processing")).toBe(true);
+    expect(beta.consents.isGranted("shared", "voice_processing")).toBe(false);
+  });
+});
+
 describe("TenantDb — audit log append-only", () => {
   it("appends entries scoped to tenant and session", () => {
     const { t } = setup();

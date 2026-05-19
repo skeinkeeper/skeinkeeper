@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "./db.js";
 import {
   campaigns,
+  consents,
   questFlags,
   sessions,
   auditLog,
+  type Action,
   type NewCampaign,
   type NewQuestFlag,
   type NewSession,
   type NewAuditLogEntry,
+  type Purpose,
 } from "./schema/index.js";
 
 /**
@@ -78,6 +81,44 @@ export class TenantDb {
         .all(),
     create: (data: Omit<NewSession, "tenantId">) =>
       this.db.insert(sessions).values({ ...data, tenantId: this.tenantId }).run(),
+  };
+
+  // ---- consents (append-only event log; current state = most recent row) ----
+  readonly consents = {
+    /** Record a consent event (granting or withdrawing). Append-only. */
+    record: (data: {
+      subjectId: string;
+      purpose: Purpose;
+      action: Action;
+      consentTextVersion: string;
+      timestamp: number;
+      metadata?: string;
+    }) =>
+      this.db
+        .insert(consents)
+        .values({ ...data, tenantId: this.tenantId })
+        .run(),
+    /** The most recent action for a (subject, purpose), or undefined if no
+     *  consent event has ever been recorded. */
+    currentState: (subjectId: string, purpose: Purpose): Action | undefined => {
+      const row = this.db
+        .select()
+        .from(consents)
+        .where(
+          and(
+            eq(consents.tenantId, this.tenantId),
+            eq(consents.subjectId, subjectId),
+            eq(consents.purpose, purpose),
+          ),
+        )
+        .orderBy(desc(consents.timestamp), desc(consents.id))
+        .limit(1)
+        .get();
+      return row?.action as Action | undefined;
+    },
+    /** Convenience: is consent currently granted for (subject, purpose)? */
+    isGranted: (subjectId: string, purpose: Purpose): boolean =>
+      this.consents.currentState(subjectId, purpose) === "granted",
   };
 
   // ---- audit log (append-only) ----
