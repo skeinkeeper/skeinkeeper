@@ -4,7 +4,9 @@
 > Author: maintainers
 > Date: 2026-05-19
 > Related ADRs: [ADR-0004 (plugin interface pattern)](../adr/0004-plugin-interface-pattern.md), [ADR-0010 (privacy as architecture)](../adr/0010-privacy-as-architecture.md)
-> Related design docs: [0008 (LLM provider interface)](./0008-llm-provider-interface.md), [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0012 (voice IO)](./0012-voice-io.md)
+> Related design docs: [0008 (LLM provider interface)](./0008-llm-provider-interface.md), [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0012 (voice IO)](./0012-voice-io.md), [0016 (identity mapping)](./0016-player-character-identity-mapping.md), [0017 (voice assignment)](./0017-voice-assignment.md)
+>
+> **Amendment (2026-05-19):** added §2a, the operator-tunable **Eagerness** setting. The core decision (capture/respond split, Haiku decider) is unchanged; this adds a runtime knob *on* that decider, so it's an amendment rather than a superseding doc (same treatment as design doc 0006's tool-table amendment).
 
 ## Context
 
@@ -44,6 +46,26 @@ It is **false** for pure inter-player deliberation that doesn't need adjudicatio
 Implementation: a **cheap orchestration-tier (Haiku 4.5) call** over the recent buffer, returning a structured `{ respond: boolean, reason: string }`. This is exactly the model-tier split from design doc 0008 — Haiku for the fast/cheap meta-decision, Opus 4.7 reserved for the expensive narration only when `respond` is true. Running a Haiku classification on every lull is cheap; running Opus on every utterance would be wasteful and produce a chatty, interrupting DM.
 
 The decider's prompt is informed by the behavior spec (the DM's sense of when to speak) and the current warm state (e.g., "is there a trap adjacent to where the player just said they moved?" — though full trap-awareness depends on cold-tier module knowledge, Phase 4).
+
+### 2a. Eagerness — the operator-tunable calibration (amendment 2026-05-19)
+
+The decider's calibration is the make-or-break of the whole loop: too quiet and the DM feels absent; too eager and it interrupts the table constantly. No upfront default is right for every group or every moment, so this is an **operator-tunable runtime setting** with a sensible default.
+
+**Setting:** `Eagerness` (operator-facing label may read as "Chattiness"). It biases the "should I respond?" decider's threshold — not a separate mechanism, just a dial on the existing one.
+
+**Operator-facing shape:** three presets rather than a raw number, because operators shouldn't have to reason about a threshold:
+
+- **Reserved** — respond only to direct address and imminent danger (a player walking onto a trap). Gets out of the way; good for heavy role-play scenes between players.
+- **Balanced (default)** — the behavior §2 describes: direct address, consequential action declarations, rules questions, and lulls. Quiet during pure deliberation.
+- **Eager** — all of Balanced, plus proactive color, hints when the party seems stuck, and more frequent scene-moving. Good for new groups who want a present, guiding DM.
+
+(Internally this can be a 0–100 scalar if finer control proves useful; the presets map to anchor values. Start with presets.)
+
+**Runtime-tunable:** the operator changes it mid-session — combat often wants a more present DM, freeform RP a sparser one — via a Discord command (`/skeinkeeper eagerness reserved|balanced|eager`) or the web UI. It takes effect on the next decision; no restart.
+
+**Mechanically:** the chosen level is passed into the Haiku decider's prompt as an explicit instruction shaping how readily it returns `respond: true`. It lives on the session/campaign config (a field the decider reads each cycle), defaulting to Balanced. Because it's just a prompt bias, changing it is instant and cheap.
+
+**Why operator-controlled rather than AI-self-tuned:** the right eagerness is a *table preference*, not something the AI can infer reliably — and getting it wrong is the most-felt failure mode of a voice DM. Putting the dial in the operator's hand (with a good default) lets the table correct it in seconds rather than enduring a mis-calibrated DM for a whole session. The AI may *suggest* an adjustment ("the table's been quiet — want me to dial back?"), but the operator owns the setting.
 
 ### 3. Endpointing — when to run the decider
 
