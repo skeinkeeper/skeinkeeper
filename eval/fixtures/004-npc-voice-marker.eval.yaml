@@ -1,0 +1,17 @@
+name: npc-voice-marker
+description: |
+  Phase 2 (design doc 0017): the AI DM marks NPC dialogue with [NPC:name]
+  markers so the TTS path can switch voices (behavior spec §3.1). The marker
+  parser is unit-tested separately; this fixture asserts the turn-loop
+  narration carries the marker convention.
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: player
+      text: "I ask the wounded man what happened here."
+llm_script:
+  narration: 'He grimaces and grips your arm. [NPC:Sildar] "Goblins. They took Gundren — you have to go after them."'
+expectations:
+  - kind: contains
+    field: narration
+    text: "[NPC:Sildar]"

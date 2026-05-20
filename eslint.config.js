@@ -15,6 +15,7 @@ export default [
       "**/coverage/**",
       "docs/**",
       "behavior/**",
+      "app/src/web/static/**",
     ],
   },
   js.configs.recommended,

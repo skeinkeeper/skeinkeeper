@@ -6,6 +6,7 @@ import { z } from "zod";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import { ToolRegistry, ToolDispatcher, defineTool } from "./registry.js";
 import { createDefaultRegistry } from "./tools/index.js";
+import { MockFoundryClient } from "./foundry/mock.js";
 
 function setup() {
   const db = openDb({ path: ":memory:", runMigrations: true });
@@ -46,6 +47,8 @@ describe("ToolRegistry", () => {
         "advance_time",
         "fudge_roll",
         "move_party",
+        "notify_operator",
+        "record_player_character",
         "roll",
         "set_quest_flag",
         "whisper",
@@ -223,28 +226,160 @@ describe("Builtin tools (end-to-end)", () => {
     expect(flags.find((f) => f.key === "party.location")?.value).toBe("scene-tavern");
   });
 
+  it("record_player_character persists a player-sourced mapping", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "llm" as const };
+    const r = await dispatcher.dispatch(
+      {
+        name: "record_player_character",
+        input: {
+          campaignId: "c1",
+          discordUserId: "discord:alice",
+          foundryActorId: "actor-alice",
+          displayName: "Alice the Bold",
+        },
+      },
+      ctx,
+    );
+    expect(r.ok).toBe(true);
+    const current = tenantDb.playerCharacterMap.currentForPlayer("c1", "discord:alice");
+    expect(current?.foundryActorId).toBe("actor-alice");
+    expect(current?.source).toBe("player");
+    expect(current?.displayName).toBe("Alice the Bold");
+  });
+
+  it("notify_operator delivers via ctx.notifyOperator", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const sent: string[] = [];
+    const ctx = {
+      tenantDb,
+      sessionId: "s",
+      turnId: "t",
+      caller: "llm" as const,
+      notifyOperator: async (m: string) => {
+        sent.push(m);
+      },
+    };
+    const r = await dispatcher.dispatch(
+      { name: "notify_operator", input: { message: "I can't find an actor named Mirna." } },
+      ctx,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.output as { delivered: boolean }).delivered).toBe(true);
+    expect(sent).toEqual(["I can't find an actor named Mirna."]);
+  });
+
+  it("notify_operator reports undelivered when no operator channel is wired", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "llm" as const };
+    const r = await dispatcher.dispatch(
+      { name: "notify_operator", input: { message: "Foundry seems disconnected." } },
+      ctx,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.output as { delivered: boolean }).delivered).toBe(false);
+  });
+
 });
 
-describe("rollFormula (legacy local roller)", () => {
-  it("rolls within bounds", async () => {
-    const { rollFormula } = await import("./dice.js");
-    for (let i = 0; i < 20; i++) {
-      const r = rollFormula("1d20+3");
-      expect(r.dice).toHaveLength(1);
-      expect(r.dice[0]!).toBeGreaterThanOrEqual(1);
-      expect(r.dice[0]!).toBeLessThanOrEqual(20);
-      expect(r.total).toBe(r.dice[0]! + 3);
+// (rollFormula is comprehensively tested in dice.test.ts.)
+
+describe("roll tool", () => {
+  function bootstrap() {
+    const { db, tenantDb } = setup();
+    db.insert(schema.campaigns)
+      .values({
+        id: "c1",
+        tenantId: "default",
+        name: "Test",
+        rulesetId: "dnd5e",
+        behaviorSpecVersion: "v0.1",
+        status: "active",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+    return { tenantDb, dispatcher: new ToolDispatcher({ registry: createDefaultRegistry() }) };
+  }
+
+  it("rolls via the local roller when no Foundry is present (real dice, not a no-op)", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "llm" as const };
+    const r = await dispatcher.dispatch({ name: "roll", input: { formula: "1d20+3" } }, ctx);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const out = r.output as { total: number; rolls: number[] };
+      expect(out.rolls).toHaveLength(1);
+      expect(out.total).toBe(out.rolls[0]! + 3);
+      expect(out.total).toBeGreaterThanOrEqual(4);
     }
   });
 
-  it("supports advantage and disadvantage", async () => {
-    const { rollFormula } = await import("./dice.js");
-    expect(rollFormula("1d20", { advantage: true }).advantage).toBe(true);
-    expect(rollFormula("1d20", { disadvantage: true }).advantage).toBe(false);
+  it("delegates to the Foundry roller when present", async () => {
+    const { tenantDb, dispatcher } = bootstrap();
+    const foundry = new MockFoundryClient({ system: "dnd5e" });
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "llm" as const, foundry };
+    const r = await dispatcher.dispatch(
+      { name: "roll", input: { formula: "2d6", speaker: "Aragorn" } },
+      ctx,
+    );
+    expect(r.ok).toBe(true);
+    // The mock records the roll it was asked to make.
+    expect(foundry.rolls.map((x) => x.formula)).toContain("2d6");
+  });
+});
+
+describe("move_party — activates the Foundry scene (ADR-0015)", () => {
+  function bootstrapWithCampaign() {
+    const { db, tenantDb } = setup();
+    db.insert(schema.campaigns)
+      .values({
+        id: "c1",
+        tenantId: "default",
+        name: "Test",
+        rulesetId: "dnd5e",
+        behaviorSpecVersion: "v0.1",
+        status: "active",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .run();
+    return { tenantDb, dispatcher: new ToolDispatcher({ registry: createDefaultRegistry() }) };
+  }
+
+  it("switches the active scene by name and reports sceneActivated", async () => {
+    const { tenantDb, dispatcher } = bootstrapWithCampaign();
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      scenes: [
+        { id: "s-inn", name: "Stonehill Inn", active: true, tokens: [] },
+        { id: "s-cragmaw", name: "Cragmaw Hideout", active: false, tokens: [] },
+      ],
+      activeSceneId: "s-inn",
+    });
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "llm" as const, foundry };
+
+    const r = await dispatcher.dispatch(
+      { name: "move_party", input: { campaignId: "c1", locationId: "Cragmaw Hideout" } },
+      ctx,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.output as { sceneActivated: boolean }).sceneActivated).toBe(true);
+    expect((await foundry.getActiveScene())?.id).toBe("s-cragmaw");
+    // quest flag still recorded
+    expect(tenantDb.questFlags.listByCampaign("c1").find((f) => f.key === "party.location")?.value).toBe(
+      "Cragmaw Hideout",
+    );
   });
 
-  it("rejects bad formulas", async () => {
-    const { rollFormula } = await import("./dice.js");
-    expect(() => rollFormula("garbage")).toThrow();
+  it("still records the flag when no Foundry is in context (sceneActivated false)", async () => {
+    const { tenantDb, dispatcher } = bootstrapWithCampaign();
+    const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "llm" as const };
+    const r = await dispatcher.dispatch(
+      { name: "move_party", input: { campaignId: "c1", locationId: "somewhere" } },
+      ctx,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.output as { sceneActivated: boolean }).sceneActivated).toBe(false);
   });
 });

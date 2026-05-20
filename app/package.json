@@ -1,0 +1,26 @@
+{
+  "name": "@skeinkeeper/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "@skeinkeeper/core": "workspace:*",
+    "@skeinkeeper/embed-local": "workspace:*",
+    "@skeinkeeper/llm-anthropic": "workspace:*",
+    "@skeinkeeper/memory-lance": "workspace:*",
+    "@skeinkeeper/orchestrator": "workspace:*",
+    "@skeinkeeper/server": "workspace:*",
+    "@skeinkeeper/telemetry": "workspace:*",
+    "@skeinkeeper/voice-discord": "workspace:*",
+    "@skeinkeeper/vtt-foundry": "workspace:*",
+    "discord.js": "^14.16.0"
+  }
+}

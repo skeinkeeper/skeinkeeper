@@ -7,6 +7,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Voice validation scratch output (scripts/check-voice-providers.ts)
+voice-check.mp3
+
 # Environment and secrets
 .env
 .env.local
@@ -61,3 +64,5 @@ strategy/
 **/PRD.md
 **/PRD-*.md
 **/task-breakdown*.md
+plugins/*/pnpm-lock.yaml
+local_cache/

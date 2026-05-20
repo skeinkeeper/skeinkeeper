@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db.js";
-import { ErasureService } from "./erasure.js";
+import { ErasureService, type DeletionAdapter, type ErasureScope } from "./erasure.js";
 import { ExportService } from "./export.js";
 import { ConsentsAdapter } from "./adapters/consents-adapter.js";
 import { consents, deletionLog } from "./schema/index.js";
@@ -174,6 +174,68 @@ describe("ExportService + ConsentsAdapter", () => {
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("Player discord:hi");
     expect(html).toContain("discord:hi"); // subject id appears in the JSON section too
+  });
+});
+
+class FakeAdapter implements DeletionAdapter {
+  readonly calls: Array<ErasureScope["kind"]> = [];
+  constructor(
+    readonly name: string,
+    readonly supportedScopes: ReadonlyArray<ErasureScope["kind"]>,
+    private readonly count = 1,
+    private readonly throwOn?: ErasureScope["kind"],
+  ) {}
+  async delete(scope: ErasureScope): Promise<number> {
+    this.calls.push(scope.kind);
+    if (this.throwOn === scope.kind) throw new Error(`${this.name} boom`);
+    return this.count;
+  }
+}
+
+describe("ErasureService — multi-adapter fan-out", () => {
+  it("runs only the adapters that support the scope and logs one row each", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const erasure = new ErasureService({ db, salt: "test-salt-32-chars-aaaaaaaaaaaaaa" });
+    const playerOnly = new FakeAdapter("player-only", ["player"], 3);
+    const everywhere = new FakeAdapter("everywhere", ["player", "campaign", "tenant"], 2);
+    const tenantOnly = new FakeAdapter("tenant-only", ["tenant"], 5);
+    for (const a of [playerOnly, everywhere, tenantOnly]) erasure.register(a);
+
+    const report = await erasure.erase({ kind: "campaign", tenantId: "default", campaignId: "c1" });
+
+    // Only "everywhere" supports campaign scope.
+    expect(playerOnly.calls).toEqual([]);
+    expect(tenantOnly.calls).toEqual([]);
+    expect(everywhere.calls).toEqual(["campaign"]);
+    expect(report.totalRecords).toBe(2);
+    expect(report.failures).toBe(0);
+    expect(report.perAdapter).toEqual([{ adapter: "everywhere", recordsDeleted: 2 }]);
+    // One deletion_log row per applicable adapter that ran.
+    expect(db.select().from(deletionLog).all()).toHaveLength(1);
+  });
+
+  it("continues past a failing adapter, records the error, and counts failures", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const erasure = new ErasureService({ db, salt: "test-salt-32-chars-aaaaaaaaaaaaaa" });
+    const ok1 = new FakeAdapter("ok1", ["tenant"], 4);
+    const boom = new FakeAdapter("boom", ["tenant"], 0, "tenant");
+    const ok2 = new FakeAdapter("ok2", ["tenant"], 1);
+    for (const a of [ok1, boom, ok2]) erasure.register(a);
+
+    const report = await erasure.erase({ kind: "tenant", tenantId: "default" });
+
+    // All three were attempted; the failure didn't abort the rest.
+    expect(ok1.calls).toEqual(["tenant"]);
+    expect(boom.calls).toEqual(["tenant"]);
+    expect(ok2.calls).toEqual(["tenant"]);
+    expect(report.failures).toBe(1);
+    expect(report.totalRecords).toBe(5); // 4 + 1; the failed adapter contributes 0
+    const failed = report.perAdapter.find((p) => p.adapter === "boom");
+    expect(failed?.error).toContain("boom");
+    expect(failed?.recordsDeleted).toBe(0);
+    // No deletion_log row for the failed adapter; one each for the successes.
+    const logs = db.select().from(deletionLog).all();
+    expect(logs.map((l) => l.adapterName).sort()).toEqual(["ok1", "ok2"]);
   });
 });
 

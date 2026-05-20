@@ -18,6 +18,9 @@ What Skeinkeeper stores:
 
 - **Campaign metadata** — campaign name, ruleset, which Foundry world it points at
 - **Quest flags** — AI-DM-internal plot state (e.g., "cragmaw.cleared = true"), kept separate from Foundry's official world state so the operator can curate what's visible to players
+- **Player↔character map** — which Foundry character each Discord player controls, so the AI knows whose turn it is and who to address. Holds the Discord user ID, the Foundry actor ID, and an optional display name.
+- **Voice assignments** — which TTS voice the DM and each NPC use, so characters sound consistent across sessions. Campaign config, not personal data (no Discord IDs); removed when the campaign is deleted.
+- **Operator setting** — the Discord user ID of the **operator** who receives setup-note DMs, when you designate yourself in the console or via `/skeinkeeper operator claim`. It's the operator's own ID (operator config, not data collected about a player); removed when the campaign is deleted.
 - **Session transcripts** — the text of what was said, both player utterances and AI narration
 - **Audit log** — every tool call, state mutation, and AI decision, with timestamps
 - **Episodic memory** — structured summaries of past sessions, embedded for retrieval (lands in Phase 4)
@@ -57,11 +60,17 @@ Only the providers you've configured. Specifically:
 
 When a player first joins a voice channel that the Skeinkeeper bot is in, they receive a Discord DM with a consent flow:
 
-> Skeinkeeper transcribes voice in this channel using [your configured STT provider]. Audio is streamed for transcription and immediately discarded; we never store voice recordings. Transcripts are retained in your operator's local Skeinkeeper instance.
+> Skeinkeeper transcribes voice in this channel using [your configured STT provider]. Audio is streamed for transcription and immediately discarded; we never store voice recordings. Transcripts are retained in your operator's local Skeinkeeper instance. The AI also keeps a shared, campaign-level memory of what happens at the table; that shared record is not erased when an individual player asks to be forgotten (see "Delete their data" below).
 >
 > Do you consent to voice processing in this channel?
 
 Audio is not processed until consent is granted. Players can withdraw consent at any time via the `/skeinkeeper consent withdraw voice` slash command; withdrawal takes effect immediately and future utterances are not transcribed.
+
+To be a present DM, Skeinkeeper transcribes the table's ongoing conversation continuously — not only when a player directly addresses the DM. This is how it can react to a player declaring an action to the group, or pick up the thread after a lull. Consented audio is still transcribed and the bytes immediately discarded; the AI simply listens to more of the table than a "push to talk" model would. Unconsented players' audio is never transcribed.
+
+Skeinkeeper also reads **who is in the voice channel** (Discord user IDs + display names) so it can welcome newcomers and run the session-start introductions. This presence signal is used transiently in the moment — it is not a new stored record beyond the player↔character map and consent records already listed above.
+
+**Operator notes go to the operator over Discord DM.** When the AI hits a setup problem it can't resolve in-fiction (for example, a player names a character that isn't in the Foundry world), it sends a private Discord DM to the operator. Players never see these notes. They carry campaign-operational details (a player's display name, a character name) — nothing beyond what's already covered above. The note *messages* aren't stored; the only thing persisted is the operator's own Discord ID (the "Operator setting" above), so Skeinkeeper knows whom to DM.
 
 This consent is per-player, recorded with a timestamp and the version of the consent text shown.
 
@@ -72,24 +81,35 @@ If a player wants to:
 **Know what data you hold about them**
 
 ```bash
-skeinkeeper player:export <discord-id> > player-data.json
+pnpm skeinkeeper player:export --tenant <id> --subject <discord-id> [--out <dir>]
 ```
 
-Produces a JSON archive of everything Skeinkeeper has stored involving that Discord user: character data, transcript appearances, consent records, audit log entries.
+Writes an archive (JSON + a readable HTML summary) of everything Skeinkeeper has stored involving that Discord user — their player↔character mappings, transcript appearances, consent records — into the output directory (`./exports` by default). `--tenant` defaults to `default`.
 
 **Delete their data**
 
 ```bash
-skeinkeeper player:delete <discord-id>
+pnpm skeinkeeper player:delete --tenant <id> --subject <discord-id> [--yes]
 ```
 
-Cascades across every storage system: dialogue transcripts (the player's spoken/typed lines), quest flags, audit log entries, consent records, and — once the vector store lands — episodic memory. A record of the deletion is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
+Cascades across the player's **personal** data: dialogue transcripts (their spoken/typed lines), player↔character mappings, consent records, and their audit-log entries. (`--yes` skips the confirmation prompt.) A record of the deletion is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
+
+**What per-player deletion does *not* remove: the campaign's shared memory.** The AI's episodic memory — the session-by-session summaries of what happened at the table — is a *shared, jointly-authored record of the whole group's story*, not one player's personal data. One player asking to be forgotten doesn't make the rest of the table forget the campaign they played together, any more than it would in real life. Those summaries (and operator-imported lore) persist and are erased only when the **campaign or the whole tenant** is deleted:
+
+```bash
+pnpm skeinkeeper campaign:delete --tenant <id> --campaign <id> [--yes]   # erases that campaign's shared memory
+pnpm skeinkeeper tenant:delete   --tenant <id> [--yes]                   # erases the whole tenant
+```
+
+Campaign/tenant deletion cascades the SQLite tables **and** the on-box episodic vector store (LanceDB). This is a deliberate design decision ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)); the consent flow discloses it up front. If you embed memory with a **hosted** provider (Voyage/OpenAI) instead of the on-box default, that content also reaches your chosen embedding provider — the local default keeps it on your machine.
+
+(`campaign:export` and `tenant:delete` follow the same flag shape; run `pnpm skeinkeeper --help` for the full list.)
 
 **Stop voice processing** without leaving the campaign
 
 The slash command `/skeinkeeper consent withdraw voice` does this. The player can still participate via text.
 
-If you're the operator, you're in control of these flows; the CLI commands work today, and the web UI will add point-and-click versions in v0.5.
+If you're the operator, you're in control of these flows; the CLI commands work today (run them with `pnpm skeinkeeper …` from the repo root during alpha), and the web UI will add point-and-click versions in v0.5.
 
 ## Your role as operator
 
@@ -116,7 +136,7 @@ A "Local mode only" badge appears in the web UI when both streams are off, as a 
 
 ## Security disclosure
 
-If you find a security vulnerability in Skeinkeeper, please email chris@henesy.org rather than opening a public issue. We aim to acknowledge reports within 72 hours and ship fixes via a coordinated security advisory.
+If you find a security vulnerability in Skeinkeeper, please email chris@heartofgoldventures.com rather than opening a public issue. We aim to acknowledge reports within 72 hours and ship fixes via a coordinated security advisory.
 
 ## Questions?
 

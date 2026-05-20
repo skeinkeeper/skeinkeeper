@@ -38,6 +38,9 @@ export async function runVoiceSession(config: VoiceSessionConfig): Promise<numbe
       await voiceIO.requestConsent(event.speaker, config.consentText);
       continue;
     }
+    // The naive loop is per-utterance; it has no buffer, so lull/endpointing
+    // signals are not actionable here (the always-listening loop uses them).
+    if (event.kind !== "utterance") continue;
 
     const { utterance } = event;
     const turn = await runTurn(session, {
@@ -64,10 +67,17 @@ export async function runVoiceSession(config: VoiceSessionConfig): Promise<numbe
  * wording the player saw. Matches docs/PRIVACY.md.
  */
 export const VOICE_CONSENT_TEXT =
-  "Skeinkeeper transcribes voice in this channel using your operator's configured " +
-  "speech-to-text provider. Audio is streamed for transcription and immediately " +
-  "discarded; we never store voice recordings. Transcripts are retained in your " +
-  "operator's local Skeinkeeper instance. Do you consent to voice processing in " +
-  "this channel? You can withdraw at any time with /skeinkeeper consent withdraw voice.";
+  "Skeinkeeper (your group's AI Dungeon Master) would like to transcribe your voice " +
+  "in this game's channel, using your operator's configured speech-to-text provider. " +
+  "Audio is streamed for transcription and immediately discarded — we never store " +
+  "voice recordings. Transcripts are kept in your operator's local Skeinkeeper " +
+  "instance. The AI also keeps a shared, campaign-level memory of what happens at the " +
+  "table; that shared record is not erased when an individual player asks to be " +
+  "forgotten (your personal transcript lines and data are).\n\n" +
+  "Tap **Grant voice consent** below to take part by voice. Until you do, your audio " +
+  "is not transcribed. You can tap **Withdraw** here anytime (or run " +
+  "`/skeinkeeper consent`).";
 
-export const VOICE_CONSENT_TEXT_VERSION = "v1";
+// v1 -> v2: shared-campaign-memory disclosure (ADR-0014).
+// v2 -> v3: button-based grant/withdraw + clearer wording.
+export const VOICE_CONSENT_TEXT_VERSION = "v3";

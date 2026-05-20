@@ -4,15 +4,21 @@
 import { createHash } from "node:crypto";
 import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
-import type { BehaviorSpec } from "./behavior.js";
+import { bucketSpecSizeKb, type BehaviorSpec } from "./behavior.js";
 import type { FoundryClient } from "./foundry/client.js";
 import {
   assembleHotContext,
   formatHotContextAsText,
   type DialogueTurn,
+  type PresentPlayer,
+  type RetrievedMemoryChunk,
   type WarmStateSnapshot,
 } from "./hot_context.js";
-import { bucketDurationMs } from "./interfaces/llm.js";
+import type { EmbeddingProvider } from "./interfaces/embedding.js";
+import type { MemoryRecord, MemoryStore } from "./memory/store.js";
+import { buildMemoryQuery, retrieveMemory } from "./memory/retrieval.js";
+import { generateEpisodicSummary } from "./memory/summarize.js";
+import { bucketDurationMs, bucketTokens } from "./interfaces/llm.js";
 import type {
   LLMContent,
   LLMMessage,
@@ -22,6 +28,7 @@ import type {
 } from "./interfaces/llm.js";
 import type { ToolDispatcher } from "./registry.js";
 import { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
+import type { Eagerness } from "./voice/eagerness.js";
 import { buildWarmStateSnapshot } from "./warm_state.js";
 
 /**
@@ -54,6 +61,21 @@ export interface SessionConfig {
   /** Per-session flag set by the operator; controls whether fudge_roll
    *  may be invoked by the LLM. */
   fudgeAllowed?: boolean;
+  /** Operator's "should I respond?" calibration for the always-listening
+   *  loop (design doc 0015 §2a). Runtime-tunable; defaults to Balanced. */
+  eagerness?: Eagerness;
+  /** Optional cold/episodic memory (design doc 0019). When set, runTurn
+   *  retrieves relevant records into hot context and archiveSession stores a
+   *  post-session summary. Absent = no long-term memory (warm/hot only). */
+  memory?: {
+    embed: EmbeddingProvider;
+    store: MemoryStore;
+    /** Top-K records to retrieve per responding turn. Default 4. */
+    topK?: number;
+  };
+  /** Send a private DM to the operator for setup escalations (design doc
+   *  0023). Wired by the operator app; tools reach it via ctx.notifyOperator. */
+  notifyOperator?: (message: string) => Promise<void>;
 }
 
 export class Session {
@@ -98,6 +120,10 @@ export function startSession(config: SessionConfig): Session {
     campaignIdHash: hashHex(config.campaignId, 16),
     rulesetId: campaign?.rulesetId ?? "unknown",
   });
+  config.analytics?.track("behavior_spec.loaded", {
+    version: config.behaviorSpec.version,
+    sizeKbBucket: bucketSpecSizeKb(Buffer.byteLength(config.behaviorSpec.content, "utf8")),
+  });
 
   return session;
 }
@@ -117,10 +143,53 @@ export function endSession(session: Session, summaryJson?: string): void {
   });
 }
 
+/**
+ * Archive a finished session into episodic memory (design doc 0019 §3):
+ * summarize the transcript (prose + structured deltas), embed it, and upsert
+ * an episodic record. Best-effort and non-fatal — called by the operator app
+ * after endSession; a no-op when memory isn't configured or there's nothing
+ * to summarize. Returns the stored record, or null if it didn't store one.
+ */
+export async function archiveSession(session: Session): Promise<MemoryRecord | null> {
+  const cfg = session.config;
+  if (!cfg.memory) return null;
+  if (session.dialogue.length === 0) return null;
+  try {
+    const summary = await generateEpisodicSummary(cfg.llm, session.dialogue);
+    const [vector] = await cfg.memory.embed.embed([summary.text]);
+    if (vector === undefined) return null;
+    const record: MemoryRecord = {
+      id: `${cfg.sessionId}-episodic`,
+      kind: "episodic",
+      text: summary.text,
+      vector,
+      metadata: {
+        campaignId: cfg.campaignId,
+        sessionId: cfg.sessionId,
+        createdAt: Date.now(),
+        embedModel: cfg.memory.embed.name,
+        ...(Object.keys(summary.deltas).length > 0 ? { deltas: summary.deltas } : {}),
+      },
+    };
+    await cfg.memory.store.upsert([record]);
+    return record;
+  } catch {
+    // Summary/embed/store failure must not break session teardown.
+    return null;
+  }
+}
+
 export interface TurnInput {
   speaker: string;
   displayName?: string;
   text: string;
+}
+
+/** Optional per-turn context that isn't part of the player's utterance. */
+export interface TurnOptions {
+  /** Voice-channel roster + character mappings (design doc 0023), surfaced in
+   *  hot context so the AI can run onboarding and call record_player_character. */
+  presentPlayers?: ReadonlyArray<PresentPlayer>;
 }
 
 export interface DispatchedToolCall {
@@ -151,69 +220,49 @@ export interface TurnOutput {
 const DEFAULT_MAX_ITER = 10;
 const DEFAULT_DIALOGUE_WINDOW = 20;
 
-/** Run a single player turn through the AI DM. */
-export async function runTurn(
+/** Append a dialogue line to both the in-memory window and the persisted store
+ *  (the two must stay in lockstep). Used for the player turn and the narrator
+ *  turn. turnCount is a turn-level counter and stays in runTurn. */
+function appendDialogue(
+  cfg: SessionConfig,
   session: Session,
-  input: TurnInput,
-): Promise<TurnOutput> {
-  const startMs = Date.now();
-  const cfg = session.config;
-  const maxIter = cfg.maxToolIterations ?? DEFAULT_MAX_ITER;
-  const windowSize = cfg.dialogueWindowSize ?? DEFAULT_DIALOGUE_WINDOW;
-  const turnId = `${cfg.sessionId}-${startMs}`;
-
-  // Append player turn to dialogue so it appears in hot context.
-  const dialogueTurn: DialogueTurn = {
-    speaker: input.speaker,
-    text: input.text,
-    timestamp: startMs,
-  };
-  if (input.displayName !== undefined) dialogueTurn.displayName = input.displayName;
-  session.dialogue.push(dialogueTurn);
-  session.turnCount += 1;
+  turn: { speaker: string; displayName?: string; text: string },
+  timestamp: number,
+): void {
+  const t: DialogueTurn = { speaker: turn.speaker, text: turn.text, timestamp };
+  if (turn.displayName !== undefined) t.displayName = turn.displayName;
+  session.dialogue.push(t);
   cfg.tenantDb.dialogue.append({
     sessionId: cfg.sessionId,
-    speaker: input.speaker,
-    ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-    text: input.text,
-    timestamp: startMs,
+    speaker: turn.speaker,
+    ...(turn.displayName !== undefined ? { displayName: turn.displayName } : {}),
+    text: turn.text,
+    timestamp,
   });
+}
 
-  // Audit: turn start.
-  appendAudit(cfg, {
-    actor: "orchestrator:run_turn",
-    eventType: "turn_started",
-    payloadJson: JSON.stringify({
-      speaker: input.speaker,
-      displayName: input.displayName,
-      textHash: hashHex(input.text, 12),
-    }),
-    sessionId: cfg.sessionId,
-    turnId,
-    timestamp: startMs,
-  });
+interface IterationsResult {
+  narration: string;
+  toolCalls: DispatchedToolCall[];
+  stopReason: TurnStopReason;
+  errorMessage?: string;
+  iterations: number;
+}
 
-  // Assemble state.
-  let warmState = await buildWarmStateSnapshot(cfg.foundry, cfg.tenantDb, cfg.campaignId);
-  const hotContext = assembleHotContext(warmState, session.dialogue, { windowSize });
-  const hotContextText = formatHotContextAsText(hotContext);
-
-  // Tools.
-  const toolSpecs = cfg.dispatcher
-    .registry()
-    .list()
-    .map(toolDefinitionToLlmSpec);
-
-  // Conversation: starts with one user message carrying hot context (which
-  // includes recent dialogue ending with this turn's input). Grows with
-  // assistant tool_use + user tool_result pairs across iterations.
-  const messages: LLMMessage[] = [
-    {
-      role: "user",
-      content: [{ type: "text", text: hotContextText }],
-    },
-  ];
-
+/**
+ * The LLM streaming + tool-dispatch loop (the imperative core of a turn). Drives
+ * the model, dispatches any tool calls, feeds results back, and repeats until
+ * the model stops, errors, or hits the iteration cap. Emits `llm.completed` per
+ * round-trip and `error.captured` on an LLM error (best-effort telemetry,
+ * no-op until an analytics client is wired).
+ */
+async function runLlmIterations(
+  cfg: SessionConfig,
+  messages: LLMMessage[],
+  toolSpecs: LLMRequest["tools"],
+  turnId: string,
+  maxIter: number,
+): Promise<IterationsResult> {
   const allToolCalls: DispatchedToolCall[] = [];
   let narration = "";
   let stopReason: TurnStopReason = "end_turn";
@@ -222,6 +271,7 @@ export async function runTurn(
 
   for (let i = 1; i <= maxIter; i++) {
     iterations = i;
+    const iterStart = Date.now();
 
     const req: LLMRequest = {
       systemPrompt: cfg.behaviorSpec.content,
@@ -234,6 +284,8 @@ export async function runTurn(
     let iterationText = "";
     let iterationStopReason: StopReason = "end_turn";
     let iterationErrored = false;
+    let usage: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number } | null =
+      null;
 
     for await (const ev of cfg.llm.complete(req)) {
       if (ev.kind === "text_delta") {
@@ -243,12 +295,30 @@ export async function runTurn(
         iterationToolCalls.push({ id: ev.id, name: ev.name, input: ev.input });
       } else if (ev.kind === "done") {
         iterationStopReason = ev.stopReason;
+        usage = ev.usage;
       } else if (ev.kind === "error") {
         iterationErrored = true;
         errorMessage = `${ev.error.kind}: ${ev.error.message}`;
+        cfg.analytics?.track("error.captured", {
+          errorClass: ev.error.kind,
+          module: "orchestrator:run_turn",
+        });
         break;
       }
       // thinking_delta and compaction events ignored at this layer.
+    }
+
+    if (!iterationErrored) {
+      cfg.analytics?.track("llm.completed", {
+        providerName: cfg.llm.name,
+        modelTier: "narration",
+        success: true,
+        stopReason: iterationStopReason,
+        inputTokensBucket: bucketTokens(usage?.inputTokens ?? 0),
+        outputTokensBucket: bucketTokens(usage?.outputTokens ?? 0),
+        cacheReadTokensBucket: bucketTokens(usage?.cacheReadInputTokens ?? 0),
+        durationMsBucket: bucketDurationMs(Date.now() - iterStart),
+      });
     }
 
     if (iterationErrored) {
@@ -267,12 +337,7 @@ export async function runTurn(
       assistantContent.push({ type: "text", text: iterationText });
     }
     for (const tc of iterationToolCalls) {
-      assistantContent.push({
-        type: "tool_use",
-        id: tc.id,
-        name: tc.name,
-        input: tc.input,
-      });
+      assistantContent.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input });
     }
     messages.push({ role: "assistant", content: assistantContent });
 
@@ -283,13 +348,12 @@ export async function runTurn(
       sessionId: cfg.sessionId,
       turnId,
       caller: "llm" as const,
+      foundry: cfg.foundry,
+      ...(cfg.notifyOperator !== undefined ? { notifyOperator: cfg.notifyOperator } : {}),
       ...(cfg.fudgeAllowed !== undefined ? { flags: { fudgeAllowed: cfg.fudgeAllowed } } : {}),
     };
     for (const tc of iterationToolCalls) {
-      const result = await cfg.dispatcher.dispatch(
-        { name: tc.name, input: tc.input },
-        ctx,
-      );
+      const result = await cfg.dispatcher.dispatch({ name: tc.name, input: tc.input }, ctx);
       const dispatched: DispatchedToolCall = {
         id: tc.id,
         name: tc.name,
@@ -313,21 +377,98 @@ export async function runTurn(
     }
   }
 
+  const result: IterationsResult = { narration, toolCalls: allToolCalls, stopReason, iterations };
+  if (errorMessage !== undefined) result.errorMessage = errorMessage;
+  return result;
+}
+
+/** Run a single player turn through the AI DM. */
+export async function runTurn(
+  session: Session,
+  input: TurnInput,
+  options: TurnOptions = {},
+): Promise<TurnOutput> {
+  const startMs = Date.now();
+  const cfg = session.config;
+  const maxIter = cfg.maxToolIterations ?? DEFAULT_MAX_ITER;
+  const windowSize = cfg.dialogueWindowSize ?? DEFAULT_DIALOGUE_WINDOW;
+  const turnId = `${cfg.sessionId}-${startMs}`;
+
+  // Append player turn to dialogue so it appears in hot context.
+  appendDialogue(cfg, session, input, startMs);
+  session.turnCount += 1;
+
+  // Audit: turn start.
+  appendAudit(cfg, {
+    actor: "orchestrator:run_turn",
+    eventType: "turn_started",
+    payloadJson: JSON.stringify({
+      speaker: input.speaker,
+      displayName: input.displayName,
+      textHash: hashHex(input.text, 12),
+    }),
+    sessionId: cfg.sessionId,
+    turnId,
+    timestamp: startMs,
+  });
+
+  // Assemble state.
+  let warmState = await buildWarmStateSnapshot(cfg.foundry, cfg.tenantDb, cfg.campaignId);
+
+  // Cold/episodic retrieval (design doc 0019) — best-effort; never blocks a turn.
+  let retrievedMemory: RetrievedMemoryChunk[] = [];
+  if (cfg.memory) {
+    try {
+      const query = buildMemoryQuery(session.dialogue);
+      const records = await retrieveMemory(cfg.memory.embed, cfg.memory.store, {
+        query,
+        campaignId: cfg.campaignId,
+        ...(cfg.memory.topK !== undefined ? { topK: cfg.memory.topK } : {}),
+      });
+      retrievedMemory = records.map((r) => ({ kind: r.kind, text: r.text }));
+    } catch {
+      // retrieval failure must not break the turn
+    }
+  }
+
+  const hotContext = assembleHotContext(warmState, session.dialogue, {
+    windowSize,
+    retrievedMemory,
+    ...(options.presentPlayers !== undefined ? { presentPlayers: options.presentPlayers } : {}),
+  });
+  const hotContextText = formatHotContextAsText(hotContext);
+
+  // Tools.
+  const toolSpecs = cfg.dispatcher
+    .registry()
+    .list()
+    .map(toolDefinitionToLlmSpec);
+
+  // Conversation: starts with one user message carrying hot context (which
+  // includes recent dialogue ending with this turn's input). Grows with
+  // assistant tool_use + user tool_result pairs across iterations.
+  const messages: LLMMessage[] = [
+    {
+      role: "user",
+      content: [{ type: "text", text: hotContextText }],
+    },
+  ];
+
+  const { narration, toolCalls: allToolCalls, stopReason, errorMessage, iterations } =
+    await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter);
+
   // Persist the AI's narration as a narrator dialogue turn so future turns
   // see it in hot context (in-memory + DB).
   if (narration.length > 0) {
-    const narratorTs = Date.now();
-    session.dialogue.push({ speaker: "narrator", text: narration, timestamp: narratorTs });
-    cfg.tenantDb.dialogue.append({
-      sessionId: cfg.sessionId,
-      speaker: "narrator",
-      text: narration,
-      timestamp: narratorTs,
-    });
+    appendDialogue(cfg, session, { speaker: "narrator", text: narration }, Date.now());
   }
 
-  // Tools may have mutated state — refresh once at end for the output.
-  warmState = await buildWarmStateSnapshot(cfg.foundry, cfg.tenantDb, cfg.campaignId);
+  // Tools may have mutated state — refresh for the output, but only if any
+  // tool ran. A pure-narration turn can't have changed warm state, so the
+  // common "DM just narrates" case skips a second round of Foundry reads.
+  if (allToolCalls.length > 0) {
+    warmState = await buildWarmStateSnapshot(cfg.foundry, cfg.tenantDb, cfg.campaignId);
+  }
 
   // Audit: turn end.
   const durationMs = Date.now() - startMs;

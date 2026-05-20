@@ -1,0 +1,26 @@
+name: identity-mapping
+description: |
+  Phase 2 (design doc 0016): the session-start intro ritual. A player
+  introduces themselves and names their character; the AI DM resolves the
+  name to a Foundry actor and records the mapping via record_player_character,
+  then confirms aloud. Drives a FakeLLMProvider scripting the tool call.
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: player
+      text: "Hi, I'm Chris, I'm playing Aragorn the ranger."
+llm_script:
+  narration: "Got it — Chris is playing Aragorn. Welcome to the table."
+  tool_calls:
+    - name: record_player_character
+      input:
+        campaignId: "phandelver"
+        discordUserId: "discord:chris"
+        foundryActorId: "actor-aragorn"
+        displayName: "Chris"
+expectations:
+  - kind: tool_called
+    name: record_player_character
+  - kind: contains
+    field: narration
+    text: "Aragorn"

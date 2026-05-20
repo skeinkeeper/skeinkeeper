@@ -5,10 +5,12 @@ import type {
   FoundryActor,
   FoundryClient,
   FoundryScene,
+  FoundrySceneRef,
   FoundrySceneToken,
   FoundryRollResult,
 } from "@skeinkeeper/orchestrator";
 import type { McpToolCaller } from "./mcp_tool_caller.js";
+import { asRecord, num, str, toArray, unwrap } from "./mcp_parse.js";
 
 /**
  * FoundryClient backed by the adambdooley/foundry-vtt-mcp bridge (per
@@ -62,7 +64,18 @@ export class McpFoundryClient implements FoundryClient {
     return parseScene(res);
   }
 
+  async listScenes(): Promise<ReadonlyArray<FoundrySceneRef>> {
+    const res = await this.caller.callTool("list-scenes", {});
+    return parseSceneRefs(res);
+  }
+
   // ---- writes ----
+
+  async setActiveScene(sceneIdOrName: string): Promise<void> {
+    // ADR-0015: switching the active map is an in-play DM action. The bridge's
+    // switch-scene resolves by name or id.
+    await this.caller.callTool("switch-scene", { scene_identifier: sceneIdOrName });
+  }
 
   async applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void> {
     // The bridge has no generic actor-update tool. Map the mutations it
@@ -154,41 +167,20 @@ export function parseScene(res: unknown): FoundryScene | null {
   return description !== undefined ? { ...scene, description } : scene;
 }
 
-function unwrap(res: unknown, keys: string[]): unknown {
-  const rec = asRecord(res);
-  if (!rec) return res;
-  for (const k of keys) {
-    if (k in rec) return rec[k];
+export function parseSceneRefs(res: unknown): FoundrySceneRef[] {
+  const arr = toArray(res, ["scenes", "data", "results"]);
+  const refs: FoundrySceneRef[] = [];
+  for (const item of arr) {
+    const rec = asRecord(item);
+    if (!rec) continue;
+    const id = str(rec["id"]) ?? str(rec["_id"]);
+    const name = str(rec["name"]);
+    if (id === undefined || name === undefined) continue;
+    refs.push({ id, name, active: rec["active"] === true });
   }
-  return res;
+  return refs;
 }
 
 function unwrapActorRecord(res: unknown): Record<string, unknown> | null {
-  const unwrapped = unwrap(res, ["character", "actor", "data"]);
-  return asRecord(unwrapped);
-}
-
-function toArray(res: unknown, keys: string[]): unknown[] {
-  if (Array.isArray(res)) return res;
-  const rec = asRecord(res);
-  if (rec) {
-    for (const k of keys) {
-      if (Array.isArray(rec[k])) return rec[k] as unknown[];
-    }
-  }
-  return [];
-}
-
-function asRecord(v: unknown): Record<string, unknown> | null {
-  return v !== null && typeof v === "object" && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
-}
-
-function str(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
-}
-
-function num(v: unknown): number | undefined {
-  return typeof v === "number" ? v : undefined;
+  return asRecord(unwrap(res, ["character", "actor", "data"]));
 }

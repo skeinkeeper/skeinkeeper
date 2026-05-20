@@ -6,3 +6,4 @@ packages:
   - "web"
   - "server"
   - "eval"
+  - "app"

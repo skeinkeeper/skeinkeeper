@@ -48,10 +48,55 @@
           "status": "pass"
         }
       ]
+    },
+    {
+      "name": "identity-mapping",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/003-identity-mapping.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "tool_called",
+          "status": "pass"
+        },
+        {
+          "kind": "contains",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "npc-voice-marker",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/004-npc-voice-marker.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "contains",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "onboarding-character-escalation",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/005-onboarding-character-escalation.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "tool_called",
+          "status": "pass"
+        },
+        {
+          "kind": "tool_not_called",
+          "status": "pass"
+        },
+        {
+          "kind": "not_empty",
+          "status": "pass"
+        }
+      ]
     }
   ],
   "totals": {
-    "pass": 3,
+    "pass": 6,
     "fail": 0,
     "skipped": 0
   }

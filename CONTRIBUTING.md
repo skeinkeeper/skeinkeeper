@@ -19,14 +19,15 @@ cd skeinkeeper
 pnpm install
 cp .env.example .env
 # edit .env with your credentials
-pnpm dev
+pnpm app:start
 ```
 
 ### Running tests
 
 ```bash
 pnpm test                 # Unit tests
-pnpm eval                 # Behavior evaluation fixtures
+pnpm eval                 # Scripted eval fixtures (deterministic; faked model)
+pnpm eval:live            # Fixtures vs. the real model (needs ANTHROPIC_API_KEY; not in CI)
 pnpm lint                 # ESLint + Prettier check
 pnpm type-check           # TypeScript compile check
 ```
@@ -154,7 +155,7 @@ If you're using Claude Code or similar, the file tells the tool about the projec
 Three plugin interfaces are the main contribution surface for new providers:
 
 - `LLMProvider` — for a new model provider (OpenAI, Grok, Gemini, local models)
-- `VTTDriver` — for a new virtual tabletop (Owlbear Rodeo, Roll20, etc.)
+- `FoundryClient` — for a new virtual tabletop (Owlbear Rodeo, Roll20, etc.)
 - `VoiceIO` — for a new transport or voice stack
 
 See [ADR-0004](./docs/adr/0004-plugin-interface-pattern.md) for the architectural pattern. Implementations live in `/plugins/{kind}-{name}/`.

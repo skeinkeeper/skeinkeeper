@@ -113,7 +113,7 @@ Adding the following sentence to `CONTRIBUTING.md`:
 ## Alternatives considered
 
 - **One generic `delete(tenantId, subjectId, kind)` method instead of a discriminated union.** Rejected: the kind=campaign case takes a different ID than kind=player. The discriminated union makes the adapter API self-documenting; a generic signature pushes that information into runtime checks.
-- **No CLI; web UI only.** Rejected for alpha: per the task breakdown, the web UI is deferred to v0.5. The CLI is what the operator has during alpha.
+- **No CLI; web UI only.** Rejected for alpha: the web UI is deferred to v0.5, so the CLI is what the operator has during alpha.
 - **No HTML summary; JSON only.** Rejected: a player asking "what data do you have on me?" deserves to read it without opening a text editor. The HTML summary is cheap; it's a static page with embedded JSON.
 
 ## Telemetry implications

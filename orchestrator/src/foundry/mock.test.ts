@@ -77,3 +77,36 @@ describe("MockFoundryClient", () => {
     expect(await f.listSceneActors("missing")).toEqual([]);
   });
 });
+
+describe("MockFoundryClient — scenes (ADR-0015)", () => {
+  const cragmaw: FoundryScene = { id: "scene-cragmaw", name: "Cragmaw Hideout", active: false, tokens: [] };
+
+  it("lists scenes with the active flag and switches by id or name", async () => {
+    const f = new MockFoundryClient({
+      system: "dnd5e",
+      scenes: [tavern, cragmaw],
+      activeSceneId: "scene-tavern",
+    });
+    let scenes = await f.listScenes();
+    expect(scenes.map((s) => `${s.name}:${s.active}`).sort()).toEqual([
+      "Cragmaw Hideout:false",
+      "Stonehill Inn:true",
+    ]);
+
+    // switch by case-insensitive name
+    await f.setActiveScene("cragmaw hideout");
+    expect((await f.getActiveScene())?.id).toBe("scene-cragmaw");
+
+    // switch by id
+    await f.setActiveScene("scene-tavern");
+    expect((await f.getActiveScene())?.id).toBe("scene-tavern");
+    scenes = await f.listScenes();
+    expect(scenes.find((s) => s.id === "scene-tavern")?.active).toBe(true);
+  });
+
+  it("ignores a switch to an unknown scene", async () => {
+    const f = new MockFoundryClient({ system: "dnd5e", scenes: [tavern], activeSceneId: "scene-tavern" });
+    await f.setActiveScene("nonexistent");
+    expect((await f.getActiveScene())?.id).toBe("scene-tavern");
+  });
+});

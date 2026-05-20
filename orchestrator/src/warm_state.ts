@@ -32,6 +32,8 @@ export async function buildWarmStateSnapshot(
   const activeNpcs = scene
     ? (await foundry.listSceneActors(scene.id)).filter((a) => a.type === "npc")
     : [];
+  // Scene awareness so the AI knows which maps it can switch to (ADR-0015).
+  const availableScenes = await foundry.listScenes();
 
   let currentLocation: LocationSnapshot | null = null;
   if (scene) {
@@ -44,6 +46,7 @@ export async function buildWarmStateSnapshot(
     party,
     activeNpcs,
     currentLocation,
+    availableScenes: availableScenes.map((s) => ({ id: s.id, name: s.name, active: s.active })),
   };
 }
 

@@ -7,14 +7,20 @@ import {
   campaigns,
   consents,
   dialogue,
+  playerCharacterMap,
   questFlags,
+  settings,
   sessions,
+  voiceAssignments,
   auditLog,
   type Action,
   type NewCampaign,
   type NewDialogueRow,
+  type NewPlayerCharacterMapRow,
   type NewQuestFlag,
+  type NewSetting,
   type NewSession,
+  type NewVoiceAssignmentRow,
   type NewAuditLogEntry,
   type Purpose,
 } from "./schema/index.js";
@@ -73,6 +79,48 @@ export class TenantDb {
         .run(),
   };
 
+  // ---- settings (operator-settable config; design doc 0024) ----
+  readonly settings = {
+    get: (campaignId: string, key: string) =>
+      this.db
+        .select()
+        .from(settings)
+        .where(
+          and(
+            eq(settings.tenantId, this.tenantId),
+            eq(settings.campaignId, campaignId),
+            eq(settings.key, key),
+          ),
+        )
+        .get(),
+    set: (data: Omit<NewSetting, "tenantId" | "id">) =>
+      this.db
+        .insert(settings)
+        .values({ ...data, tenantId: this.tenantId })
+        .onConflictDoUpdate({
+          target: [settings.tenantId, settings.campaignId, settings.key],
+          set: { value: data.value, updatedAt: data.updatedAt },
+        })
+        .run(),
+    delete: (campaignId: string, key: string) =>
+      this.db
+        .delete(settings)
+        .where(
+          and(
+            eq(settings.tenantId, this.tenantId),
+            eq(settings.campaignId, campaignId),
+            eq(settings.key, key),
+          ),
+        )
+        .run(),
+    listByCampaign: (campaignId: string) =>
+      this.db
+        .select()
+        .from(settings)
+        .where(and(eq(settings.tenantId, this.tenantId), eq(settings.campaignId, campaignId)))
+        .all(),
+  };
+
   // ---- sessions ----
   readonly sessions = {
     listByCampaign: (campaignId: string) =>
@@ -108,6 +156,84 @@ export class TenantDb {
         .from(dialogue)
         .where(and(eq(dialogue.tenantId, this.tenantId), eq(dialogue.sessionId, sessionId)))
         .orderBy(asc(dialogue.timestamp), asc(dialogue.id))
+        .all(),
+  };
+
+  // ---- player↔character map (most recent row per player wins) ----
+  readonly playerCharacterMap = {
+    record: (data: Omit<NewPlayerCharacterMapRow, "tenantId" | "id">) =>
+      this.db.insert(playerCharacterMap).values({ ...data, tenantId: this.tenantId }).run(),
+    currentForPlayer: (campaignId: string, discordUserId: string) =>
+      this.db
+        .select()
+        .from(playerCharacterMap)
+        .where(
+          and(
+            eq(playerCharacterMap.tenantId, this.tenantId),
+            eq(playerCharacterMap.campaignId, campaignId),
+            eq(playerCharacterMap.discordUserId, discordUserId),
+          ),
+        )
+        .orderBy(desc(playerCharacterMap.confirmedAt), desc(playerCharacterMap.id))
+        .limit(1)
+        .get(),
+    listByCampaign: (campaignId: string) =>
+      this.db
+        .select()
+        .from(playerCharacterMap)
+        .where(
+          and(
+            eq(playerCharacterMap.tenantId, this.tenantId),
+            eq(playerCharacterMap.campaignId, campaignId),
+          ),
+        )
+        .all(),
+  };
+
+  // ---- voice assignments (one row per subject; upsert on remap) ----
+  readonly voiceAssignments = {
+    upsert: (data: Omit<NewVoiceAssignmentRow, "tenantId" | "id">) =>
+      this.db
+        .insert(voiceAssignments)
+        .values({ ...data, tenantId: this.tenantId })
+        .onConflictDoUpdate({
+          target: [
+            voiceAssignments.tenantId,
+            voiceAssignments.campaignId,
+            voiceAssignments.subjectKind,
+            voiceAssignments.subjectKey,
+          ],
+          set: {
+            providerVoiceId: data.providerVoiceId,
+            personaId: data.personaId ?? null,
+            source: data.source,
+            assignedAt: data.assignedAt,
+          },
+        })
+        .run(),
+    get: (campaignId: string, subjectKind: string, subjectKey: string) =>
+      this.db
+        .select()
+        .from(voiceAssignments)
+        .where(
+          and(
+            eq(voiceAssignments.tenantId, this.tenantId),
+            eq(voiceAssignments.campaignId, campaignId),
+            eq(voiceAssignments.subjectKind, subjectKind),
+            eq(voiceAssignments.subjectKey, subjectKey),
+          ),
+        )
+        .get(),
+    listByCampaign: (campaignId: string) =>
+      this.db
+        .select()
+        .from(voiceAssignments)
+        .where(
+          and(
+            eq(voiceAssignments.tenantId, this.tenantId),
+            eq(voiceAssignments.campaignId, campaignId),
+          ),
+        )
         .all(),
   };
 

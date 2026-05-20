@@ -6,6 +6,7 @@ import { fakeLlmFromEvents } from "@skeinkeeper/orchestrator";
 import type { Fixture } from "./fixture.js";
 import { fakeLlmFromScript } from "./llm_script.js";
 import { OrchestratorRunner } from "./orchestrator_runner.js";
+import { evaluate } from "./reporter.js";
 
 function fixture(overrides: Partial<Fixture> = {}): Fixture {
   return {
@@ -79,6 +80,37 @@ describe("OrchestratorRunner", () => {
     expect(text).toContain("I draw my sword.");
     expect(text).toContain("(GM aside: the goblin is wary.)");
     expect(text).toContain("I step forward.");
+  });
+});
+
+describe("OrchestratorRunner — real tool dispatch (non-tautology)", () => {
+  it("marks a dispatchable tool ok and a registered one's effect runs", async () => {
+    const provider = fakeLlmFromScript({
+      toolCalls: [{ name: "set_quest_flag", input: { campaignId: "c1", key: "k", value: "v" } }],
+    });
+    const out = await new OrchestratorRunner(provider).run({ fixture: fixture() });
+    expect(out.toolCalls?.[0]).toMatchObject({ name: "set_quest_flag", ok: true });
+  });
+
+  it("marks an operator-gated tool (no flag) as failed dispatch, so tool_called fails", async () => {
+    const provider = fakeLlmFromScript({
+      toolCalls: [
+        { name: "fudge_roll", input: { originalTotal: 1, newTotal: 20, reason: "save the arc" } },
+      ],
+    });
+    const fx = fixture({ expectations: [{ kind: "tool_called", name: "fudge_roll" }] });
+    const out = await new OrchestratorRunner(provider).run({ fixture: fx });
+    expect(out.toolCalls?.[0]).toMatchObject({ name: "fudge_roll", ok: false });
+    // The model emitted it, but it isn't dispatchable → the expectation fails
+    // (the old echo-only runner would have passed it — the tautology).
+    const result = evaluate(fx, out);
+    expect(result.status).toBe("fail");
+  });
+
+  it("marks an unknown tool as failed dispatch", async () => {
+    const provider = fakeLlmFromScript({ toolCalls: [{ name: "does_not_exist", input: {} }] });
+    const out = await new OrchestratorRunner(provider).run({ fixture: fixture() });
+    expect(out.toolCalls?.[0]).toMatchObject({ name: "does_not_exist", ok: false });
   });
 });
 

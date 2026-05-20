@@ -11,8 +11,9 @@
  * already-assembled snapshot — see `warm_state.ts` for the assembler.
  */
 
-import type { FoundryActor } from "./foundry/client.js";
+import type { FoundryActor, FoundrySceneRef } from "./foundry/client.js";
 import { renderActorState } from "./foundry/render.js";
+import { formatSpeakerLine } from "./util/format.js";
 
 export interface CampaignSnapshot {
   id: string;
@@ -42,15 +43,48 @@ export interface WarmStateSnapshot {
   party: ReadonlyArray<FoundryActor>;
   activeNpcs: ReadonlyArray<FoundryActor>;
   currentLocation: LocationSnapshot | null;
+  /** Scenes the AI can switch the active map to (ADR-0015). Optional so
+   *  hand-built snapshots in tests can omit it. */
+  availableScenes?: ReadonlyArray<FoundrySceneRef>;
+}
+
+/**
+ * A retrieved memory chunk for hot-context injection (design doc 0019 §5).
+ * A minimal shape so this module doesn't depend on the memory store types.
+ */
+export interface RetrievedMemoryChunk {
+  kind: string;
+  text: string;
+}
+
+/**
+ * A human currently in the voice channel, with their character mapping if
+ * known (design doc 0023). Sourced by the always-listening loop from
+ * `presence` events + `player_character_map`. Surfaced in hot context so the
+ * AI can run the onboarding ritual and call `record_player_character` with the
+ * right Discord user ID + Foundry actor ID.
+ */
+export interface PresentPlayer {
+  /** Discord user ID. PII. */
+  discordId: string;
+  displayName?: string;
+  /** Foundry actor ID this player is mapped to, if any. */
+  mappedActorId?: string;
 }
 
 export interface HotContextOptions {
   /** Number of most recent dialogue turns to include. Default 20. */
   windowSize?: number;
+  /** Cold/episodic records retrieved for this turn (already ranked). */
+  retrievedMemory?: ReadonlyArray<RetrievedMemoryChunk>;
+  /** Voice-channel roster + mappings for the onboarding ritual (doc 0023). */
+  presentPlayers?: ReadonlyArray<PresentPlayer>;
 }
 
 export interface HotContext extends WarmStateSnapshot {
   recentDialogue: ReadonlyArray<DialogueTurn>;
+  retrievedMemory: ReadonlyArray<RetrievedMemoryChunk>;
+  presentPlayers: ReadonlyArray<PresentPlayer>;
 }
 
 const DEFAULT_WINDOW_SIZE = 20;
@@ -67,7 +101,12 @@ export function assembleHotContext(
       ? dialogueHistory
       : dialogueHistory.slice(dialogueHistory.length - windowSize);
 
-  return { ...warm, recentDialogue };
+  return {
+    ...warm,
+    recentDialogue,
+    retrievedMemory: options.retrievedMemory ?? [],
+    presentPlayers: options.presentPlayers ?? [],
+  };
 }
 
 /**
@@ -104,12 +143,64 @@ export function formatHotContextAsText(ctx: HotContext): string {
     }
   }
 
+  const otherScenes = (ctx.availableScenes ?? []).filter((s) => !s.active);
+  if (otherScenes.length > 0) {
+    lines.push("");
+    lines.push("Scenes you can switch the map to (use move_party with the name):");
+    for (const s of otherScenes) {
+      lines.push(`  - ${s.name}`);
+    }
+  }
+
+  if (ctx.presentPlayers.length > 0) {
+    const characterActors = ctx.party.filter((a) => a.type === "character");
+    const mappedActorIds = new Set(
+      ctx.presentPlayers.map((p) => p.mappedActorId).filter((id): id is string => id !== undefined),
+    );
+    const actorName = (id: string): string =>
+      ctx.party.find((a) => a.id === id)?.name ?? `actor ${id}`;
+
+    lines.push("");
+    lines.push("Players at the table (Discord → character):");
+    for (const p of ctx.presentPlayers) {
+      const who = p.displayName ?? p.discordId;
+      const mapping =
+        p.mappedActorId !== undefined
+          ? `${actorName(p.mappedActorId)}`
+          : "not yet mapped — ask which character is theirs";
+      lines.push(`  - ${who} (${p.discordId}) → ${mapping}`);
+    }
+
+    if (characterActors.length > 0) {
+      lines.push("");
+      lines.push(
+        "Player-character actors in the world (pass the actor id to record_player_character):",
+      );
+      for (const a of characterActors) {
+        const claimedBy = ctx.presentPlayers.find((p) => p.mappedActorId === a.id);
+        const status = claimedBy
+          ? `claimed by ${claimedBy.displayName ?? claimedBy.discordId}`
+          : mappedActorIds.has(a.id)
+            ? "claimed"
+            : "unclaimed";
+        lines.push(`  - ${a.name} (actor id ${a.id}) — ${status}`);
+      }
+    }
+  }
+
+  if (ctx.retrievedMemory.length > 0) {
+    lines.push("");
+    lines.push("Relevant memory (retrieved):");
+    for (const chunk of ctx.retrievedMemory) {
+      lines.push(`  - (${chunk.kind}) ${chunk.text}`);
+    }
+  }
+
   if (ctx.recentDialogue.length > 0) {
     lines.push("");
     lines.push("Recent dialogue:");
     for (const turn of ctx.recentDialogue) {
-      const who = turn.displayName ?? turn.speaker;
-      lines.push(`  [${who}] ${turn.text}`);
+      lines.push(`  ${formatSpeakerLine(turn)}`);
     }
   }
 

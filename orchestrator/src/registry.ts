@@ -4,6 +4,7 @@
 import type { z } from "zod";
 import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
+import type { FoundryClient } from "./foundry/client.js";
 
 export interface ToolHandlerContext {
   tenantDb: TenantDb;
@@ -14,6 +15,13 @@ export interface ToolHandlerContext {
   caller: "llm" | "operator";
   /** Per-session flags set by the orchestrator. fudge_roll honors `fudgeAllowed`. */
   flags?: { fudgeAllowed?: boolean };
+  /** The session's Foundry client, so tools can perform in-play DM actions
+   *  (scene switch, token moves, …) per ADR-0015. Present in real sessions;
+   *  optional so unit tests can dispatch state-only tools without a VTT. */
+  foundry?: FoundryClient;
+  /** Send a private message to the human operator (Discord DM) for setup
+   *  escalations (design doc 0023). Present in real sessions. */
+  notifyOperator?: (message: string) => Promise<void>;
 }
 
 export interface ToolDefinition<S extends z.ZodTypeAny, O extends z.ZodTypeAny> {

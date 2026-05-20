@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Skeinkeeper Contributors
+#
+# `docker compose up` runs the operator app (console on localhost:3000).
+# Foundry + the OSS MCP bridge run outside this compose (host or their own
+# services); set FOUNDRY_URL accordingly (e.g. http://host.docker.internal:30000).
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "${SKEINKEEPER_WEB_PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

@@ -125,3 +125,34 @@ describe("parseScene", () => {
     expect(scene?.tokens).toEqual([]);
   });
 });
+
+describe("McpFoundryClient — scenes (ADR-0015)", () => {
+  it("lists scenes from list-scenes", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-world-info": { system: "dnd5e" },
+      "list-scenes": {
+        scenes: [
+          { id: "s1", name: "Stonehill Inn", active: true },
+          { id: "s2", name: "Cragmaw Hideout", active: false },
+        ],
+      },
+    });
+    const client = await McpFoundryClient.connect(caller);
+    const scenes = await client.listScenes();
+    expect(scenes).toEqual([
+      { id: "s1", name: "Stonehill Inn", active: true },
+      { id: "s2", name: "Cragmaw Hideout", active: false },
+    ]);
+  });
+
+  it("setActiveScene calls switch-scene with scene_identifier", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-world-info": { system: "dnd5e" },
+      "switch-scene": { success: true },
+    });
+    const client = await McpFoundryClient.connect(caller);
+    await client.setActiveScene("Cragmaw Hideout");
+    const call = caller.calls.find((c) => c.name === "switch-scene");
+    expect(call?.args).toEqual({ scene_identifier: "Cragmaw Hideout" });
+  });
+});
