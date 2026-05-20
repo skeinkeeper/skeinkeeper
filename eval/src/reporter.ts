@@ -42,16 +42,19 @@ export function evaluate(fixture: Fixture, output: RunnerOutput): FixtureResult 
 
 function evalExpectation(e: Expectation, output: RunnerOutput): ExpectationResult {
   if (e.kind === "tool_called") {
-    const hit = (output.toolCalls ?? []).some((tc) => tc.name === e.name);
-    return hit
-      ? { kind: e.kind, status: "pass" }
-      : {
-          kind: e.kind,
-          status: "fail",
-          message: `Tool "${e.name}" was not called. Calls: [${
-            (output.toolCalls ?? []).map((tc) => tc.name).join(", ")
-          }]`,
-        };
+    const calls = output.toolCalls ?? [];
+    // Must have been dispatchable, not merely emitted by the model — a call to
+    // an unknown / gated / bad-input tool (ok === false) doesn't satisfy this.
+    const ok = calls.some((tc) => tc.name === e.name && tc.ok !== false);
+    if (ok) return { kind: e.kind, status: "pass" };
+    const rejected = calls.find((tc) => tc.name === e.name && tc.ok === false);
+    return {
+      kind: e.kind,
+      status: "fail",
+      message: rejected
+        ? `Tool "${e.name}" was emitted but failed to dispatch (unknown, gated, or invalid input).`
+        : `Tool "${e.name}" was not called. Calls: [${calls.map((tc) => tc.name).join(", ")}]`,
+    };
   }
   if (e.kind === "tool_not_called") {
     const hit = (output.toolCalls ?? []).some((tc) => tc.name === e.name);

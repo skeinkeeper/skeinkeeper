@@ -49,7 +49,29 @@ export interface SpeakOptions {
  */
 export type VoiceEvent =
   | { kind: "utterance"; utterance: Utterance }
-  | { kind: "consent_needed"; speaker: string; displayName?: string };
+  | { kind: "consent_needed"; speaker: string; displayName?: string }
+  /**
+   * The table has gone quiet for the adapter's lull threshold (VAD +
+   * provider endpointing). The always-listening loop (design doc 0015)
+   * treats this as a "your move, DM" cue and runs the respond-decider over
+   * the accumulated buffer. The naive `runVoiceSession` ignores it.
+   */
+  | { kind: "lull"; durationMs?: number }
+  /**
+   * The current roster of human members in the voice channel (design doc
+   * 0023). Emitted once on join and again whenever someone joins or leaves.
+   * The always-listening loop diffs this against the player→character map to
+   * decide who still needs onboarding. The bot itself is excluded.
+   */
+  | { kind: "presence"; members: ReadonlyArray<PresenceMember> };
+
+/** A human member present in the voice channel (design doc 0023). */
+export interface PresenceMember {
+  /** Discord user ID. PII. */
+  id: string;
+  /** Display name for prompt rendering + the welcome line. */
+  displayName?: string;
+}
 
 /**
  * The orchestrator-facing voice surface. A concrete implementation

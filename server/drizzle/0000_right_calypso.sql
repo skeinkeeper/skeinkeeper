@@ -42,6 +42,34 @@ CREATE TABLE `dialogue` (
 --> statement-breakpoint
 CREATE INDEX `dialogue_session` ON `dialogue` (`tenant_id`,`session_id`,`timestamp`);--> statement-breakpoint
 CREATE INDEX `dialogue_speaker` ON `dialogue` (`tenant_id`,`speaker`);--> statement-breakpoint
+CREATE TABLE `player_character_map` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`tenant_id` text NOT NULL,
+	`campaign_id` text NOT NULL,
+	`discord_user_id` text NOT NULL,
+	`foundry_actor_id` text NOT NULL,
+	`display_name` text,
+	`source` text NOT NULL,
+	`confirmed_at` integer NOT NULL,
+	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `pcmap_tenant_campaign_player` ON `player_character_map` (`tenant_id`,`campaign_id`,`discord_user_id`);--> statement-breakpoint
+CREATE INDEX `pcmap_tenant_player` ON `player_character_map` (`tenant_id`,`discord_user_id`);--> statement-breakpoint
+CREATE TABLE `voice_assignment` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`tenant_id` text NOT NULL,
+	`campaign_id` text NOT NULL,
+	`subject_kind` text NOT NULL,
+	`subject_key` text NOT NULL,
+	`provider_voice_id` text NOT NULL,
+	`persona_id` text,
+	`source` text NOT NULL,
+	`assigned_at` integer NOT NULL,
+	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `voice_assignment_subject` ON `voice_assignment` (`tenant_id`,`campaign_id`,`subject_kind`,`subject_key`);--> statement-breakpoint
 CREATE TABLE `audit_log` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`tenant_id` text NOT NULL,

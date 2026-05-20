@@ -112,6 +112,32 @@ describe("formatHotContextAsText", () => {
     expect(text).toContain("[player] turn 0");
   });
 
+  it("renders the table roster: present players with mappings and claim status", () => {
+    const text = formatHotContextAsText(
+      assembleHotContext(warm(), turns(1), {
+        presentPlayers: [
+          { discordId: "discord:alice", displayName: "Alice", mappedActorId: "ch-Aragorn" },
+          { discordId: "discord:bob", displayName: "Bob" },
+        ],
+      }),
+    );
+    expect(text).toContain("Players at the table (Discord → character):");
+    // mapped player shows the resolved character name
+    expect(text).toContain("Alice (discord:alice) → Aragorn");
+    // unmapped player prompts the AI to ask
+    expect(text).toContain("Bob (discord:bob) → not yet mapped");
+    // claimable actors carry their actor id + claim status
+    expect(text).toContain("Aragorn (actor id ch-Aragorn) — claimed by Alice");
+    expect(text).toContain("Gimli (actor id ch-Gimli) — unclaimed");
+    // NPCs are not offered as claimable PCs
+    expect(text).not.toContain("Sildar (actor id");
+  });
+
+  it("omits the roster section when no players are present", () => {
+    const text = formatHotContextAsText(assembleHotContext(warm(), turns(1)));
+    expect(text).not.toContain("Players at the table");
+  });
+
   it("handles empty party / no NPCs / no scene gracefully", () => {
     const text = formatHotContextAsText(
       assembleHotContext(

@@ -43,7 +43,7 @@ docker compose up
 ## What it does
 
 - **Runs the DM side of a tabletop RPG session.** Narrates scenes, voices NPCs, manages combat, calls for rolls, adjudicates rules, tracks state.
-- **Joins your Discord voice channel** and speaks aloud. Per-NPC voice profiles. Configurable wake-word.
+- **Joins your Discord voice channel** and speaks aloud. Distinct per-NPC voices. Always-listening — no wake-word — with an operator-tunable "Eagerness" dial controlling how readily it speaks up.
 - **Operates Foundry VTT autonomously** — moves tokens, manages combat tracker, rolls dice, reveals fog, switches scenes.
 - **Remembers your campaign.** Foundry remains authoritative for the mechanical state of your campaign — character sheets, NPCs, scenes — and Skeinkeeper adds the AI-DM layer on top: quest flags the AI tracks, session transcripts, who said what three sessions ago, post-session summaries, and the audit trail of every tool call. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md).
 - **Treats the dice with respect.** Open rolls stay open. The AI never fudges player rolls, death saves, or final-blow rolls. The fudging policy (described in [`behavior/default.md`](./behavior/default.md)) is narrow, secret, and exclusively for the players' benefit.

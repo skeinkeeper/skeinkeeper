@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@skeinkeeper/core": "workspace:*",
     "@skeinkeeper/orchestrator": "workspace:*"
   }

@@ -38,5 +38,7 @@ export {
   type Utterance,
   type VoiceEvent,
   type VoiceIO,
+  type PresenceMember,
 } from "./voice.js";
 export { FakeVoiceIO } from "./fake_voice_io.js";
+export { FakeEmbeddingProvider, type EmbeddingProvider } from "./embedding.js";

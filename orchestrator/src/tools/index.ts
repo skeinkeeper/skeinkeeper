@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { defineTool, ToolRegistry, type AnyToolDefinition } from "../registry.js";
+import { rollFormula } from "../dice.js";
 
 /**
  * Core tools — system-agnostic, owned by Skeinkeeper. Per design doc
@@ -35,11 +36,25 @@ const rollDef = defineTool({
     formula: z.string(),
     secret: z.boolean(),
   }),
-  async handle(input) {
-    // Phase 3 wires this through to FoundryClient.rollDice(). For now,
-    // an interim no-op response so the tool dispatcher's audit log path
-    // still works for orchestrator tests.
-    return { total: 0, rolls: [], formula: input.formula, secret: input.secret ?? false };
+  async handle(input, ctx) {
+    const secret = input.secret ?? false;
+    // Prefer the active VTT's roller so dice land in Foundry's chat log. The
+    // OSS bridge can't roll server-side yet (design doc 0014 mutation gap) and
+    // throws, so fall back to the local crypto roller. Either way the result
+    // has the same {total, rolls, formula} shape.
+    if (ctx.foundry !== undefined) {
+      try {
+        const r = await ctx.foundry.rollDice(
+          input.formula,
+          input.speaker !== undefined ? { speaker: input.speaker } : undefined,
+        );
+        return { total: r.total, rolls: [...r.rolls], formula: r.formula, secret };
+      } catch {
+        // fall through to the local roller
+      }
+    }
+    const local = rollFormula(input.formula);
+    return { total: local.total, rolls: local.rolls, formula: input.formula, secret };
   },
 });
 
@@ -73,7 +88,7 @@ const setQuestFlagDef = defineTool({
 const movePartyDef = defineTool({
   name: "move_party",
   description:
-    "Move the party to a new location (Foundry scene ID or symbolic name). Records as the 'party.location' quest flag; Phase 3 also activates the matching Foundry scene.",
+    "Move the party to a new location, given a Foundry scene name or ID. Activates that scene in Foundry (the map players see) and records it as the 'party.location' quest flag. Use the scene name as it appears in the world.",
   inputSchema: z.object({
     campaignId: z.string(),
     locationId: z.string(),
@@ -81,6 +96,7 @@ const movePartyDef = defineTool({
   outputSchema: z.object({
     campaignId: z.string(),
     locationId: z.string(),
+    sceneActivated: z.boolean(),
   }),
   async handle(input, ctx) {
     ctx.tenantDb.questFlags.set({
@@ -89,7 +105,19 @@ const movePartyDef = defineTool({
       value: input.locationId,
       updatedAt: Date.now(),
     });
-    return input;
+    // Activating the map is an in-play DM action (ADR-0015) — the AI does it,
+    // never the operator. Best-effort: the quest flag is still recorded even if
+    // the VTT call fails.
+    let sceneActivated = false;
+    if (ctx.foundry !== undefined) {
+      try {
+        await ctx.foundry.setActiveScene(input.locationId);
+        sceneActivated = true;
+      } catch {
+        // scene name may not match a world scene; leave flag set, report false
+      }
+    }
+    return { ...input, sceneActivated };
   },
 });
 
@@ -154,6 +182,52 @@ const fudgeRollDef = defineTool({
   },
 });
 
+// ---- record_player_character ----
+const recordPlayerCharacterDef = defineTool({
+  name: "record_player_character",
+  description:
+    "Record which Foundry character a Discord player controls. Call this during the session-start introductions once a player names their character and you've matched it to an actor in the party. Confirm aloud to the player afterward.",
+  inputSchema: z.object({
+    campaignId: z.string(),
+    discordUserId: z.string(),
+    foundryActorId: z.string(),
+    displayName: z.string().optional(),
+  }),
+  outputSchema: z.object({
+    discordUserId: z.string(),
+    foundryActorId: z.string(),
+  }),
+  async handle(input, ctx) {
+    ctx.tenantDb.playerCharacterMap.record({
+      campaignId: input.campaignId,
+      discordUserId: input.discordUserId,
+      foundryActorId: input.foundryActorId,
+      ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+      source: "player",
+      confirmedAt: Date.now(),
+    });
+    return { discordUserId: input.discordUserId, foundryActorId: input.foundryActorId };
+  },
+});
+
+// ---- notify_operator ----
+const notifyOperatorDef = defineTool({
+  name: "notify_operator",
+  description:
+    "Privately message the human operator over Discord DM about a setup problem you can't resolve in-fiction — e.g., a player named a character you can't find in Foundry, or Foundry seems disconnected. Players never see this. Use sparingly; never for normal play or narration.",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ delivered: z.boolean() }),
+  async handle(input, ctx) {
+    if (ctx.notifyOperator === undefined) return { delivered: false };
+    try {
+      await ctx.notifyOperator(input.message);
+      return { delivered: true };
+    } catch {
+      return { delivered: false };
+    }
+  },
+});
+
 export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   rollDef,
   setQuestFlagDef,
@@ -161,6 +235,8 @@ export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   advanceTimeDef,
   whisperDef,
   fudgeRollDef,
+  recordPlayerCharacterDef,
+  notifyOperatorDef,
 ];
 
 export function registerBuiltinTools(registry: ToolRegistry): void {

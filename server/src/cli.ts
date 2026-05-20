@@ -7,12 +7,13 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { openDb } from "./db.js";
-import { ErasureService, type ErasureScope } from "./erasure.js";
+import { ErasureService, type ErasureScope, type DeletionAdapter } from "./erasure.js";
 import { ExportService } from "./export.js";
 import { ConsentsAdapter } from "./adapters/consents-adapter.js";
 import { CampaignAdapter } from "./adapters/campaign-adapter.js";
 import { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
+import { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
 import { loadOrCreateSalt } from "./salt.js";
 
 const USAGE = `\
@@ -37,7 +38,19 @@ interface CliEnv {
   saltPath?: string;
 }
 
-export async function runCli(argv: ReadonlyArray<string>, env: CliEnv = {}): Promise<number> {
+export interface CliOptions {
+  /** Deletion adapters from packages the `server` package can't import without
+   *  a cycle (e.g. the LanceDB MemoryAdapter in `memory-lance`). The CLI
+   *  composition root (scripts/skeinkeeper.mjs) builds and injects them so
+   *  campaign/tenant erasure also clears the vector store. */
+  extraDeletionAdapters?: ReadonlyArray<DeletionAdapter>;
+}
+
+export async function runCli(
+  argv: ReadonlyArray<string>,
+  env: CliEnv = {},
+  opts: CliOptions = {},
+): Promise<number> {
   const command = argv[0];
   if (!command || command === "--help" || command === "-h") {
     stdout.write(USAGE);
@@ -73,12 +86,19 @@ export async function runCli(argv: ReadonlyArray<string>, env: CliEnv = {}): Pro
     const campaignAdapter = new CampaignAdapter(db);
     const auditLogAdapter = new AuditLogAdapter(db);
     const dialogueAdapter = new DialogueAdapter(db);
-    for (const a of [consentsAdapter, campaignAdapter, auditLogAdapter, dialogueAdapter]) {
+    const pcMapAdapter = new PlayerCharacterMapAdapter(db);
+    for (const a of [consentsAdapter, campaignAdapter, auditLogAdapter, dialogueAdapter, pcMapAdapter]) {
+      erasure.register(a);
+    }
+    // Injected adapters from packages `server` can't import (cycle): e.g. the
+    // LanceDB MemoryAdapter, so campaign/tenant deletion clears episodic memory.
+    for (const a of opts.extraDeletionAdapters ?? []) {
       erasure.register(a);
     }
     // Only adapters that implement ExportAdapter are registered for export.
     exporter.register(consentsAdapter);
     exporter.register(dialogueAdapter);
+    exporter.register(pcMapAdapter);
 
     const scope = scopeFromArgs(command, values);
     if (!scope) {
@@ -88,6 +108,11 @@ export async function runCli(argv: ReadonlyArray<string>, env: CliEnv = {}): Pro
 
     if (command.endsWith(":export")) {
       const bundle = await exporter.export(scope);
+      if (Object.keys(bundle.perAdapter).length === 0) {
+        stdout.write(
+          `Warning: no export adapter covers ${scope.kind} scope — the bundle will be empty.\n`,
+        );
+      }
       const outDir = values.out ?? "./exports";
       mkdirSync(outDir, { recursive: true });
       const label =
@@ -115,7 +140,13 @@ export async function runCli(argv: ReadonlyArray<string>, env: CliEnv = {}): Pro
       const report = await erasure.erase(scope);
       stdout.write(`Deleted ${report.totalRecords} record(s) across ${report.perAdapter.length} adapter(s).\n`);
       for (const r of report.perAdapter) {
-        stdout.write(`  ${r.adapter}: ${r.recordsDeleted}\n`);
+        stdout.write(`  ${r.adapter}: ${r.error !== undefined ? `FAILED — ${r.error}` : r.recordsDeleted}\n`);
+      }
+      if (report.failures > 0) {
+        stdout.write(
+          `\n${report.failures} adapter(s) failed; data may be partially erased. Re-run after investigating.\n`,
+        );
+        return 1;
       }
       return 0;
     }

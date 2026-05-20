@@ -2,9 +2,10 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
 import { openDb } from "./db.js";
 import { TenantDb } from "./tenant_db.js";
-import { tenants } from "./schema/index.js";
+import { campaigns, tenants, voiceAssignments } from "./schema/index.js";
 
 function setup(tenantId = "default") {
   const db = openDb({ path: ":memory:", runMigrations: true });
@@ -68,6 +69,29 @@ describe("TenantDb — quest flags upsert", () => {
   });
 });
 
+describe("TenantDb — settings upsert/get/delete", () => {
+  it("inserts, updates, reads, and deletes a setting by key", () => {
+    const { t } = setup();
+    const now = Date.now();
+    seedCampaign(t);
+    t.settings.set({ campaignId: "c1", key: "operator.discord_user_id", value: "111", updatedAt: now });
+    expect(t.settings.get("c1", "operator.discord_user_id")?.value).toBe("111");
+    t.settings.set({ campaignId: "c1", key: "operator.discord_user_id", value: "222", updatedAt: now + 1 });
+    expect(t.settings.get("c1", "operator.discord_user_id")?.value).toBe("222");
+    expect(t.settings.listByCampaign("c1")).toHaveLength(1);
+    t.settings.delete("c1", "operator.discord_user_id");
+    expect(t.settings.get("c1", "operator.discord_user_id")).toBeUndefined();
+  });
+
+  it("cascades away when its campaign is deleted (erasure path)", () => {
+    const { db, t } = setup();
+    seedCampaign(t);
+    t.settings.set({ campaignId: "c1", key: "operator.discord_user_id", value: "111", updatedAt: Date.now() });
+    db.delete(campaigns).where(and(eq(campaigns.tenantId, "default"), eq(campaigns.id, "c1"))).run();
+    expect(t.settings.listByCampaign("c1")).toHaveLength(0);
+  });
+});
+
 describe("TenantDb — consents", () => {
   it("returns undefined when no consent event exists", () => {
     const { t } = setup();
@@ -125,6 +149,151 @@ describe("TenantDb — consents", () => {
     });
     expect(alpha.consents.isGranted("shared", "voice_processing")).toBe(true);
     expect(beta.consents.isGranted("shared", "voice_processing")).toBe(false);
+  });
+});
+
+describe("TenantDb — player↔character map", () => {
+  it("returns the most recent mapping for a player", () => {
+    const { t } = setup();
+    seedCampaign(t);
+    const now = Date.now();
+    t.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:1",
+      foundryActorId: "actor-old",
+      source: "player",
+      confirmedAt: now,
+    });
+    t.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:1",
+      foundryActorId: "actor-new",
+      source: "operator",
+      confirmedAt: now + 1000,
+    });
+    const current = t.playerCharacterMap.currentForPlayer("c1", "discord:1");
+    expect(current?.foundryActorId).toBe("actor-new");
+    expect(current?.source).toBe("operator");
+  });
+
+  it("returns undefined when a player has no mapping", () => {
+    const { t } = setup();
+    seedCampaign(t);
+    expect(t.playerCharacterMap.currentForPlayer("c1", "discord:unknown")).toBeUndefined();
+  });
+
+  it("scopes mappings by campaign", () => {
+    const { t } = setup();
+    seedCampaign(t, "c1");
+    seedCampaign(t, "c2");
+    const now = Date.now();
+    t.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:1",
+      foundryActorId: "actor-a",
+      source: "player",
+      confirmedAt: now,
+    });
+    t.playerCharacterMap.record({
+      campaignId: "c2",
+      discordUserId: "discord:1",
+      foundryActorId: "actor-b",
+      source: "player",
+      confirmedAt: now,
+    });
+    expect(t.playerCharacterMap.currentForPlayer("c1", "discord:1")?.foundryActorId).toBe("actor-a");
+    expect(t.playerCharacterMap.listByCampaign("c1")).toHaveLength(1);
+  });
+
+  it("does not leak mappings across tenants", () => {
+    const { db } = setup("alpha");
+    db.insert(tenants).values({ id: "beta", name: "Beta", createdAt: Date.now() }).run();
+    const alpha = new TenantDb(db, "alpha");
+    const beta = new TenantDb(db, "beta");
+    seedCampaign(alpha, "shared-campaign");
+    alpha.playerCharacterMap.record({
+      campaignId: "shared-campaign",
+      discordUserId: "discord:1",
+      foundryActorId: "actor-a",
+      source: "player",
+      confirmedAt: Date.now(),
+    });
+    expect(alpha.playerCharacterMap.currentForPlayer("shared-campaign", "discord:1")).toBeDefined();
+    expect(beta.playerCharacterMap.currentForPlayer("shared-campaign", "discord:1")).toBeUndefined();
+  });
+});
+
+describe("TenantDb — voice assignments", () => {
+  it("upserts a subject's voice (most recent wins)", () => {
+    const { t } = setup();
+    seedCampaign(t);
+    const now = Date.now();
+    t.voiceAssignments.upsert({
+      campaignId: "c1",
+      subjectKind: "dm",
+      subjectKey: "dm",
+      providerVoiceId: "voice-a",
+      personaId: "warm-storyteller",
+      source: "operator",
+      assignedAt: now,
+    });
+    t.voiceAssignments.upsert({
+      campaignId: "c1",
+      subjectKind: "dm",
+      subjectKey: "dm",
+      providerVoiceId: "voice-b",
+      personaId: "measured-sage",
+      source: "operator",
+      assignedAt: now + 1000,
+    });
+    const dm = t.voiceAssignments.get("c1", "dm", "dm");
+    expect(dm?.providerVoiceId).toBe("voice-b");
+    expect(dm?.personaId).toBe("measured-sage");
+    expect(t.voiceAssignments.listByCampaign("c1")).toHaveLength(1);
+  });
+
+  it("keeps DM and NPC assignments distinct", () => {
+    const { t } = setup();
+    seedCampaign(t);
+    const now = Date.now();
+    t.voiceAssignments.upsert({
+      campaignId: "c1",
+      subjectKind: "dm",
+      subjectKey: "dm",
+      providerVoiceId: "dm-voice",
+      personaId: "warm-storyteller",
+      source: "operator",
+      assignedAt: now,
+    });
+    t.voiceAssignments.upsert({
+      campaignId: "c1",
+      subjectKind: "npc",
+      subjectKey: "sildar",
+      providerVoiceId: "npc-voice",
+      source: "ai",
+      assignedAt: now,
+    });
+    expect(t.voiceAssignments.listByCampaign("c1")).toHaveLength(2);
+    const npc = t.voiceAssignments.get("c1", "npc", "sildar");
+    expect(npc?.providerVoiceId).toBe("npc-voice");
+    expect(npc?.personaId).toBeNull();
+  });
+
+  it("cascades on campaign deletion (the documented erasure path)", () => {
+    const { db, t } = setup();
+    seedCampaign(t);
+    t.voiceAssignments.upsert({
+      campaignId: "c1",
+      subjectKind: "npc",
+      subjectKey: "klarg",
+      providerVoiceId: "v",
+      source: "ai",
+      assignedAt: Date.now(),
+    });
+    db.delete(campaigns)
+      .where(and(eq(campaigns.tenantId, "default"), eq(campaigns.id, "c1")))
+      .run();
+    expect(db.select().from(voiceAssignments).all()).toHaveLength(0);
   });
 });
 

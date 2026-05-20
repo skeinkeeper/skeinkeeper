@@ -9,11 +9,14 @@
   },
   "scripts": {
     "test": "vitest run",
-    "eval": "tsx src/cli.ts"
+    "eval": "tsx src/cli.ts",
+    "eval:live": "tsx src/live.ts"
   },
   "dependencies": {
     "@skeinkeeper/core": "workspace:*",
+    "@skeinkeeper/llm-anthropic": "workspace:*",
     "@skeinkeeper/orchestrator": "workspace:*",
+    "@skeinkeeper/server": "workspace:*",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

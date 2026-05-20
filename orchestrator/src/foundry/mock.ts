@@ -5,6 +5,7 @@ import type {
   FoundryActor,
   FoundryClient,
   FoundryScene,
+  FoundrySceneRef,
   RollResult,
 } from "./client.js";
 
@@ -56,7 +57,8 @@ export class MockFoundryClient implements FoundryClient {
     this.partyActorIds = ids;
   }
 
-  setActiveScene(sceneId: string | undefined): void {
+  /** Test helper: seed which scene is active (by id), or none. */
+  seedActiveScene(sceneId: string | undefined): void {
     this.activeSceneId = sceneId;
   }
 
@@ -81,6 +83,25 @@ export class MockFoundryClient implements FoundryClient {
   async getActiveScene(): Promise<FoundryScene | null> {
     if (this.activeSceneId === undefined) return null;
     return this.scenesById.get(this.activeSceneId) ?? null;
+  }
+
+  async listScenes(): Promise<ReadonlyArray<FoundrySceneRef>> {
+    return [...this.scenesById.values()].map((s) => ({
+      id: s.id,
+      name: s.name,
+      active: s.id === this.activeSceneId,
+    }));
+  }
+
+  /** Activate a scene by id or (case-insensitive) name (ADR-0015). */
+  async setActiveScene(sceneIdOrName: string): Promise<void> {
+    const byId = this.scenesById.get(sceneIdOrName);
+    const scene =
+      byId ??
+      [...this.scenesById.values()].find(
+        (s) => s.name.toLowerCase() === sceneIdOrName.toLowerCase(),
+      );
+    if (scene !== undefined) this.activeSceneId = scene.id;
   }
 
   async applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void> {

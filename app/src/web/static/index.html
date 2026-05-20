@@ -1,0 +1,68 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Skeinkeeper Contributors -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Skeinkeeper — Operator</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+      h1 { font-size: 1.4rem; }
+      section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+      button { font: inherit; padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #888; cursor: pointer; }
+      #log { font-family: ui-monospace, monospace; font-size: 0.8rem; background: #111; color: #ddd; padding: 0.75rem; border-radius: 6px; height: 16rem; overflow-y: auto; white-space: pre-wrap; }
+      .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+      .pill { padding: 0.1rem 0.5rem; border-radius: 999px; background: #eee; font-size: 0.8rem; }
+      .running { background: #cdebd0; }
+    </style>
+  </head>
+  <body>
+    <h1>Skeinkeeper — Operator Console</h1>
+
+    <section>
+      <div class="row">
+        <strong>Session:</strong>
+        <span id="status" class="pill">…</span>
+        <button id="start">Start</button>
+        <button id="stop">Stop</button>
+      </div>
+    </section>
+
+    <section>
+      <strong>DM voice</strong>
+      <div class="row">
+        <select id="persona"></select>
+        <button id="apply-voice">Apply</button>
+      </div>
+      <p id="persona-desc" style="color:#555;font-size:0.85rem;"></p>
+    </section>
+
+    <section>
+      <strong>Eagerness</strong> — how readily the DM speaks
+      <div class="row" id="eagerness"></div>
+    </section>
+
+    <section>
+      <strong>Operator</strong> — who Skeinkeeper DMs about setup problems
+      <p style="color:#555;font-size:0.85rem;margin:0.3rem 0;">
+        Current: <span id="operator-current">…</span>
+        <button id="operator-clear" style="font-size:0.75rem;padding:0.1rem 0.5rem;">Clear</button>
+      </p>
+      <div class="row">
+        <input id="operator-username" placeholder="your Discord @username" style="font:inherit;padding:0.3rem 0.5rem;" />
+        <button id="operator-save">Set by username</button>
+      </div>
+      <p style="color:#555;font-size:0.8rem;margin:0.4rem 0 0.2rem;">…or, while a session is running, pick yourself from the voice channel:</p>
+      <div id="operator-roster" style="font-size:0.85rem;"></div>
+      <p style="color:#777;font-size:0.78rem;margin-top:0.4rem;">Tip: in Discord you can also type <code>/skeinkeeper operator claim</code>.</p>
+    </section>
+
+    <section>
+      <strong>Live</strong>
+      <div id="log"></div>
+    </section>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -7,6 +7,10 @@
     { "path": "./eval" },
     { "path": "./orchestrator" },
     { "path": "./plugins/llm-anthropic" },
-    { "path": "./plugins/vtt-foundry" }
+    { "path": "./plugins/vtt-foundry" },
+    { "path": "./plugins/voice-discord" },
+    { "path": "./plugins/embed-local" },
+    { "path": "./plugins/memory-lance" },
+    { "path": "./app" }
   ]
 }

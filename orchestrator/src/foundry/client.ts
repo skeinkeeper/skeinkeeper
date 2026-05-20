@@ -46,6 +46,13 @@ export interface RollResult {
   readonly formula: string;
 }
 
+/** Lightweight scene reference for scene awareness + switching (ADR-0015). */
+export interface FoundrySceneRef {
+  readonly id: string;
+  readonly name: string;
+  readonly active: boolean;
+}
+
 export interface FoundryClient {
   /** Identifier of the active Foundry system for the connected world,
    *  e.g., "dnd5e", "fate-core", "dungeon-world". */
@@ -56,8 +63,12 @@ export interface FoundryClient {
   listSceneActors(sceneId: string): Promise<ReadonlyArray<FoundryActor>>;
   getActor(actorId: string): Promise<FoundryActor | null>;
   getActiveScene(): Promise<FoundryScene | null>;
+  /** All scenes in the world, so the AI knows what it can switch to. */
+  listScenes(): Promise<ReadonlyArray<FoundrySceneRef>>;
 
-  // ---- writes (Phase 3 tool handlers route through these) ----
+  // ---- writes (tool handlers route through these) ----
   applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void>;
   rollDice(formula: string, opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> }): Promise<RollResult>;
+  /** Activate a scene by id or name — an in-play DM action (ADR-0015). */
+  setActiveScene(sceneIdOrName: string): Promise<void>;
 }

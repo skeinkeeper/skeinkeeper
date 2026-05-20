@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
+import { createHash } from "node:crypto";
 import * as Sentry from "@sentry/node";
 
 export interface CrashConfig {
@@ -39,7 +40,10 @@ class SentryCrash implements CrashClient {
     Sentry.withScope((scope) => {
       scope.setUser({ id: this.installationId });
       if (context?.module) scope.setTag("module", context.module);
-      if (context?.sessionId) scope.setTag("sessionId", context.sessionId);
+      // Hash the session id before it leaves the box — the analytics path hashes
+      // campaign ids the same way (ADR-0009/0010: no raw identifiers in
+      // telemetry). The hash still correlates events within a session.
+      if (context?.sessionId) scope.setTag("sessionIdHash", hashId(context.sessionId));
       Sentry.captureException(err);
     });
   }
@@ -47,6 +51,10 @@ class SentryCrash implements CrashClient {
   async flush(): Promise<void> {
     await Sentry.flush(2_000);
   }
+}
+
+function hashId(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 16);
 }
 
 export function createCrash(config: CrashConfig): CrashClient {

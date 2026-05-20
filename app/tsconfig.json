@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../packages/core" },
+    { "path": "../orchestrator" },
+    { "path": "../server" },
+    { "path": "../telemetry" },
+    { "path": "../plugins/llm-anthropic" },
+    { "path": "../plugins/voice-discord" },
+    { "path": "../plugins/vtt-foundry" },
+    { "path": "../plugins/embed-local" },
+    { "path": "../plugins/memory-lance" }
+  ]
+}

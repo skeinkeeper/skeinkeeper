@@ -18,8 +18,12 @@ export interface DeletionAdapter {
 
 export interface ErasureReport {
   scope: ErasureScope;
-  perAdapter: ReadonlyArray<{ adapter: string; recordsDeleted: number }>;
+  perAdapter: ReadonlyArray<{ adapter: string; recordsDeleted: number; error?: string }>;
   totalRecords: number;
+  /** Number of adapters that threw. Erasure is best-effort per adapter (SQLite
+   *  and the LanceDB vector store can't share a transaction), so a non-zero
+   *  count means the operator must investigate and re-run. */
+  failures: number;
 }
 
 export interface ErasureServiceOptions {
@@ -39,27 +43,40 @@ export class ErasureService {
 
   async erase(scope: ErasureScope): Promise<ErasureReport> {
     const applicable = this.adapters.filter((a) => a.supportedScopes.includes(scope.kind));
-    const perAdapter: Array<{ adapter: string; recordsDeleted: number }> = [];
+    const perAdapter: Array<{ adapter: string; recordsDeleted: number; error?: string }> = [];
 
     for (const adapter of applicable) {
-      const recordsDeleted = await adapter.delete(scope);
-      perAdapter.push({ adapter: adapter.name, recordsDeleted });
+      try {
+        const recordsDeleted = await adapter.delete(scope);
+        perAdapter.push({ adapter: adapter.name, recordsDeleted });
 
-      this.options.db
-        .insert(deletionLog)
-        .values({
-          tenantId: scope.tenantId,
-          scope: scope.kind,
-          subjectIdHash: this.hashSubject(scope),
-          adapterName: adapter.name,
-          recordsDeleted,
-          timestamp: Date.now(),
-        })
-        .run();
+        this.options.db
+          .insert(deletionLog)
+          .values({
+            tenantId: scope.tenantId,
+            scope: scope.kind,
+            subjectIdHash: this.hashSubject(scope),
+            adapterName: adapter.name,
+            recordsDeleted,
+            timestamp: Date.now(),
+          })
+          .run();
+      } catch (err) {
+        // One adapter failing must not abort the rest — erasure spans SQLite and
+        // the LanceDB vector store, which can't share a transaction, so it's
+        // best-effort per adapter. Record the failure and keep clearing the
+        // other stores; the operator gets a complete report and re-runs.
+        perAdapter.push({
+          adapter: adapter.name,
+          recordsDeleted: 0,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const totalRecords = perAdapter.reduce((sum, x) => sum + x.recordsDeleted, 0);
-    return { scope, perAdapter, totalRecords };
+    const failures = perAdapter.filter((x) => x.error !== undefined).length;
+    return { scope, perAdapter, totalRecords, failures };
   }
 
   private hashSubject(scope: ErasureScope): string {

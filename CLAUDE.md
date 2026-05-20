@@ -131,15 +131,21 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 ├── /orchestrator/               # Core LLM orchestration, memory, tool dispatch.
 │   └── /interfaces/             # Plugin interfaces.
 ├── /plugins/
-│   ├── /llm-anthropic/
-│   ├── /ruleset-dnd5e/
-│   ├── /vtt-foundry/            # Adapter over Foundry MCP.
-│   └── /voice-discord/          # Discord + Deepgram + ElevenLabs.
+│   ├── /llm-anthropic/          # Anthropic LLM provider.
+│   ├── /vtt-foundry/            # Adapter over the Foundry MCP bridge.
+│   ├── /voice-discord/          # Discord + Deepgram + ElevenLabs.
+│   ├── /embed-local/            # Local (on-box) embedding provider.
+│   └── /memory-lance/           # LanceDB cold/episodic store + erasure adapter.
+│                                # NB: no ruleset plugin — Foundry's per-system
+│                                # module IS the ruleset abstraction (ADR-0012,
+│                                # hard rule #9). Rules knowledge comes from the
+│                                # model + retrieved SRD/compendium content.
 ├── /telemetry/                  # Typed event emission wrapper + event registry.
-├── /web/                        # Local web UI.
-├── /server/                     # Local API server, auth, secret storage.
+├── /app/                        # Operator app: Discord gateway + voice loop + web console.
+├── /web/                        # (legacy placeholder; operator UI now lives in /app)
+├── /server/                     # Local DB, schema, auth, secret storage, erasure/export.
 ├── /eval/                       # Eval harness + fixtures.
-└── /scripts/                    # Dev/ops utilities.
+└── /scripts/                    # Dev/ops + live-validation utilities.
 ```
 
 ## How to run things
@@ -151,7 +157,8 @@ pnpm dev                  # Watches everything, starts orchestrator + web.
 
 # Tests
 pnpm test                 # Unit tests across all packages.
-pnpm eval                 # Eval harness against fixtures.
+pnpm eval                 # Scripted eval harness (deterministic; model faked).
+pnpm eval:live            # Fixtures vs. the real model (needs ANTHROPIC_API_KEY; not in CI).
 pnpm lint                 # ESLint + Prettier check.
 
 # Production (operator-facing)
@@ -169,6 +176,7 @@ docker compose up         # Runs the whole stack; web UI at localhost:3000.
 - **Asking the LLM to do math.** Math goes through a tool. Always.
 - **Rolling dice in the model.** Per ADR-0003.
 - **Generating example data with PII-shaped strings** even in tests. Use `fake-` prefixed values.
+- **Adding an operator control to only one surface.** Every operator action/setting must work from *both* the web console and Discord slash commands, and stay synced live across them (one `SessionManager` write path + an `AppEvent` on the bus). Per [ADR-0016](./docs/adr/0016-operator-control-parity-across-surfaces.md) / [design doc 0025](./docs/design/0025-operator-control-parity.md). Per-player actions like `/skeinkeeper consent` are exempt (not operator controls).
 
 ## When responding to user requests
 

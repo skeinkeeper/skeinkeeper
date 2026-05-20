@@ -1,0 +1,30 @@
+name: onboarding-character-escalation
+description: |
+  Phase 2 / design doc 0023 (behavior spec §1.6): during session-start
+  onboarding a player names a character that isn't among the world's
+  unclaimed actors. After re-asking once and still not resolving it, the AI
+  DM must NOT invent or rename a character — it carries on and quietly
+  escalates to the operator via notify_operator. Drives a FakeLLMProvider
+  scripting the escalation.
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: player
+      text: "I'm playing Boromir."
+    - speaker: system
+      text: "(You already asked once which of the open characters is theirs; the player insists on 'Boromir', which is not among the world's actors.)"
+    - speaker: player
+      text: "No, it's Boromir, definitely."
+llm_script:
+  narration: "No worries — let's get you in and sort the character out shortly. Take a seat at the table."
+  tool_calls:
+    - name: notify_operator
+      input:
+        message: "Couldn't match a player to a character named 'Boromir'; unclaimed characters: Aragorn, Legolas."
+expectations:
+  - kind: tool_called
+    name: notify_operator
+  - kind: tool_not_called
+    name: record_player_character
+  - kind: not_empty
+    field: narration

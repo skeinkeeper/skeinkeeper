@@ -5,9 +5,16 @@ import { describe, expect, it } from "vitest";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import type { BehaviorSpec } from "./behavior.js";
 import { MockFoundryClient } from "./foundry/mock.js";
-import { FakeLLMProvider, fakeLlmFromEvents, type LLMEvent } from "./interfaces/index.js";
+import {
+  FakeEmbeddingProvider,
+  FakeLLMProvider,
+  fakeLlmFromEvents,
+  type LLMEvent,
+} from "./interfaces/index.js";
+import { InMemoryMemoryStore } from "./memory/store.js";
 import { ToolDispatcher, ToolRegistry, defineTool } from "./registry.js";
 import {
+  archiveSession,
   endSession,
   runTurn,
   startSession,
@@ -138,6 +145,123 @@ describe("runTurn — single iteration (no tool calls)", () => {
     const text = msg?.content[0]?.type === "text" ? msg.content[0].text : "";
     expect(text).toContain("I look around.");
     expect(text).toContain("Aragorn"); // displayName surfaces in dialogue rendering
+  });
+});
+
+describe("telemetry emission (design doc 0009 / audit wave 3)", () => {
+  function recordingAnalytics(): {
+    analytics: { track: (n: string, p: unknown) => void; flush: () => Promise<void> };
+    events: Array<{ name: string; props: Record<string, unknown> }>;
+  } {
+    const events: Array<{ name: string; props: Record<string, unknown> }> = [];
+    return {
+      analytics: {
+        track: (name, props) => events.push({ name, props: props as Record<string, unknown> }),
+        flush: async () => {},
+      },
+      events,
+    };
+  }
+
+  it("emits behavior_spec.loaded + session.started on startSession", () => {
+    const { analytics, events } = recordingAnalytics();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
+    setupSession({ analytics: analytics as any });
+    const names = events.map((e) => e.name);
+    expect(names).toContain("session.started");
+    expect(names).toContain("behavior_spec.loaded");
+    const spec = events.find((e) => e.name === "behavior_spec.loaded")!;
+    expect(spec.props.version).toBe("v0.1");
+    expect(typeof spec.props.sizeKbBucket).toBe("string");
+  });
+
+  it("emits llm.completed for a narration turn (bucketed, no content)", async () => {
+    const { analytics, events } = recordingAnalytics();
+    const { session } = setupSession({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
+      analytics: analytics as any,
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "Narrate." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(session, { speaker: "p", text: "hi" });
+    const llm = events.find((e) => e.name === "llm.completed");
+    expect(llm).toBeDefined();
+    expect(llm!.props.modelTier).toBe("narration");
+    expect(llm!.props.success).toBe(true);
+    expect(llm!.props.stopReason).toBe("end_turn");
+    expect(typeof llm!.props.inputTokensBucket).toBe("string");
+    // No prompt/response content in the props.
+    expect(JSON.stringify(llm!.props)).not.toContain("Narrate");
+  });
+
+  it("emits error.captured when the LLM errors", async () => {
+    const { analytics, events } = recordingAnalytics();
+    const { session } = setupSession({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
+      analytics: analytics as any,
+      llm: fakeLlmFromEvents([
+        { kind: "error", error: { kind: "rate_limited", message: "slow down" } },
+      ]),
+    });
+    const out = await runTurn(session, { speaker: "p", text: "hi" });
+    expect(out.stopReason).toBe("llm_error");
+    const err = events.find((e) => e.name === "error.captured");
+    expect(err?.props.errorClass).toBe("rate_limited");
+    expect(err?.props.module).toBe("orchestrator:run_turn");
+  });
+});
+
+describe("runTurn — warm-state build count (perf)", () => {
+  // Wrap MockFoundryClient and count listPartyActors, which buildWarmStateSnapshot
+  // calls exactly once per build. So the count == number of warm-state builds.
+  function countingFoundry(): { foundry: MockFoundryClient; partyReads: () => number } {
+    const inner = new MockFoundryClient({ system: "dnd5e" });
+    let n = 0;
+    const orig = inner.listPartyActors.bind(inner);
+    inner.listPartyActors = async () => {
+      n += 1;
+      return orig();
+    };
+    return { foundry: inner, partyReads: () => n };
+  }
+
+  it("builds warm state once on a pure-narration turn (no second rebuild)", async () => {
+    const { foundry, partyReads } = countingFoundry();
+    const { session } = setupSession({
+      foundry,
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "The road is quiet." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(session, { speaker: "p", text: "I look around." });
+    expect(partyReads()).toBe(1);
+  });
+
+  it("rebuilds warm state after a turn that ran a tool", async () => {
+    const { foundry, partyReads } = countingFoundry();
+    const provider = new FakeLLMProvider([
+      {
+        match: (r) => r.messages.length === 1,
+        events: [
+          { kind: "tool_call", id: "tu_1", name: "noticer", input: { note: "x" } },
+          { kind: "done", stopReason: "tool_use", usage: DONE_USAGE },
+        ],
+      },
+      {
+        match: (r) => r.messages.length === 3,
+        events: [
+          { kind: "text_delta", text: "Done." },
+          { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+        ],
+      },
+    ]);
+    const { session } = setupSession({ foundry, llm: provider });
+    registerToolThatRecordsName(session, "noticer", {});
+    await runTurn(session, { speaker: "p", text: "I act." });
+    expect(partyReads()).toBe(2);
   });
 });
 
@@ -363,5 +487,71 @@ describe("session lifecycle + dialogue persistence (Phase 2c)", () => {
     const row = tenantDb.sessions.get("sess-1");
     expect(row?.endedAt).toBeGreaterThan(0);
     expect(row?.summaryJson).toContain("intro");
+  });
+});
+
+describe("runTurn + archiveSession — cold/episodic memory (design doc 0019)", () => {
+  it("injects retrieved memory into the hot context", async () => {
+    const embed = new FakeEmbeddingProvider();
+    const store = new InMemoryMemoryStore();
+    const [vec] = await embed.embed(["the party spared the goblin Yeemik"]);
+    await store.upsert([
+      {
+        id: "m1",
+        kind: "episodic",
+        text: "the party spared the goblin Yeemik",
+        vector: vec!,
+        metadata: { campaignId: "c1", createdAt: 1, embedModel: embed.name },
+      },
+    ]);
+    const llm = fakeLlmFromEvents([
+      { kind: "text_delta", text: "ok" },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
+    const { session } = setupSession({ llm, memory: { embed, store } });
+    await runTurn(session, { speaker: "discord:1", text: "what about that goblin we spared?" });
+    const req = (llm as FakeLLMProvider).receivedRequests[0]!;
+    const userText = req.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+    expect(userText).toContain("Relevant memory");
+    expect(userText).toContain("Yeemik");
+  });
+
+  it("archiveSession summarizes the session and stores an episodic record", async () => {
+    const embed = new FakeEmbeddingProvider();
+    const store = new InMemoryMemoryStore();
+    const llm = new FakeLLMProvider([
+      {
+        match: (r) => r.modelTier === "narration",
+        events: [
+          { kind: "text_delta", text: "You enter the ruins." },
+          { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+        ],
+      },
+      {
+        match: (r) => r.modelTier === "orchestration",
+        events: [
+          {
+            kind: "text_delta",
+            text: '{"summary": "The party explored the ancient ruins.", "deltas": {"location": "ruins"}}',
+          },
+          { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+        ],
+      },
+    ]);
+    const { session } = setupSession({ llm, memory: { embed, store } });
+    await runTurn(session, { speaker: "discord:1", text: "I look around" });
+    const record = await archiveSession(session);
+    expect(record).not.toBeNull();
+    expect(record!.kind).toBe("episodic");
+    expect(record!.metadata.deltas).toEqual({ location: "ruins" });
+    const [q] = await embed.embed(["ruins"]);
+    const out = await store.query(q!, { campaignId: "c1", topK: 5 });
+    expect(out.some((r) => r.text.includes("ruins"))).toBe(true);
+  });
+
+  it("archiveSession is a no-op without memory configured", async () => {
+    const { session } = setupSession();
+    await runTurn(session, { speaker: "discord:1", text: "hi" });
+    expect(await archiveSession(session)).toBeNull();
   });
 });
