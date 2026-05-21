@@ -7,7 +7,8 @@ import type { BehaviorSpec } from "./behavior.js";
 import { MockFoundryClient } from "./foundry/mock.js";
 import { FakeLLMProvider } from "./interfaces/fake_llm_provider.js";
 import { FakeVoiceIO } from "./interfaces/fake_voice_io.js";
-import type { TokenUsage } from "./interfaces/llm.js";
+import type { LLMEvent, LLMProvider, LLMRequest, TokenUsage } from "./interfaces/llm.js";
+import { MaskingPool } from "./voice/masking/pool.js";
 import {
   InterruptedError,
   type VoiceEvent,
@@ -44,7 +45,7 @@ function deciderAndNarration(deciderJson: string, narration: string): FakeLLMPro
   ]);
 }
 
-function setupSession(llm: FakeLLMProvider): { session: Session; tenantDb: TenantDb } {
+function setupSession(llm: LLMProvider): { session: Session; tenantDb: TenantDb } {
   const db = openDb({ path: ":memory:", runMigrations: true });
   db.insert(schema.tenants).values({ id: "default", name: "T", createdAt: Date.now() }).run();
   db.insert(schema.campaigns)
@@ -395,6 +396,69 @@ describe("mergeFragmentsToTurnInput", () => {
     ]);
     expect(input?.speaker).toBe("discord:2");
     expect(input?.text).toBe("[Alice] I take point\n[Bob] behind you");
+  });
+});
+
+/** A provider that delays its narration so the masking threshold can fire. */
+class DelayedNarrationLLM implements LLMProvider {
+  readonly name = "delayed";
+  constructor(
+    private readonly narration: string,
+    private readonly delayMs: number,
+  ) {}
+  async *complete(req: LLMRequest): AsyncIterable<LLMEvent> {
+    if (req.modelTier === "orchestration") {
+      yield { kind: "text_delta", text: '{"respond": true}' };
+      yield { kind: "done", stopReason: "end_turn", usage: USAGE };
+      return;
+    }
+    await new Promise((r) => setTimeout(r, this.delayMs));
+    yield { kind: "text_delta", text: this.narration };
+    yield { kind: "done", stopReason: "end_turn", usage: USAGE };
+  }
+}
+
+describe("runAlwaysListeningSession — latency masking (design doc 0028 P2)", () => {
+  const routing = {
+    dmVoiceId: "dm",
+    getNpcVoice: () => "npc",
+    assignNpcVoice: async () => "npc",
+  };
+
+  it("speaks a filler to cover the gap when the turn is slow to start", async () => {
+    const { session } = setupSession(new DelayedNarrationLLM("The vault grinds open.", 60));
+    const voiceIO = new FakeVoiceIO([utter("a", "I open it"), { kind: "lull" }]);
+    const pool = new MaskingPool({ rng: () => 0 });
+    pool.add([{ text: "You steady your breath.", tags: ["neutral"] }]);
+
+    await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      voiceRouting: routing,
+      masking: { pool, thresholdMs: 5 },
+    });
+
+    const texts = voiceIO.spoken.map((s) => s.text);
+    expect(texts[0]).toBe("You steady your breath."); // filler covered the gap first
+    expect(texts).toContain("The vault grinds open."); // then the real narration
+  });
+
+  it("does not speak a filler when narration starts within the threshold", async () => {
+    const { session } = setupSession(deciderAndNarration('{"respond": true}', "Immediate."));
+    const voiceIO = new FakeVoiceIO([utter("a", "go"), { kind: "lull" }]);
+    const pool = new MaskingPool({ rng: () => 0 });
+    pool.add([{ text: "unused filler", tags: ["neutral"] }]);
+
+    await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      voiceRouting: routing,
+      masking: { pool, thresholdMs: 2000 },
+    });
+
+    expect(voiceIO.spoken.map((s) => s.text)).toEqual(["Immediate."]);
   });
 });
 

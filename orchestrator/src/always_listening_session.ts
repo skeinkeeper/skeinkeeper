@@ -9,6 +9,8 @@ import { decideShouldRespond, type RespondDecision } from "./voice/decider.js";
 import { DEFAULT_EAGERNESS, type Eagerness } from "./voice/eagerness.js";
 import { parseNarrationSegments, type NarrationSegment } from "./voice/markers.js";
 import { resolveSegmentVoices } from "./voice/assignment.js";
+import type { MaskingPool } from "./voice/masking/pool.js";
+import type { Filler } from "./voice/masking/filler.js";
 import { buildOnboardingDirective, selectOnboardingTargets } from "./voice/onboarding.js";
 import { formatSpeakerLine } from "./util/format.js";
 
@@ -65,6 +67,22 @@ export interface AlwaysListeningConfig {
   onDecision?: (decision: RespondDecision, fragments: ReadonlyArray<BufferFragment>) => void;
   /** Invoked after each turn the DM actually takes. */
   onTurn?: (turn: TurnOutput) => void;
+  /**
+   * Latency masking (design doc 0028 §P2). When set, if the DM hasn't started
+   * speaking within `thresholdMs` of a responding turn, a context-tagged filler
+   * is spoken to cover the gap (the *fallback* to the front-loaded opener,
+   * behavior §2.6). The pool is topped up off-path during lulls via `generate`.
+   * Requires `voiceRouting` (the filler is spoken in the DM voice).
+   */
+  masking?: {
+    pool: MaskingPool;
+    /** Play a filler if no narration has started within this long. Default 1200. */
+    thresholdMs?: number;
+    /** Current scene tags for filler selection (read at fire time). */
+    sceneTags?: () => ReadonlyArray<string>;
+    /** Off-path generator to refill the pool during lulls. */
+    generate?: () => Promise<ReadonlyArray<Filler>>;
+  };
 }
 
 export interface AlwaysListeningResult {
@@ -158,8 +176,15 @@ export async function runAlwaysListeningSession(
       continue;
     }
 
-    // event.kind === "lull". Build the table roster fresh (mappings can change
-    // as the AI records characters), then decide what to do.
+    // event.kind === "lull". Top up the masking pool off-path while the table is
+    // quiet (design doc 0028 §P2 — generation never blocks a response).
+    const masking = config.masking;
+    if (masking?.generate !== undefined && masking.pool.needsRefill()) {
+      void masking.pool.refill(masking.generate);
+    }
+
+    // Build the table roster fresh (mappings can change as the AI records
+    // characters), then decide what to do.
     const roster = buildRoster(session, present);
     const mapped = new Set(
       roster.filter((p) => p.mappedActorId !== undefined).map((p) => p.discordId),
@@ -275,10 +300,28 @@ async function runTurnAndSpeak(
   // interrupt aborts the in-flight generation.
   let speakChain: Promise<void> = Promise.resolve();
   let streamed = false;
+
+  // Latency masking (design doc 0028 §P2): if no narration has started within
+  // the threshold, speak one context-tagged filler to cover the gap. It lands on
+  // the (still-empty) speak queue first, so the real narration follows it.
+  const masking = config.masking;
+  const maskTimer =
+    masking !== undefined
+      ? setTimeout(() => {
+          if (streamed) return;
+          const filler = masking.pool.select(masking.sceneTags?.() ?? []);
+          if (filler === null) return;
+          speakChain = speakChain
+            .then(() => speakSegment(config.voiceIO, routing, { kind: "dm", text: filler.text }))
+            .catch(() => {});
+        }, masking.thresholdMs ?? 1200)
+      : undefined;
+
   const turn = await runTurn(config.session, input, {
     presentPlayers: roster,
     signal: abort.signal,
     onNarrationSegment: (seg) => {
+      if (!streamed && maskTimer !== undefined) clearTimeout(maskTimer); // real audio beat us to it
       streamed = true;
       speakChain = speakChain
         .then(() => speakSegment(config.voiceIO, routing, seg))
@@ -290,6 +333,7 @@ async function runTurnAndSpeak(
         });
     },
   });
+  if (maskTimer !== undefined) clearTimeout(maskTimer);
   await speakChain; // drain queued audio before returning
   if (!streamed && turn.narration.length > 0) {
     try {
