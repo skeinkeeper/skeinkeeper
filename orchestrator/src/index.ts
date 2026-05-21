@@ -104,6 +104,18 @@ export {
   type Eagerness,
 } from "./voice/eagerness.js";
 export {
+  FillerSelector,
+  MaskingPool,
+  generateFillers,
+  parseFillers,
+  fillerStem,
+  NEUTRAL_TAG,
+  type Filler,
+  type FillerSelectorOptions,
+  type MaskingPoolOptions,
+  type GenerateFillersInput,
+} from "./voice/masking/index.js";
+export {
   TranscriptionBuffer,
   utteranceToFragment,
   renderBuffer,
