@@ -5,13 +5,22 @@ import { describe, expect, it } from "vitest";
 import { InMemoryMemoryStore, type MemoryRecord } from "@skeinkeeper/orchestrator";
 import { MemoryAdapter } from "./memory_adapter.js";
 
-function rec(id: string, campaignId: string): MemoryRecord {
+function rec(
+  id: string,
+  campaignId: string,
+  audience?: MemoryRecord["metadata"]["audience"],
+): MemoryRecord {
   return {
     id,
     kind: "episodic",
     text: id,
     vector: [1, 0],
-    metadata: { campaignId, createdAt: 1, embedModel: "fake" },
+    metadata: {
+      campaignId,
+      createdAt: 1,
+      embedModel: "fake",
+      ...(audience !== undefined ? { audience } : {}),
+    },
   };
 }
 
@@ -21,7 +30,7 @@ async function seeded(): Promise<InMemoryMemoryStore> {
   return store;
 }
 
-describe("MemoryAdapter (ADR-0014 erasure scoping)", () => {
+describe("MemoryAdapter (ADR-0014 / ADR-0017 erasure scoping)", () => {
   it("campaign scope deletes that campaign's records", async () => {
     const store = await seeded();
     const adapter = new MemoryAdapter(() => store);
@@ -36,16 +45,24 @@ describe("MemoryAdapter (ADR-0014 erasure scoping)", () => {
     expect(await adapter.delete({ kind: "tenant", tenantId: "t" })).toBe(3);
   });
 
-  it("player scope is a no-op — episodic memory is shared, not per-player erasable", async () => {
-    const store = await seeded();
+  it("player scope erases only that player's private side-channel memory (ADR-0017); shared persists (ADR-0014)", async () => {
+    const store = new InMemoryMemoryStore();
+    await store.upsert([
+      rec("shared-1", "c1"), // table (default)
+      rec("shared-2", "c1", "table"),
+      rec("dana-secret", "c1", "player:discord:1"),
+      rec("eli-secret", "c1", "player:discord:2"),
+    ]);
     const adapter = new MemoryAdapter(() => store);
-    expect(await adapter.delete({ kind: "player", tenantId: "t", subjectId: "discord:1" })).toBe(0);
-    // nothing removed
-    expect(await store.query([1, 0], { campaignId: "c1", topK: 9 })).toHaveLength(2);
+
+    // Only Dana's private record goes; shared + other players' private stay.
+    expect(await adapter.delete({ kind: "player", tenantId: "t", subjectId: "discord:1" })).toBe(1);
+    const remaining = await store.query([1, 0], { campaignId: "c1", topK: 9 });
+    expect(remaining.map((r) => r.id).sort()).toEqual(["eli-secret", "shared-1", "shared-2"]);
   });
 
-  it("declares only campaign + tenant scopes", () => {
+  it("declares player + campaign + tenant scopes", () => {
     const adapter = new MemoryAdapter(() => new InMemoryMemoryStore());
-    expect([...adapter.supportedScopes]).toEqual(["campaign", "tenant"]);
+    expect([...adapter.supportedScopes]).toEqual(["player", "campaign", "tenant"]);
   });
 });

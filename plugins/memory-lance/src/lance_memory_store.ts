@@ -3,6 +3,7 @@
 
 import * as lancedb from "@lancedb/lancedb";
 import type { MemoryQueryOptions, MemoryRecord, MemoryStore } from "@skeinkeeper/orchestrator";
+import type { Audience } from "@skeinkeeper/server";
 
 /**
  * LanceDB-backed MemoryStore (design doc 0019, ADR-0002). One store instance
@@ -27,6 +28,8 @@ interface Row {
   sessionId: string;
   createdAt: number;
   embedModel: string;
+  /** Who may see this record (design doc 0026, ADR-0017); "table" by default. */
+  audience: string;
   deltasJson: string;
 }
 
@@ -52,6 +55,7 @@ function toRow(r: MemoryRecord): Row {
     sessionId: r.metadata.sessionId ?? "",
     createdAt: r.metadata.createdAt,
     embedModel: r.metadata.embedModel,
+    audience: r.metadata.audience ?? "table",
     deltasJson: r.metadata.deltas ? JSON.stringify(r.metadata.deltas) : "",
   };
 }
@@ -62,6 +66,9 @@ function fromRow(row: Row): MemoryRecord {
     createdAt: row.createdAt,
     embedModel: row.embedModel,
   };
+  if (row.audience.length > 0) {
+    metadata.audience = row.audience as Audience;
+  }
   if (row.sessionId.length > 0) metadata.sessionId = row.sessionId;
   if (row.deltasJson.length > 0) {
     try {
@@ -108,11 +115,7 @@ export class LanceMemoryStore implements MemoryStore {
       await db.createTable(this.tableName, rows);
       return;
     }
-    await existing
-      .mergeInsert("id")
-      .whenMatchedUpdateAll()
-      .whenNotMatchedInsertAll()
-      .execute(rows);
+    await existing.mergeInsert("id").whenMatchedUpdateAll().whenNotMatchedInsertAll().execute(rows);
   }
 
   async query(vector: ReadonlyArray<number>, opts: MemoryQueryOptions): Promise<MemoryRecord[]> {
@@ -122,6 +125,10 @@ export class LanceMemoryStore implements MemoryStore {
     if (opts.kinds !== undefined && opts.kinds.length > 0) {
       const inList = opts.kinds.map((k) => `'${escapeLiteral(k)}'`).join(", ");
       predicate += ` AND kind IN (${inList})`;
+    }
+    if (opts.audiences !== undefined && opts.audiences.length > 0) {
+      const inList = opts.audiences.map((a) => `'${escapeLiteral(a)}'`).join(", ");
+      predicate += ` AND audience IN (${inList})`;
     }
     const results = (await table
       .search([...vector])
@@ -146,6 +153,15 @@ export class LanceMemoryStore implements MemoryStore {
     const count = await table.countRows();
     const db = await this.conn();
     await db.dropTable(this.tableName);
+    return count;
+  }
+
+  async deleteByAudience(audience: string): Promise<number> {
+    const table = await this.existingTable();
+    if (table === null) return 0;
+    const predicate = `audience = '${escapeLiteral(audience)}'`;
+    const count = await table.countRows(predicate);
+    await table.delete(predicate);
     return count;
   }
 }

@@ -11,6 +11,7 @@
  * already-assembled snapshot — see `warm_state.ts` for the assembler.
  */
 
+import type { Audience, ConversationId } from "@skeinkeeper/server";
 import type { FoundryActor, FoundrySceneRef } from "./foundry/client.js";
 import { renderActorState } from "./foundry/render.js";
 import { formatSpeakerLine } from "./util/format.js";
@@ -36,6 +37,10 @@ export interface DialogueTurn {
   displayName?: string;
   text: string;
   timestamp: number;
+  /** Who may see this turn (design doc 0026). Absent = "table" (shared). */
+  audience?: Audience;
+  /** Which conversation thread this turn belongs to. Absent = "table". */
+  conversationId?: ConversationId;
 }
 
 export interface WarmStateSnapshot {

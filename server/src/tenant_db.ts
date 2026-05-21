@@ -48,8 +48,7 @@ export class TenantDb {
 
   // ---- campaigns ----
   readonly campaigns = {
-    list: () =>
-      this.db.select().from(campaigns).where(eq(campaigns.tenantId, this.tenantId)).all(),
+    list: () => this.db.select().from(campaigns).where(eq(campaigns.tenantId, this.tenantId)).all(),
     get: (id: string) =>
       this.db
         .select()
@@ -57,7 +56,10 @@ export class TenantDb {
         .where(and(eq(campaigns.tenantId, this.tenantId), eq(campaigns.id, id)))
         .get(),
     create: (data: Omit<NewCampaign, "tenantId">) =>
-      this.db.insert(campaigns).values({ ...data, tenantId: this.tenantId }).run(),
+      this.db
+        .insert(campaigns)
+        .values({ ...data, tenantId: this.tenantId })
+        .run(),
   };
 
   // ---- quest flags ----
@@ -136,7 +138,10 @@ export class TenantDb {
         .where(and(eq(sessions.tenantId, this.tenantId), eq(sessions.id, id)))
         .get(),
     create: (data: Omit<NewSession, "tenantId">) =>
-      this.db.insert(sessions).values({ ...data, tenantId: this.tenantId }).run(),
+      this.db
+        .insert(sessions)
+        .values({ ...data, tenantId: this.tenantId })
+        .run(),
     /** Mark a session ended. Sets endedAt and (optionally) the summary. */
     end: (id: string, endedAt: number, summaryJson?: string) =>
       this.db
@@ -149,7 +154,12 @@ export class TenantDb {
   // ---- dialogue (append-only transcript) ----
   readonly dialogue = {
     append: (entry: Omit<NewDialogueRow, "tenantId" | "id">) =>
-      this.db.insert(dialogue).values({ ...entry, tenantId: this.tenantId }).run(),
+      this.db
+        .insert(dialogue)
+        .values({ ...entry, tenantId: this.tenantId })
+        .run(),
+    /** All turns across every conversation in a session (resume / replay /
+     *  export). Ordered oldest-first. */
     listBySession: (sessionId: string) =>
       this.db
         .select()
@@ -157,12 +167,30 @@ export class TenantDb {
         .where(and(eq(dialogue.tenantId, this.tenantId), eq(dialogue.sessionId, sessionId)))
         .orderBy(asc(dialogue.timestamp), asc(dialogue.id))
         .all(),
+    /** Turns scoped to one conversation thread (the table loop, or a player's
+     *  1:1 side-channel) — design doc 0026 §2. Ordered oldest-first. */
+    listByConversation: (sessionId: string, conversationId: string) =>
+      this.db
+        .select()
+        .from(dialogue)
+        .where(
+          and(
+            eq(dialogue.tenantId, this.tenantId),
+            eq(dialogue.sessionId, sessionId),
+            eq(dialogue.conversationId, conversationId),
+          ),
+        )
+        .orderBy(asc(dialogue.timestamp), asc(dialogue.id))
+        .all(),
   };
 
   // ---- player↔character map (most recent row per player wins) ----
   readonly playerCharacterMap = {
     record: (data: Omit<NewPlayerCharacterMapRow, "tenantId" | "id">) =>
-      this.db.insert(playerCharacterMap).values({ ...data, tenantId: this.tenantId }).run(),
+      this.db
+        .insert(playerCharacterMap)
+        .values({ ...data, tenantId: this.tenantId })
+        .run(),
     currentForPlayer: (campaignId: string, discordUserId: string) =>
       this.db
         .select()
@@ -278,7 +306,10 @@ export class TenantDb {
   // ---- audit log (append-only) ----
   readonly auditLog = {
     append: (entry: Omit<NewAuditLogEntry, "tenantId" | "id">) =>
-      this.db.insert(auditLog).values({ ...entry, tenantId: this.tenantId }).run(),
+      this.db
+        .insert(auditLog)
+        .values({ ...entry, tenantId: this.tenantId })
+        .run(),
     listForSession: (sessionId: string) =>
       this.db
         .select()
