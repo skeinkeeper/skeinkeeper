@@ -13,13 +13,14 @@ import {
   type VoiceConnection,
 } from "@discordjs/voice";
 import prism from "prism-media";
-import type {
-  PresenceMember,
-  STTProvider,
-  SpeakOptions,
-  TTSProvider,
-  VoiceEvent,
-  VoiceIO,
+import {
+  InterruptedError,
+  type PresenceMember,
+  type STTProvider,
+  type SpeakOptions,
+  type TTSProvider,
+  type VoiceEvent,
+  type VoiceIO,
 } from "@skeinkeeper/orchestrator";
 import { AsyncQueue } from "./async_queue.js";
 
@@ -97,6 +98,10 @@ export class DiscordVoiceIO implements VoiceIO {
   private lullTimer: NodeJS.Timeout | null = null;
   private unsubscribePresence: (() => void) | null = null;
   private closed = false;
+  /** Set while a `speak()` is playing. A consented player speaking during
+   *  playback (barge-in, design doc 0028 P2) calls `interrupt`, which stops the
+   *  audio and rejects the in-flight speak with InterruptedError. */
+  private activeSpeak: { interrupt: () => void } | null = null;
 
   constructor(private readonly options: DiscordVoiceIOOptions) {
     this.player = createAudioPlayer();
@@ -110,6 +115,11 @@ export class DiscordVoiceIO implements VoiceIO {
 
     receiver.speaking.on("start", (userId: string) => {
       this.armLullTimer();
+      // Barge-in (design doc 0028 P2): a consented player speaking while the DM
+      // is mid-sentence stops the DM and aborts the rest of the turn.
+      if (this.activeSpeak !== null && this.options.isConsented(userId)) {
+        this.interrupt();
+      }
       void this.handleSpeaker(userId, queue);
     });
 
@@ -180,20 +190,56 @@ export class DiscordVoiceIO implements VoiceIO {
 
   async speak(text: string, opts?: SpeakOptions): Promise<void> {
     const voiceId = opts?.voiceId;
-    const bytes = await this.options.tts.synthesize(text, voiceId !== undefined ? { voiceId } : undefined);
-    const resource = createAudioResource(Readable.from(Buffer.from(bytes)), {
+    const ttsOpts = voiceId !== undefined ? { voiceId } : undefined;
+    const tts = this.options.tts;
+    // Prefer streaming synthesis so playback starts on the first chunk instead
+    // of waiting for the whole clip (design doc 0028 P1). Fall back to one-shot.
+    const audio: Readable = tts.synthesizeStream
+      ? Readable.from(tts.synthesizeStream(text, ttsOpts))
+      : Readable.from(Buffer.from(await tts.synthesize(text, ttsOpts)));
+    const resource = createAudioResource(audio, {
       inputType: StreamType.Arbitrary,
     });
+
+    // A barge-in (interrupt()) rejects this promise so the caller aborts the
+    // turn (design doc 0028 P2). Registered before play so a fast interrupter
+    // can't miss it.
+    const interrupted = new Promise<never>((_, reject) => {
+      this.activeSpeak = {
+        interrupt: () => {
+          this.player.stop(true);
+          reject(new InterruptedError());
+        },
+      };
+    });
+
     this.player.play(resource);
     // VoiceIO contract: resolve when playback ends. Confirm it started, then
     // wait for the player to return to Idle. If it never starts (empty/errored
-    // resource), don't hang.
+    // resource), don't hang. Race against barge-in throughout.
     try {
-      await entersState(this.player, AudioPlayerStatus.Playing, 10_000);
-    } catch {
-      return;
+      await Promise.race([
+        entersState(this.player, AudioPlayerStatus.Playing, 10_000),
+        interrupted,
+      ]);
+    } catch (err) {
+      this.activeSpeak = null;
+      if (err instanceof InterruptedError) throw err;
+      return; // never started — don't hang
     }
-    await entersState(this.player, AudioPlayerStatus.Idle, 10 * 60_000);
+    try {
+      await Promise.race([
+        entersState(this.player, AudioPlayerStatus.Idle, 10 * 60_000),
+        interrupted,
+      ]);
+    } finally {
+      this.activeSpeak = null;
+    }
+  }
+
+  /** Stop any in-progress playback now (proactive interrupt / barge-in). */
+  interrupt(): void {
+    this.activeSpeak?.interrupt();
   }
 
   async requestConsent(_subjectId: string, _consentText: string): Promise<void> {

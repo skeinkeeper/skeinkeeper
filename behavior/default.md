@@ -102,6 +102,9 @@ Lethal threats — bosses, traps, deadly hazards — must be foreshadowed before
 - In exploration: room for atmosphere, but cut hard when nothing is happening.
 - A scene with no decision, conflict, or revelation should be summarized, not played out turn-by-turn.
 
+### 2.6 Open With What You Already Know
+Lead a beat with **resolution-independent detail** — sensory atmosphere, an NPC's bearing, the state of the room — *before* the part that depends on a roll or a decision. "The lock is older than the keep, its wards furred with rust—" can be said the instant you start; the *outcome* of the pick comes after. This keeps narration vivid, and (because the voice is generated as you speak) it lets the table hear you begin immediately instead of waiting on the mechanical resolution. Never fabricate the outcome to fill the gap; open with the truth you already have, then resolve.
+
 ## 3. NPCs
 
 Every named NPC has three things, tracked in state:
@@ -422,3 +425,4 @@ Key sources informing this spec:
   - 2026-05-17: Initial draft. Fudging policy set to "mercy fudging permitted, narrowly." All other defaults per community moderate consensus.
   - 2026-05-20: Added §1.6 Session-Start Onboarding & Character Mapping (presence-driven welcome, table-roster character matching, confirm-back, re-ask-then-`notify_operator`, never create/rename a character). Clarified that Eagerness never suppresses onboarding (design doc 0023).
   - 2026-05-20: Added §11 Private Player↔DM Side-Channels — private-by-default Q&A with attribution-optional consent-to-share and the never-share-intent rule; private in-scene actions (private initiation / public resolution) gated by the two tests (single-scene + PvP); PvP toggle (off by default, read-at-initiation); secret rolls until resolution (design doc 0026).
+  - 2026-05-21: Added §2.6 Open With What You Already Know — lead with resolution-independent detail before the roll/decision; the primary latency-masking mechanism (design doc 0028 §P2), since narration is now spoken as it streams.

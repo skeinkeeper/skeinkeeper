@@ -24,11 +24,7 @@ export {
   type StopReason,
   type TokenUsage,
 } from "./llm.js";
-export {
-  FakeLLMProvider,
-  fakeLlmFromEvents,
-  type FakeScript,
-} from "./fake_llm_provider.js";
+export { FakeLLMProvider, fakeLlmFromEvents, type FakeScript } from "./fake_llm_provider.js";
 export {
   type STTOptions,
   type STTProvider,
@@ -39,6 +35,7 @@ export {
   type VoiceEvent,
   type VoiceIO,
   type PresenceMember,
+  InterruptedError,
 } from "./voice.js";
 export { FakeVoiceIO } from "./fake_voice_io.js";
 export { FakeEmbeddingProvider, type EmbeddingProvider } from "./embedding.js";

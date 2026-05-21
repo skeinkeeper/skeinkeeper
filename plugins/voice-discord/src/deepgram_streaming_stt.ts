@@ -39,6 +39,12 @@ export interface DeepgramStreamingSTTOptions {
   encoding?: string;
   sampleRate?: number;
   channels?: number;
+  /**
+   * Endpointing silence (ms) before Deepgram finalizes a transcript / sets
+   * `speech_final` — smarter, faster turn-ends than a fixed timer (design doc
+   * 0028 P3). Default 300. Set 0 to disable (Deepgram's own default behavior).
+   */
+  endpointingMs?: number;
   /** Defaults to wss://api.deepgram.com. */
   baseUrl?: string;
   /** Injectable for tests; defaults to a `ws` WebSocket. */
@@ -98,8 +104,12 @@ export class DeepgramStreamingSTT implements STTProvider {
     url.searchParams.set("model", this.model);
     url.searchParams.set("interim_results", "true");
     url.searchParams.set("smart_format", "true");
+    // Endpointing: finalize a turn after N ms of silence (design doc 0028 P3).
+    const endpointingMs = this.options.endpointingMs ?? 300;
+    if (endpointingMs > 0) url.searchParams.set("endpointing", String(endpointingMs));
     if (this.options.encoding) url.searchParams.set("encoding", this.options.encoding);
-    if (this.options.sampleRate) url.searchParams.set("sample_rate", String(this.options.sampleRate));
+    if (this.options.sampleRate)
+      url.searchParams.set("sample_rate", String(this.options.sampleRate));
     if (this.options.channels) url.searchParams.set("channels", String(this.options.channels));
     if (opts.language) url.searchParams.set("language", opts.language);
     return url.toString();
@@ -120,10 +130,7 @@ export class DeepgramStreamingSTT implements STTProvider {
     return buildUtterance(opts, transcript, alt?.confidence);
   }
 
-  async *transcribe(
-    audio: AsyncIterable<Uint8Array>,
-    opts: STTOptions,
-  ): AsyncIterable<Utterance> {
+  async *transcribe(audio: AsyncIterable<Uint8Array>, opts: STTOptions): AsyncIterable<Utterance> {
     const socket = this.factory(this.buildUrl(opts), this.options.apiKey);
     const queue = new AsyncQueue<Utterance>();
 
