@@ -116,6 +116,12 @@ export {
   type GenerateFillersInput,
 } from "./voice/masking/index.js";
 export {
+  shouldPreplan,
+  preplanIntent,
+  type PreplanDecisionOptions,
+  type PreplanInput,
+} from "./voice/anticipation.js";
+export {
   TranscriptionBuffer,
   utteranceToFragment,
   renderBuffer,
