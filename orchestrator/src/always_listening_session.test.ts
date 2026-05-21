@@ -7,8 +7,14 @@ import type { BehaviorSpec } from "./behavior.js";
 import { MockFoundryClient } from "./foundry/mock.js";
 import { FakeLLMProvider } from "./interfaces/fake_llm_provider.js";
 import { FakeVoiceIO } from "./interfaces/fake_voice_io.js";
-import type { TokenUsage } from "./interfaces/llm.js";
-import type { VoiceEvent, Utterance, VoiceIO } from "./interfaces/voice.js";
+import type { LLMEvent, LLMProvider, LLMRequest, TokenUsage } from "./interfaces/llm.js";
+import { MaskingPool } from "./voice/masking/pool.js";
+import {
+  InterruptedError,
+  type VoiceEvent,
+  type Utterance,
+  type VoiceIO,
+} from "./interfaces/voice.js";
 import { ToolDispatcher, ToolRegistry } from "./registry.js";
 import { startSession, type Session } from "./session.js";
 import {
@@ -39,7 +45,7 @@ function deciderAndNarration(deciderJson: string, narration: string): FakeLLMPro
   ]);
 }
 
-function setupSession(llm: FakeLLMProvider): { session: Session; tenantDb: TenantDb } {
+function setupSession(llm: LLMProvider): { session: Session; tenantDb: TenantDb } {
   const db = openDb({ path: ":memory:", runMigrations: true });
   db.insert(schema.tenants).values({ id: "default", name: "T", createdAt: Date.now() }).run();
   db.insert(schema.campaigns)
@@ -131,7 +137,9 @@ describe("runAlwaysListeningSession", () => {
 
     await runAlwaysListeningSession({ voiceIO, session, consentText: "c" });
 
-    const playerLine = tenantDb.dialogue.listBySession("sess-1").find((l) => l.speaker === "discord:bob");
+    const playerLine = tenantDb.dialogue
+      .listBySession("sess-1")
+      .find((l) => l.speaker === "discord:bob");
     expect(playerLine?.text).toContain("[Alice] I take point");
     expect(playerLine?.text).toContain("[Bob] I'm right behind");
   });
@@ -154,7 +162,9 @@ describe("runAlwaysListeningSession", () => {
 
     expect(seen).toEqual(["read"]);
     const sentDecider = llm.receivedRequests.find((r) => r.modelTier === "orchestration")!;
-    const text = sentDecider.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+    const text = sentDecider.messages[0]!.content.map((c) =>
+      c.type === "text" ? c.text : "",
+    ).join("");
     expect(text).toContain("EAGER");
   });
 
@@ -331,10 +341,7 @@ describe("runAlwaysListeningSession", () => {
   });
 
   it("folds a newcomer's introduction into the onboarding turn", async () => {
-    const llm = deciderAndNarration(
-      '{"respond": false}',
-      "Welcome, Alice — you're playing Mirna.",
-    );
+    const llm = deciderAndNarration('{"respond": false}', "Welcome, Alice — you're playing Mirna.");
     const { session, tenantDb } = setupSession(llm);
     const voiceIO = new FakeVoiceIO([
       presence([{ id: "discord:alice", displayName: "Alice" }]),
@@ -351,9 +358,7 @@ describe("runAlwaysListeningSession", () => {
   it("requests consent for unconsented speakers", async () => {
     const llm = deciderAndNarration('{"respond": false}', "x");
     const { session } = setupSession(llm);
-    const voiceIO = new FakeVoiceIO([
-      { kind: "consent_needed", speaker: "discord:carol" },
-    ]);
+    const voiceIO = new FakeVoiceIO([{ kind: "consent_needed", speaker: "discord:carol" }]);
 
     await runAlwaysListeningSession({ voiceIO, session, consentText: "please consent" });
 
@@ -391,5 +396,104 @@ describe("mergeFragmentsToTurnInput", () => {
     ]);
     expect(input?.speaker).toBe("discord:2");
     expect(input?.text).toBe("[Alice] I take point\n[Bob] behind you");
+  });
+});
+
+/** A provider that delays its narration so the masking threshold can fire. */
+class DelayedNarrationLLM implements LLMProvider {
+  readonly name = "delayed";
+  constructor(
+    private readonly narration: string,
+    private readonly delayMs: number,
+  ) {}
+  async *complete(req: LLMRequest): AsyncIterable<LLMEvent> {
+    if (req.modelTier === "orchestration") {
+      yield { kind: "text_delta", text: '{"respond": true}' };
+      yield { kind: "done", stopReason: "end_turn", usage: USAGE };
+      return;
+    }
+    await new Promise((r) => setTimeout(r, this.delayMs));
+    yield { kind: "text_delta", text: this.narration };
+    yield { kind: "done", stopReason: "end_turn", usage: USAGE };
+  }
+}
+
+describe("runAlwaysListeningSession — latency masking (design doc 0028 P2)", () => {
+  const routing = {
+    dmVoiceId: "dm",
+    getNpcVoice: () => "npc",
+    assignNpcVoice: async () => "npc",
+  };
+
+  it("speaks a filler to cover the gap when the turn is slow to start", async () => {
+    const { session } = setupSession(new DelayedNarrationLLM("The vault grinds open.", 60));
+    const voiceIO = new FakeVoiceIO([utter("a", "I open it"), { kind: "lull" }]);
+    const pool = new MaskingPool({ rng: () => 0 });
+    pool.add([{ text: "You steady your breath.", tags: ["neutral"] }]);
+
+    await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      voiceRouting: routing,
+      masking: { pool, thresholdMs: 5 },
+    });
+
+    const texts = voiceIO.spoken.map((s) => s.text);
+    expect(texts[0]).toBe("You steady your breath."); // filler covered the gap first
+    expect(texts).toContain("The vault grinds open."); // then the real narration
+  });
+
+  it("does not speak a filler when narration starts within the threshold", async () => {
+    const { session } = setupSession(deciderAndNarration('{"respond": true}', "Immediate."));
+    const voiceIO = new FakeVoiceIO([utter("a", "go"), { kind: "lull" }]);
+    const pool = new MaskingPool({ rng: () => 0 });
+    pool.add([{ text: "unused filler", tags: ["neutral"] }]);
+
+    await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      voiceRouting: routing,
+      masking: { pool, thresholdMs: 2000 },
+    });
+
+    expect(voiceIO.spoken.map((s) => s.text)).toEqual(["Immediate."]);
+  });
+});
+
+describe("runAlwaysListeningSession — barge-in (design doc 0028 P2)", () => {
+  it("invokes interrupt() and finishes cleanly when playback is interrupted", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "The guard scowls. He steps forward.");
+    const { session } = setupSession(llm);
+
+    // A VoiceIO whose playback is barged in on (speak rejects), exposing an
+    // interrupt spy — mimics a player talking over the DM mid-sentence.
+    const base = new FakeVoiceIO([utter("a", "I approach"), { kind: "lull" }]);
+    let interrupts = 0;
+    const voiceIO: VoiceIO = {
+      name: "barge",
+      listen: () => base.listen(),
+      speak: () => Promise.reject(new InterruptedError()),
+      requestConsent: async () => {},
+      interrupt: () => {
+        interrupts += 1;
+      },
+      close: async () => {},
+    };
+
+    // Must not throw out of the loop, and the barge-in must trigger interrupt().
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      voiceRouting: {
+        dmVoiceId: "dm-voice",
+        getNpcVoice: () => "npc-voice",
+        assignNpcVoice: async () => "npc-voice",
+      },
+    });
+    expect(result.turnCount).toBe(1);
+    expect(interrupts).toBeGreaterThanOrEqual(1);
   });
 });

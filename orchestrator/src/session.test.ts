@@ -605,6 +605,24 @@ describe("runTurn — streamed narration segments (design doc 0028 P1)", () => {
   });
 });
 
+describe("runTurn — barge-in / abort (design doc 0028 P2)", () => {
+  it("stops with stopReason 'aborted' when the signal is already aborted (no LLM call)", async () => {
+    const llm = fakeLlmFromEvents([
+      { kind: "text_delta", text: "A long monologue begins..." },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
+    const { session } = setupSession({ llm });
+    const out = await runTurn(
+      session,
+      { speaker: "p", text: "wait—" },
+      { signal: AbortSignal.abort() },
+    );
+    expect(out.stopReason).toBe("aborted");
+    expect(out.narration).toBe(""); // bailed before the round-trip
+    expect(llm.receivedRequests).toHaveLength(0);
+  });
+});
+
 describe("runTurn — side-channel scoping (design doc 0026)", () => {
   function hotContextText(llm: FakeLLMProvider, i = 0): string {
     const block = llm.receivedRequests[i]!.messages[0]!.content[0] as { text?: string };

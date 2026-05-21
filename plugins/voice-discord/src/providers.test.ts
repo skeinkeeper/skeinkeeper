@@ -12,10 +12,7 @@ interface Captured {
   init: RequestInit | undefined;
 }
 
-function fakeFetch(
-  response: Response,
-  captured: Captured[],
-): typeof fetch {
+function fakeFetch(response: Response, captured: Captured[]): typeof fetch {
   return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     captured.push({ url: String(input), init });
     return response;
@@ -32,7 +29,11 @@ describe("ElevenLabsVoiceLibrary", () => {
     const res = new Response(
       JSON.stringify({
         voices: [
-          { voice_id: "v1", name: "Boulder", labels: { gender: "male", age: "old", timbre: "gravelly" } },
+          {
+            voice_id: "v1",
+            name: "Boulder",
+            labels: { gender: "male", age: "old", timbre: "gravelly" },
+          },
           { voice_id: "v2", name: "Hazel", description: "warm, kindly, female" },
         ],
       }),
@@ -41,7 +42,12 @@ describe("ElevenLabsVoiceLibrary", () => {
     const lib = new ElevenLabsVoiceLibrary({ apiKey: "k", fetchImpl: fakeFetch(res, captured) });
     const entries = await lib.list();
     expect(entries).toEqual([
-      { id: "v1", name: "Boulder", description: "male, old, gravelly", labels: { gender: "male", age: "old", timbre: "gravelly" } },
+      {
+        id: "v1",
+        name: "Boulder",
+        description: "male, old, gravelly",
+        labels: { gender: "male", age: "old", timbre: "gravelly" },
+      },
       { id: "v2", name: "Hazel", description: "warm, kindly, female" },
     ]);
     await lib.list();
@@ -74,6 +80,16 @@ describe("ElevenLabsTTS", () => {
     const tts = new ElevenLabsTTS({ apiKey: "k", fetchImpl: fakeFetch(new Response(""), []) });
     await expect(tts.synthesize("x")).rejects.toThrow(/no voiceId/);
   });
+
+  it("streams audio chunks from the /stream endpoint (design doc 0028 P1)", async () => {
+    const captured: Captured[] = [];
+    const res = new Response(new Uint8Array([9, 8, 7]), { status: 200 });
+    const tts = new ElevenLabsTTS({ apiKey: "k", fetchImpl: fakeFetch(res, captured) });
+    const chunks: number[] = [];
+    for await (const c of tts.synthesizeStream("Hi.", { voiceId: "v-dm" })) chunks.push(...c);
+    expect(chunks).toEqual([9, 8, 7]);
+    expect(captured[0]!.url).toContain("/v1/text-to-speech/v-dm/stream");
+  });
 });
 
 describe("DeepgramSTT", () => {
@@ -81,13 +97,18 @@ describe("DeepgramSTT", () => {
     const captured: Captured[] = [];
     const res = new Response(
       JSON.stringify({
-        results: { channels: [{ alternatives: [{ transcript: "i open the door", confidence: 0.97 }] }] },
+        results: {
+          channels: [{ alternatives: [{ transcript: "i open the door", confidence: 0.97 }] }],
+        },
       }),
       { status: 200 },
     );
     const stt = new DeepgramSTT({ apiKey: "k", fetchImpl: fakeFetch(res, captured) });
     const out = [];
-    for await (const u of stt.transcribe(bytes([1, 2], [3, 4]), { speaker: "discord:1", displayName: "Alice" })) {
+    for await (const u of stt.transcribe(bytes([1, 2], [3, 4]), {
+      speaker: "discord:1",
+      displayName: "Alice",
+    })) {
       out.push(u);
     }
     expect(out).toHaveLength(1);
@@ -108,9 +129,12 @@ describe("DeepgramSTT", () => {
 describe("ElevenLabsScribeSTT", () => {
   it("posts a multipart request and yields a transcript utterance", async () => {
     const captured: Captured[] = [];
-    const res = new Response(JSON.stringify({ text: "we have to flee", language_probability: 0.99 }), {
-      status: 200,
-    });
+    const res = new Response(
+      JSON.stringify({ text: "we have to flee", language_probability: 0.99 }),
+      {
+        status: 200,
+      },
+    );
     const stt = new ElevenLabsScribeSTT({ apiKey: "k", fetchImpl: fakeFetch(res, captured) });
     const out = [];
     for await (const u of stt.transcribe(bytes([5, 6, 7]), { speaker: "discord:2" })) out.push(u);

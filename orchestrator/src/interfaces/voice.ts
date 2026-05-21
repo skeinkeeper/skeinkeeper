@@ -78,11 +78,30 @@ export interface PresenceMember {
  * (DiscordVoiceIO) joins a voice channel, gates inbound audio on consent,
  * runs STT on consented audio, and plays TTS for outbound narration.
  */
+/**
+ * Thrown by `VoiceIO.speak` when a player **barges in** — talks over the DM
+ * mid-playback (design doc 0028 P2). The adapter (which is both playing TTS and
+ * running STT) stops playback and rejects the in-flight `speak`; the caller
+ * catches this to abort the rest of the turn's generation rather than keep
+ * talking over the player.
+ */
+export class InterruptedError extends Error {
+  constructor(message = "speech interrupted by barge-in") {
+    super(message);
+    this.name = "InterruptedError";
+  }
+}
+
 export interface VoiceIO {
   readonly name: string;
   /** Yields voice events as players speak. Completes when the channel closes. */
   listen(): AsyncIterable<VoiceEvent>;
-  /** Synthesize + play `text` into the channel. Resolves when playback ends. */
+  /**
+   * Synthesize + play `text` into the channel. Resolves when playback ends.
+   * May **reject with `InterruptedError`** if a player barges in during playback
+   * (design doc 0028 P2) — the adapter stops the audio and the caller aborts the
+   * rest of the turn.
+   */
   speak(text: string, opts?: SpeakOptions): Promise<void>;
   /**
    * Deliver a consent prompt to a player out-of-band (e.g., a Discord DM).
@@ -90,6 +109,9 @@ export interface VoiceIO {
    * or button) and is recorded by the operator-side handler, not here.
    */
   requestConsent(subjectId: string, consentText: string): Promise<void>;
+  /** Stop any in-progress playback now (proactive interrupt — e.g. operator
+   *  pause). Optional; adapters that can't cancel playback omit it. */
+  interrupt?(): void;
   /** Tear down the connection. */
   close(): Promise<void>;
 }
@@ -106,10 +128,7 @@ export interface STTOptions {
 export interface STTProvider {
   readonly name: string;
   /** Stream audio chunks in, get utterances out. */
-  transcribe(
-    audio: AsyncIterable<Uint8Array>,
-    opts: STTOptions,
-  ): AsyncIterable<Utterance>;
+  transcribe(audio: AsyncIterable<Uint8Array>, opts: STTOptions): AsyncIterable<Utterance>;
 }
 
 export interface TTSOptions {
@@ -119,6 +138,13 @@ export interface TTSOptions {
 /** Text-to-speech provider. Composed by a VoiceIO adapter. */
 export interface TTSProvider {
   readonly name: string;
-  /** Synthesize audio bytes for `text`. */
+  /** Synthesize audio bytes for `text` (one shot). */
   synthesize(text: string, opts?: TTSOptions): Promise<Uint8Array>;
+  /**
+   * Stream audio chunks as they synthesize, for lower time-to-first-audio
+   * (design doc 0028 P1) — playback can begin on the first chunk instead of
+   * waiting for the whole clip. Optional; adapters prefer it over `synthesize`
+   * when present and fall back otherwise.
+   */
+  synthesizeStream?(text: string, opts?: TTSOptions): AsyncIterable<Uint8Array>;
 }
