@@ -98,6 +98,7 @@ export {
   type DmPersona,
 } from "./voice/personas.js";
 export { parseNarrationSegments, normalizeNpcKey, type NarrationSegment } from "./voice/markers.js";
+export { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
 export { FakeVoiceLibrary, type VoiceLibrary, type VoiceLibraryEntry } from "./voice/library.js";
 export {
   assignNpcVoice,

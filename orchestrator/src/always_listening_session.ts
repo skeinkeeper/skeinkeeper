@@ -4,14 +4,10 @@
 import type { PresentPlayer } from "./hot_context.js";
 import type { PresenceMember, VoiceIO } from "./interfaces/voice.js";
 import { runTurn, type Session, type TurnInput, type TurnOutput } from "./session.js";
-import {
-  TranscriptionBuffer,
-  utteranceToFragment,
-  type BufferFragment,
-} from "./voice/buffer.js";
+import { TranscriptionBuffer, utteranceToFragment, type BufferFragment } from "./voice/buffer.js";
 import { decideShouldRespond, type RespondDecision } from "./voice/decider.js";
 import { DEFAULT_EAGERNESS, type Eagerness } from "./voice/eagerness.js";
-import { parseNarrationSegments } from "./voice/markers.js";
+import { parseNarrationSegments, type NarrationSegment } from "./voice/markers.js";
 import { resolveSegmentVoices } from "./voice/assignment.js";
 import { buildOnboardingDirective, selectOnboardingTargets } from "./voice/onboarding.js";
 import { formatSpeakerLine } from "./util/format.js";
@@ -113,8 +109,7 @@ export async function runAlwaysListeningSession(
 ): Promise<AlwaysListeningResult> {
   const { voiceIO, session } = config;
   const buffer = new TranscriptionBuffer();
-  const getEagerness =
-    config.getEagerness ?? (() => session.config.eagerness ?? DEFAULT_EAGERNESS);
+  const getEagerness = config.getEagerness ?? (() => session.config.eagerness ?? DEFAULT_EAGERNESS);
   const isConsented = config.isConsented ?? (() => true);
 
   // Voice-channel roster (design doc 0023): who's present, who we've already
@@ -190,12 +185,11 @@ export async function runAlwaysListeningSession(
           ? { speaker: "orchestrator", text: directive }
           : { ...merged, text: `${merged.text}\n\n${directive}` };
 
-      const turn = await runTurn(session, onboardingInput, { presentPlayers: roster });
+      const turn = await runTurnAndSpeak(config, onboardingInput, roster);
       for (const t of targets) greeted.add(t.id);
       onboardingCount += 1;
       turnCount += 1;
       config.onTurn?.(turn);
-      await speakTurn(config, turn);
       continue;
     }
 
@@ -215,11 +209,9 @@ export async function runAlwaysListeningSession(
     const turnInput = mergeFragmentsToTurnInput(buffer.drain());
     if (turnInput === null) continue;
 
-    const turn = await runTurn(session, turnInput, { presentPlayers: roster });
+    const turn = await runTurnAndSpeak(config, turnInput, roster);
     turnCount += 1;
     config.onTurn?.(turn);
-
-    await speakTurn(config, turn);
   }
 
   return { turnCount, decisionCount, onboardingCount };
@@ -244,6 +236,59 @@ function buildRoster(
     out.push(p);
   }
   return out;
+}
+
+/**
+ * Run a turn and speak it. With per-character voice routing (the real path) the
+ * narration **streams** (design doc 0028 P1): each speakable segment is spoken
+ * in order, on a serial queue, *as the model produces it* — so audio starts
+ * ~one sentence in rather than after the whole turn, and segment N+1 generates
+ * while segment N plays. Without routing, falls back to speaking the completed
+ * narration. Returns the TurnOutput either way.
+ */
+async function runTurnAndSpeak(
+  config: AlwaysListeningConfig,
+  input: TurnInput,
+  roster: ReadonlyArray<PresentPlayer>,
+): Promise<TurnOutput> {
+  const routing = config.voiceRouting;
+  if (routing === undefined) {
+    const turn = await runTurn(config.session, input, { presentPlayers: roster });
+    await speakTurn(config, turn);
+    return turn;
+  }
+
+  // Serial speaker: each segment chains onto the previous so audio plays FIFO
+  // while the model keeps generating. A failed segment is swallowed so one
+  // dropped sentence doesn't kill the rest of the turn's audio.
+  let speakChain: Promise<void> = Promise.resolve();
+  let streamed = false;
+  const turn = await runTurn(config.session, input, {
+    presentPlayers: roster,
+    onNarrationSegment: (seg) => {
+      streamed = true;
+      speakChain = speakChain
+        .then(() => speakSegment(config.voiceIO, routing, seg))
+        .catch(() => {});
+    },
+  });
+  await speakChain; // drain queued audio before returning
+  if (!streamed && turn.narration.length > 0) await speakTurn(config, turn);
+  return turn;
+}
+
+/** Resolve a single streamed segment's voice and speak it (design doc 0028 P1). */
+async function speakSegment(
+  voiceIO: VoiceIO,
+  routing: NonNullable<AlwaysListeningConfig["voiceRouting"]>,
+  seg: NarrationSegment,
+): Promise<void> {
+  if (seg.text.length === 0) return;
+  const voiceId =
+    seg.kind === "dm"
+      ? routing.dmVoiceId
+      : (routing.getNpcVoice(seg.npcKey) ?? (await routing.assignNpcVoice(seg.npcKey)));
+  await voiceIO.speak(seg.text, { voiceId });
 }
 
 async function speakTurn(config: AlwaysListeningConfig, turn: TurnOutput): Promise<void> {

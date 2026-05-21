@@ -37,6 +37,8 @@ import type {
 import type { ToolDispatcher } from "./registry.js";
 import { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
 import type { Eagerness } from "./voice/eagerness.js";
+import type { NarrationSegment } from "./voice/markers.js";
+import { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
 import { buildWarmStateSnapshot } from "./warm_state.js";
 
 /**
@@ -205,6 +207,15 @@ export interface TurnOptions {
    *  hot context so the AI can run onboarding and call record_player_character. */
   presentPlayers?: ReadonlyArray<PresentPlayer>;
   /**
+   * Streamed-narration sink (design doc 0028 P1). When set, each speakable
+   * segment (sentence or `[NPC:]` voice-change boundary) is emitted **as the
+   * model generates it**, so the caller can start speaking segment N while
+   * segment N+1 is still being produced. Fires in order; the full narration is
+   * still returned + persisted as one turn. Absent = no streaming (the segment
+   * split happens after the turn, as before).
+   */
+  onNarrationSegment?: (segment: NarrationSegment) => void;
+  /**
    * Scope this turn to a 1:1 side-channel conversation (design doc 0026). When
    * set: the player input and the DM's reply are stored with this `audience` +
    * `conversationId`; hot-context dialogue is filtered to what this conversation
@@ -304,12 +315,16 @@ async function runLlmIterations(
   turnId: string,
   maxIter: number,
   modelTier: ModelTier,
+  onSegment?: (segment: NarrationSegment) => void,
 ): Promise<IterationsResult> {
   const allToolCalls: DispatchedToolCall[] = [];
   let narration = "";
   let stopReason: TurnStopReason = "end_turn";
   let errorMessage: string | undefined;
   let iterations = 0;
+  // One segmenter for the whole turn (narration can span tool-call iterations);
+  // flushed once at the end. Only built when a streaming sink is wired.
+  const segmenter = onSegment ? new StreamingNarrationSegmenter() : null;
 
   for (let i = 1; i <= maxIter; i++) {
     iterations = i;
@@ -333,6 +348,7 @@ async function runLlmIterations(
       if (ev.kind === "text_delta") {
         narration += ev.text;
         iterationText += ev.text;
+        if (segmenter && onSegment) for (const seg of segmenter.push(ev.text)) onSegment(seg);
       } else if (ev.kind === "tool_call") {
         iterationToolCalls.push({ id: ev.id, name: ev.name, input: ev.input });
       } else if (ev.kind === "done") {
@@ -418,6 +434,9 @@ async function runLlmIterations(
       stopReason = "max_tool_iterations";
     }
   }
+
+  // Flush the final pending segment (last sentence has no trailing space).
+  if (segmenter && onSegment) for (const seg of segmenter.flush()) onSegment(seg);
 
   const result: IterationsResult = { narration, toolCalls: allToolCalls, stopReason, iterations };
   if (errorMessage !== undefined) result.errorMessage = errorMessage;
@@ -514,7 +533,15 @@ export async function runTurn(
     stopReason,
     errorMessage,
     iterations,
-  } = await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter, modelTier);
+  } = await runLlmIterations(
+    cfg,
+    messages,
+    toolSpecs,
+    turnId,
+    maxIter,
+    modelTier,
+    options.onNarrationSegment,
+  );
 
   // Persist the AI's narration as a narrator dialogue turn so future turns see
   // it in hot context (in-memory + DB). In a side-channel it carries the
