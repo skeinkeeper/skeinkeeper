@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryClient } from "./foundry/client.js";
+import type { Mutex } from "./util/mutex.js";
 
 export interface ToolHandlerContext {
   tenantDb: TenantDb;
@@ -30,6 +31,11 @@ export interface ToolDefinition<S extends z.ZodTypeAny, O extends z.ZodTypeAny> 
   readonly inputSchema: S;
   readonly outputSchema: O;
   readonly operatorGated?: boolean;
+  /** True if this tool mutates shared world/campaign state. When the dispatcher
+   *  is given a `writeSerializer`, such handlers run one-at-a-time through it so
+   *  concurrent conversations (table loop + N side-channels) never race the
+   *  world (design doc 0026 §3). Read-only tools run unserialized. */
+  readonly mutatesWorld?: boolean;
   handle(input: z.infer<S>, ctx: ToolHandlerContext): Promise<z.infer<O>>;
 }
 
@@ -74,6 +80,11 @@ export type ToolResult =
 export interface ToolDispatcherOptions {
   registry: ToolRegistry;
   analytics?: AnalyticsClient;
+  /** Single serialized writer for world-state mutations (design doc 0026 §3).
+   *  When present, `mutatesWorld` handlers run exclusively through it (FIFO);
+   *  read-only handlers are unaffected. Absent = no serialization (the legacy
+   *  single-table flow, where there's only ever one in-flight turn). */
+  writeSerializer?: Mutex;
 }
 
 export class ToolDispatcher {
@@ -133,7 +144,11 @@ export class ToolDispatcher {
     }
 
     try {
-      const output = await tool.handle(parsed.data, ctx);
+      const serializer = this.options.writeSerializer;
+      const output =
+        tool.mutatesWorld === true && serializer !== undefined
+          ? await serializer.runExclusive(() => tool.handle(parsed.data, ctx))
+          : await tool.handle(parsed.data, ctx);
       const result: ToolResult = { ok: true, output, latencyMs: Date.now() - start };
       this.recordAudit(call, ctx, result);
       this.recordTelemetry(tool.name, true, result.latencyMs);
