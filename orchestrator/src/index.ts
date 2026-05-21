@@ -12,11 +12,7 @@ export {
   type ToolDispatcherOptions,
 } from "./registry.js";
 export { rollFormula, type RollResult, type RollOptions } from "./dice.js";
-export {
-  BUILTIN_TOOLS,
-  registerBuiltinTools,
-  createDefaultRegistry,
-} from "./tools/index.js";
+export { BUILTIN_TOOLS, registerBuiltinTools, createDefaultRegistry } from "./tools/index.js";
 export {
   assembleHotContext,
   formatHotContextAsText,
@@ -59,16 +55,22 @@ export {
 export {
   InMemoryMemoryStore,
   cosineSimilarity,
+  effectiveAudience,
   type MemoryStore,
   type MemoryRecord,
   type MemoryKind,
   type MemoryQueryOptions,
 } from "./memory/store.js";
+export { allowedAudiencesFor, audienceVisibleInConversation } from "./audience.js";
+export { Mutex } from "./util/mutex.js";
 export {
-  retrieveMemory,
-  buildMemoryQuery,
-  DEFAULT_RETRIEVAL_TOP_K,
-} from "./memory/retrieval.js";
+  evaluatePrivateAction,
+  pvpEnabledFromSetting,
+  PVP_SETTING_KEY,
+  type PrivateActionClassification,
+  type GuardrailDecision,
+} from "./side_channel/guardrail.js";
+export { retrieveMemory, buildMemoryQuery, DEFAULT_RETRIEVAL_TOP_K } from "./memory/retrieval.js";
 export {
   generateEpisodicSummary,
   EpisodicSummaryError,
@@ -95,16 +97,8 @@ export {
   getDmPersona,
   type DmPersona,
 } from "./voice/personas.js";
-export {
-  parseNarrationSegments,
-  normalizeNpcKey,
-  type NarrationSegment,
-} from "./voice/markers.js";
-export {
-  FakeVoiceLibrary,
-  type VoiceLibrary,
-  type VoiceLibraryEntry,
-} from "./voice/library.js";
+export { parseNarrationSegments, normalizeNpcKey, type NarrationSegment } from "./voice/markers.js";
+export { FakeVoiceLibrary, type VoiceLibrary, type VoiceLibraryEntry } from "./voice/library.js";
 export {
   assignNpcVoice,
   resolveSegmentVoices,

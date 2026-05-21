@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
+import type { Audience } from "@skeinkeeper/server";
 import type { EmbeddingProvider } from "../interfaces/embedding.js";
 import type { DialogueTurn } from "../hot_context.js";
 import type { MemoryKind, MemoryRecord, MemoryStore } from "./store.js";
@@ -36,6 +37,10 @@ export async function retrieveMemory(
     campaignId: string;
     topK?: number;
     kinds?: ReadonlyArray<MemoryKind>;
+    /** Audiences this conversation may see (design doc 0026 §10). Pass
+     *  `allowedAudiencesFor(conversationId)` so a side-channel never retrieves
+     *  another player's private or `gm` content. Absent = no audience filter. */
+    audiences?: ReadonlyArray<Audience | string>;
   },
 ): Promise<MemoryRecord[]> {
   if (args.query.trim().length === 0) return [];
@@ -45,5 +50,6 @@ export async function retrieveMemory(
     campaignId: args.campaignId,
     topK: args.topK ?? DEFAULT_RETRIEVAL_TOP_K,
     ...(args.kinds !== undefined ? { kinds: args.kinds } : {}),
+    ...(args.audiences !== undefined ? { audiences: args.audiences } : {}),
   });
 }

@@ -2,8 +2,15 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { createHash } from "node:crypto";
-import type { TenantDb } from "@skeinkeeper/server";
+import {
+  TABLE_AUDIENCE,
+  TABLE_CONVERSATION,
+  type Audience,
+  type ConversationId,
+  type TenantDb,
+} from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
+import { allowedAudiencesFor, audienceVisibleInConversation } from "./audience.js";
 import { bucketSpecSizeKb, type BehaviorSpec } from "./behavior.js";
 import type { FoundryClient } from "./foundry/client.js";
 import {
@@ -24,6 +31,7 @@ import type {
   LLMMessage,
   LLMProvider,
   LLMRequest,
+  ModelTier,
   StopReason,
 } from "./interfaces/llm.js";
 import type { ToolDispatcher } from "./registry.js";
@@ -110,7 +118,13 @@ export function startSession(config: SessionConfig): Session {
 
   // Resume: hydrate in-memory dialogue from persisted turns.
   for (const row of config.tenantDb.dialogue.listBySession(config.sessionId)) {
-    const t: DialogueTurn = { speaker: row.speaker, text: row.text, timestamp: row.timestamp };
+    const t: DialogueTurn = {
+      speaker: row.speaker,
+      text: row.text,
+      timestamp: row.timestamp,
+      audience: row.audience as Audience,
+      conversationId: row.conversationId as ConversationId,
+    };
     if (row.displayName != null) t.displayName = row.displayName;
     session.dialogue.push(t);
   }
@@ -190,6 +204,21 @@ export interface TurnOptions {
   /** Voice-channel roster + character mappings (design doc 0023), surfaced in
    *  hot context so the AI can run onboarding and call record_player_character. */
   presentPlayers?: ReadonlyArray<PresentPlayer>;
+  /**
+   * Scope this turn to a 1:1 side-channel conversation (design doc 0026). When
+   * set: the player input and the DM's reply are stored with this `audience` +
+   * `conversationId`; hot-context dialogue is filtered to what this conversation
+   * may see (shared `table` turns + this player's own — never `gm`, never
+   * another player); and memory retrieval is audience-scoped. Absent = the
+   * shared table conversation (today's behavior).
+   */
+  conversation?: { id: ConversationId; audience: Audience };
+  /**
+   * Model tier for this turn (design doc 0026 §3). Side-channel Q&A →
+   * "orchestration" (Haiku, fast/cheap); a narrated beat or action resolution →
+   * "narration" (Opus). Defaults to "narration".
+   */
+  modelTier?: ModelTier;
 }
 
 export interface DispatchedToolCall {
@@ -200,11 +229,7 @@ export interface DispatchedToolCall {
   ok: boolean;
 }
 
-export type TurnStopReason =
-  | "end_turn"
-  | "max_tool_iterations"
-  | "refusal"
-  | "llm_error";
+export type TurnStopReason = "end_turn" | "max_tool_iterations" | "refusal" | "llm_error";
 
 export interface TurnOutput {
   narration: string;
@@ -226,10 +251,24 @@ const DEFAULT_DIALOGUE_WINDOW = 20;
 function appendDialogue(
   cfg: SessionConfig,
   session: Session,
-  turn: { speaker: string; displayName?: string; text: string },
+  turn: {
+    speaker: string;
+    displayName?: string;
+    text: string;
+    audience?: Audience;
+    conversationId?: ConversationId;
+  },
   timestamp: number,
 ): void {
-  const t: DialogueTurn = { speaker: turn.speaker, text: turn.text, timestamp };
+  const audience: Audience = turn.audience ?? TABLE_AUDIENCE;
+  const conversationId: ConversationId = turn.conversationId ?? TABLE_CONVERSATION;
+  const t: DialogueTurn = {
+    speaker: turn.speaker,
+    text: turn.text,
+    timestamp,
+    audience,
+    conversationId,
+  };
   if (turn.displayName !== undefined) t.displayName = turn.displayName;
   session.dialogue.push(t);
   cfg.tenantDb.dialogue.append({
@@ -238,6 +277,8 @@ function appendDialogue(
     ...(turn.displayName !== undefined ? { displayName: turn.displayName } : {}),
     text: turn.text,
     timestamp,
+    audience,
+    conversationId,
   });
 }
 
@@ -262,6 +303,7 @@ async function runLlmIterations(
   toolSpecs: LLMRequest["tools"],
   turnId: string,
   maxIter: number,
+  modelTier: ModelTier,
 ): Promise<IterationsResult> {
   const allToolCalls: DispatchedToolCall[] = [];
   let narration = "";
@@ -277,7 +319,7 @@ async function runLlmIterations(
       systemPrompt: cfg.behaviorSpec.content,
       messages,
       tools: toolSpecs,
-      modelTier: "narration",
+      modelTier,
     };
 
     const iterationToolCalls: Array<{ id: string; name: string; input: unknown }> = [];
@@ -311,7 +353,7 @@ async function runLlmIterations(
     if (!iterationErrored) {
       cfg.analytics?.track("llm.completed", {
         providerName: cfg.llm.name,
-        modelTier: "narration",
+        modelTier,
         success: true,
         stopReason: iterationStopReason,
         inputTokensBucket: bucketTokens(usage?.inputTokens ?? 0),
@@ -393,10 +435,21 @@ export async function runTurn(
   const maxIter = cfg.maxToolIterations ?? DEFAULT_MAX_ITER;
   const windowSize = cfg.dialogueWindowSize ?? DEFAULT_DIALOGUE_WINDOW;
   const turnId = `${cfg.sessionId}-${startMs}`;
+  const conversationId: ConversationId = options.conversation?.id ?? TABLE_CONVERSATION;
+  const audience: Audience = options.conversation?.audience ?? TABLE_AUDIENCE;
+  const modelTier: ModelTier = options.modelTier ?? "narration";
 
-  // Append player turn to dialogue so it appears in hot context.
-  appendDialogue(cfg, session, input, startMs);
+  // Append player turn to dialogue (scoped to this conversation + audience) so
+  // it appears in hot context.
+  appendDialogue(cfg, session, { ...input, audience, conversationId }, startMs);
   session.turnCount += 1;
+
+  // What this conversation may see: shared `table` turns plus its own; never
+  // another player's private content, never `gm` secrets in a side-channel
+  // (design doc 0026 §2, §10). For the table loop this is table + gm.
+  const visibleDialogue = session.dialogue.filter((t) =>
+    audienceVisibleInConversation(t.audience ?? TABLE_AUDIENCE, conversationId),
+  );
 
   // Audit: turn start.
   appendAudit(cfg, {
@@ -419,10 +472,14 @@ export async function runTurn(
   let retrievedMemory: RetrievedMemoryChunk[] = [];
   if (cfg.memory) {
     try {
-      const query = buildMemoryQuery(session.dialogue);
+      const query = buildMemoryQuery(visibleDialogue);
       const records = await retrieveMemory(cfg.memory.embed, cfg.memory.store, {
         query,
         campaignId: cfg.campaignId,
+        // Audience-scoped to this conversation: the table loop sees shared + gm;
+        // a side-channel sees shared + that player's own — never another
+        // player's private memory or gm secrets (design doc 0026 §10).
+        audiences: allowedAudiencesFor(conversationId),
         ...(cfg.memory.topK !== undefined ? { topK: cfg.memory.topK } : {}),
       });
       retrievedMemory = records.map((r) => ({ kind: r.kind, text: r.text }));
@@ -431,7 +488,7 @@ export async function runTurn(
     }
   }
 
-  const hotContext = assembleHotContext(warmState, session.dialogue, {
+  const hotContext = assembleHotContext(warmState, visibleDialogue, {
     windowSize,
     retrievedMemory,
     ...(options.presentPlayers !== undefined ? { presentPlayers: options.presentPlayers } : {}),
@@ -439,10 +496,7 @@ export async function runTurn(
   const hotContextText = formatHotContextAsText(hotContext);
 
   // Tools.
-  const toolSpecs = cfg.dispatcher
-    .registry()
-    .list()
-    .map(toolDefinitionToLlmSpec);
+  const toolSpecs = cfg.dispatcher.registry().list().map(toolDefinitionToLlmSpec);
 
   // Conversation: starts with one user message carrying hot context (which
   // includes recent dialogue ending with this turn's input). Grows with
@@ -454,13 +508,25 @@ export async function runTurn(
     },
   ];
 
-  const { narration, toolCalls: allToolCalls, stopReason, errorMessage, iterations } =
-    await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter);
+  const {
+    narration,
+    toolCalls: allToolCalls,
+    stopReason,
+    errorMessage,
+    iterations,
+  } = await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter, modelTier);
 
-  // Persist the AI's narration as a narrator dialogue turn so future turns
-  // see it in hot context (in-memory + DB).
+  // Persist the AI's narration as a narrator dialogue turn so future turns see
+  // it in hot context (in-memory + DB). In a side-channel it carries the
+  // conversation's audience, so the private reply stays private (design doc
+  // 0026 §2) and is player-scoped erasable (ADR-0017).
   if (narration.length > 0) {
-    appendDialogue(cfg, session, { speaker: "narrator", text: narration }, Date.now());
+    appendDialogue(
+      cfg,
+      session,
+      { speaker: "narrator", text: narration, audience, conversationId },
+      Date.now(),
+    );
   }
 
   // Tools may have mutated state — refresh for the output, but only if any
