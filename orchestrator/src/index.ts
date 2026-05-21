@@ -63,6 +63,13 @@ export {
 } from "./memory/store.js";
 export { allowedAudiencesFor, audienceVisibleInConversation } from "./audience.js";
 export { Mutex } from "./util/mutex.js";
+export {
+  evaluatePrivateAction,
+  pvpEnabledFromSetting,
+  PVP_SETTING_KEY,
+  type PrivateActionClassification,
+  type GuardrailDecision,
+} from "./side_channel/guardrail.js";
 export { retrieveMemory, buildMemoryQuery, DEFAULT_RETRIEVAL_TOP_K } from "./memory/retrieval.js";
 export {
   generateEpisodicSummary,
