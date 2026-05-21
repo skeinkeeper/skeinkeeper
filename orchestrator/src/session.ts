@@ -2,8 +2,15 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { createHash } from "node:crypto";
-import type { TenantDb } from "@skeinkeeper/server";
+import {
+  TABLE_AUDIENCE,
+  TABLE_CONVERSATION,
+  type Audience,
+  type ConversationId,
+  type TenantDb,
+} from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
+import { allowedAudiencesFor } from "./audience.js";
 import { bucketSpecSizeKb, type BehaviorSpec } from "./behavior.js";
 import type { FoundryClient } from "./foundry/client.js";
 import {
@@ -110,7 +117,13 @@ export function startSession(config: SessionConfig): Session {
 
   // Resume: hydrate in-memory dialogue from persisted turns.
   for (const row of config.tenantDb.dialogue.listBySession(config.sessionId)) {
-    const t: DialogueTurn = { speaker: row.speaker, text: row.text, timestamp: row.timestamp };
+    const t: DialogueTurn = {
+      speaker: row.speaker,
+      text: row.text,
+      timestamp: row.timestamp,
+      audience: row.audience as Audience,
+      conversationId: row.conversationId as ConversationId,
+    };
     if (row.displayName != null) t.displayName = row.displayName;
     session.dialogue.push(t);
   }
@@ -200,11 +213,7 @@ export interface DispatchedToolCall {
   ok: boolean;
 }
 
-export type TurnStopReason =
-  | "end_turn"
-  | "max_tool_iterations"
-  | "refusal"
-  | "llm_error";
+export type TurnStopReason = "end_turn" | "max_tool_iterations" | "refusal" | "llm_error";
 
 export interface TurnOutput {
   narration: string;
@@ -226,10 +235,24 @@ const DEFAULT_DIALOGUE_WINDOW = 20;
 function appendDialogue(
   cfg: SessionConfig,
   session: Session,
-  turn: { speaker: string; displayName?: string; text: string },
+  turn: {
+    speaker: string;
+    displayName?: string;
+    text: string;
+    audience?: Audience;
+    conversationId?: ConversationId;
+  },
   timestamp: number,
 ): void {
-  const t: DialogueTurn = { speaker: turn.speaker, text: turn.text, timestamp };
+  const audience: Audience = turn.audience ?? TABLE_AUDIENCE;
+  const conversationId: ConversationId = turn.conversationId ?? TABLE_CONVERSATION;
+  const t: DialogueTurn = {
+    speaker: turn.speaker,
+    text: turn.text,
+    timestamp,
+    audience,
+    conversationId,
+  };
   if (turn.displayName !== undefined) t.displayName = turn.displayName;
   session.dialogue.push(t);
   cfg.tenantDb.dialogue.append({
@@ -238,6 +261,8 @@ function appendDialogue(
     ...(turn.displayName !== undefined ? { displayName: turn.displayName } : {}),
     text: turn.text,
     timestamp,
+    audience,
+    conversationId,
   });
 }
 
@@ -423,6 +448,9 @@ export async function runTurn(
       const records = await retrieveMemory(cfg.memory.embed, cfg.memory.store, {
         query,
         campaignId: cfg.campaignId,
+        // The table loop sees shared + gm content, never any player's private
+        // side-channel memory (design doc 0026 §10).
+        audiences: allowedAudiencesFor(TABLE_CONVERSATION),
         ...(cfg.memory.topK !== undefined ? { topK: cfg.memory.topK } : {}),
       });
       retrievedMemory = records.map((r) => ({ kind: r.kind, text: r.text }));
@@ -439,10 +467,7 @@ export async function runTurn(
   const hotContextText = formatHotContextAsText(hotContext);
 
   // Tools.
-  const toolSpecs = cfg.dispatcher
-    .registry()
-    .list()
-    .map(toolDefinitionToLlmSpec);
+  const toolSpecs = cfg.dispatcher.registry().list().map(toolDefinitionToLlmSpec);
 
   // Conversation: starts with one user message carrying hot context (which
   // includes recent dialogue ending with this turn's input). Grows with
@@ -454,8 +479,13 @@ export async function runTurn(
     },
   ];
 
-  const { narration, toolCalls: allToolCalls, stopReason, errorMessage, iterations } =
-    await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter);
+  const {
+    narration,
+    toolCalls: allToolCalls,
+    stopReason,
+    errorMessage,
+    iterations,
+  } = await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter);
 
   // Persist the AI's narration as a narrator dialogue turn so future turns
   // see it in hot context (in-memory + DB).

@@ -61,8 +61,18 @@ describe("TenantDb — quest flags upsert", () => {
     const { t } = setup();
     const now = Date.now();
     seedCampaign(t);
-    t.questFlags.set({ campaignId: "c1", key: "phandelver.cragmaw.cleared", value: "false", updatedAt: now });
-    t.questFlags.set({ campaignId: "c1", key: "phandelver.cragmaw.cleared", value: "true", updatedAt: now + 1 });
+    t.questFlags.set({
+      campaignId: "c1",
+      key: "phandelver.cragmaw.cleared",
+      value: "false",
+      updatedAt: now,
+    });
+    t.questFlags.set({
+      campaignId: "c1",
+      key: "phandelver.cragmaw.cleared",
+      value: "true",
+      updatedAt: now + 1,
+    });
     const all = t.questFlags.listByCampaign("c1");
     expect(all).toHaveLength(1);
     expect(all[0]?.value).toBe("true");
@@ -74,9 +84,19 @@ describe("TenantDb — settings upsert/get/delete", () => {
     const { t } = setup();
     const now = Date.now();
     seedCampaign(t);
-    t.settings.set({ campaignId: "c1", key: "operator.discord_user_id", value: "111", updatedAt: now });
+    t.settings.set({
+      campaignId: "c1",
+      key: "operator.discord_user_id",
+      value: "111",
+      updatedAt: now,
+    });
     expect(t.settings.get("c1", "operator.discord_user_id")?.value).toBe("111");
-    t.settings.set({ campaignId: "c1", key: "operator.discord_user_id", value: "222", updatedAt: now + 1 });
+    t.settings.set({
+      campaignId: "c1",
+      key: "operator.discord_user_id",
+      value: "222",
+      updatedAt: now + 1,
+    });
     expect(t.settings.get("c1", "operator.discord_user_id")?.value).toBe("222");
     expect(t.settings.listByCampaign("c1")).toHaveLength(1);
     t.settings.delete("c1", "operator.discord_user_id");
@@ -86,8 +106,15 @@ describe("TenantDb — settings upsert/get/delete", () => {
   it("cascades away when its campaign is deleted (erasure path)", () => {
     const { db, t } = setup();
     seedCampaign(t);
-    t.settings.set({ campaignId: "c1", key: "operator.discord_user_id", value: "111", updatedAt: Date.now() });
-    db.delete(campaigns).where(and(eq(campaigns.tenantId, "default"), eq(campaigns.id, "c1"))).run();
+    t.settings.set({
+      campaignId: "c1",
+      key: "operator.discord_user_id",
+      value: "111",
+      updatedAt: Date.now(),
+    });
+    db.delete(campaigns)
+      .where(and(eq(campaigns.tenantId, "default"), eq(campaigns.id, "c1")))
+      .run();
     expect(t.settings.listByCampaign("c1")).toHaveLength(0);
   });
 });
@@ -201,7 +228,9 @@ describe("TenantDb — player↔character map", () => {
       source: "player",
       confirmedAt: now,
     });
-    expect(t.playerCharacterMap.currentForPlayer("c1", "discord:1")?.foundryActorId).toBe("actor-a");
+    expect(t.playerCharacterMap.currentForPlayer("c1", "discord:1")?.foundryActorId).toBe(
+      "actor-a",
+    );
     expect(t.playerCharacterMap.listByCampaign("c1")).toHaveLength(1);
   });
 
@@ -219,7 +248,9 @@ describe("TenantDb — player↔character map", () => {
       confirmedAt: Date.now(),
     });
     expect(alpha.playerCharacterMap.currentForPlayer("shared-campaign", "discord:1")).toBeDefined();
-    expect(beta.playerCharacterMap.currentForPlayer("shared-campaign", "discord:1")).toBeUndefined();
+    expect(
+      beta.playerCharacterMap.currentForPlayer("shared-campaign", "discord:1"),
+    ).toBeUndefined();
   });
 });
 
@@ -318,5 +349,52 @@ describe("TenantDb — audit log append-only", () => {
     const entries = t.auditLog.listForSession("sess-1");
     expect(entries).toHaveLength(2);
     expect(entries[0]?.actor).toBe("tool:roll");
+  });
+});
+
+describe("TenantDb — dialogue conversations + audience (design doc 0026)", () => {
+  function seedSession(t: TenantDb): void {
+    seedCampaign(t);
+    t.sessions.create({
+      id: "s1",
+      campaignId: "c1",
+      behaviorSpecVersion: "v0.1",
+      startedAt: Date.now(),
+    });
+  }
+
+  it("append defaults audience + conversationId to 'table'", () => {
+    const { t } = setup();
+    seedSession(t);
+    t.dialogue.append({ sessionId: "s1", speaker: "discord:1", text: "hi", timestamp: 1 });
+    const row = t.dialogue.listBySession("s1")[0];
+    expect(row?.audience).toBe("table");
+    expect(row?.conversationId).toBe("table");
+  });
+
+  it("listByConversation returns only that thread's turns; listBySession returns the whole transcript", () => {
+    const { t } = setup();
+    seedSession(t);
+    t.dialogue.append({ sessionId: "s1", speaker: "discord:1", text: "table 1", timestamp: 1 });
+    t.dialogue.append({
+      sessionId: "s1",
+      speaker: "narrator",
+      text: "dm to dana",
+      timestamp: 2,
+      audience: "player:discord:1",
+      conversationId: "player:discord:1",
+    });
+    t.dialogue.append({ sessionId: "s1", speaker: "narrator", text: "table 2", timestamp: 3 });
+
+    expect(t.dialogue.listByConversation("s1", "table").map((r) => r.text)).toEqual([
+      "table 1",
+      "table 2",
+    ]);
+    const dana = t.dialogue.listByConversation("s1", "player:discord:1");
+    expect(dana.map((r) => r.text)).toEqual(["dm to dana"]);
+    expect(dana[0]?.audience).toBe("player:discord:1");
+
+    // The full transcript (replay / export) still sees every conversation.
+    expect(t.dialogue.listBySession("s1")).toHaveLength(3);
   });
 });

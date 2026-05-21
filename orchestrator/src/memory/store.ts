@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
+import type { Audience } from "@skeinkeeper/server";
+
 /**
  * Cold/episodic memory store (design doc 0019, ADR-0002). A thin,
  * tenant-scoped seam over a vector store so the orchestrator's retrieval
@@ -24,6 +26,11 @@ export interface MemoryRecord {
     createdAt: number;
     /** Embedding model identity — vectors from different models aren't comparable. */
     embedModel: string;
+    /** Who may see this record (design doc 0026, ADR-0017). Absent = "table"
+     *  (shared, campaign-scoped). "player:<id>" records are private to one
+     *  player and individually erasable; "gm" records never enter a player's
+     *  side-channel context. */
+    audience?: Audience;
     /** Structured deltas preserved separately from prose (ADR-0002). */
     deltas?: Record<string, unknown>;
   };
@@ -32,7 +39,16 @@ export interface MemoryRecord {
 export interface MemoryQueryOptions {
   campaignId: string;
   kinds?: ReadonlyArray<MemoryKind>;
+  /** Restrict to these audiences (design doc 0026 §10). Absent = no audience
+   *  filter. A record with no stored audience is treated as "table". */
+  audiences?: ReadonlyArray<Audience | string>;
   topK: number;
+}
+
+/** A record's effective audience — defaults to "table" when unset (legacy /
+ *  shared content). The single place this default lives. */
+export function effectiveAudience(r: MemoryRecord): string {
+  return r.metadata.audience ?? "table";
 }
 
 export interface MemoryStore {
@@ -43,6 +59,10 @@ export interface MemoryStore {
   deleteByCampaign(campaignId: string): Promise<number>;
   /** Erasure: delete this tenant's records. Returns the count removed. */
   deleteByTenant(): Promise<number>;
+  /** Erasure: delete records with this exact audience (e.g. a player's private
+   *  side-channel memory, "player:<id>", per ADR-0017). Returns the count
+   *  removed. Shared "table"/"gm" records are unaffected. */
+  deleteByAudience(audience: string): Promise<number>;
 }
 
 export function cosineSimilarity(a: ReadonlyArray<number>, b: ReadonlyArray<number>): number {
@@ -72,7 +92,8 @@ export class InMemoryMemoryStore implements MemoryStore {
     const candidates = [...this.records.values()].filter(
       (r) =>
         r.metadata.campaignId === opts.campaignId &&
-        (opts.kinds === undefined || opts.kinds.includes(r.kind)),
+        (opts.kinds === undefined || opts.kinds.includes(r.kind)) &&
+        (opts.audiences === undefined || opts.audiences.includes(effectiveAudience(r))),
     );
     return candidates
       .map((r) => ({ r, score: cosineSimilarity(vector, r.vector) }))
@@ -96,5 +117,16 @@ export class InMemoryMemoryStore implements MemoryStore {
     const n = this.records.size;
     this.records.clear();
     return n;
+  }
+
+  async deleteByAudience(audience: string): Promise<number> {
+    let removed = 0;
+    for (const [id, r] of this.records) {
+      if (effectiveAudience(r) === audience) {
+        this.records.delete(id);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 }
