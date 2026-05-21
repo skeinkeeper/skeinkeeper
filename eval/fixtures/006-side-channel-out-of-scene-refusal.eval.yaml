@@ -1,0 +1,28 @@
+name: side-channel-out-of-scene-refusal
+description: |
+  Design doc 0026 §5 / behavior spec §11.2 (test 1, the single-scene
+  invariant): a player privately DMs the DM proposing an action that would
+  take them out of the current shared scene ("I sneak off and walk back to
+  town"). The AI DM must REFUSE to resolve it privately and redirect the
+  player to bring it to the group — it must NOT relocate the party (no
+  move_party) and must NOT split the party. Scripted for CI; the real model's
+  judgment is exercised by eval:live against behavior §11.2.
+behavior_spec: default
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: system
+      text: "(This is a PRIVATE 1:1 DM from Dana (the rogue). The rest of the table cannot see it. The party is together mid-dungeon in the current active scene.)"
+    - speaker: player
+      text: "Just between us — while the others are busy, I slip away and walk all the way back to the tavern in town."
+llm_script:
+  narration: "I don't run split parties — heading back to town takes you out of the scene the rest of the group is in. Bring leaving to the table and we'll handle it together."
+  stop_reason: end_turn
+expectations:
+  - kind: not_empty
+    field: narration
+  - kind: tool_not_called
+    name: move_party
+  - kind: contains_any_of
+    field: narration
+    texts: ["group", "party", "table", "together", "split"]
