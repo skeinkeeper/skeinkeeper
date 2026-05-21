@@ -21,6 +21,7 @@ import {
   Session,
   type SessionConfig,
 } from "./session.js";
+import type { NarrationSegment } from "./voice/markers.js";
 import { z } from "zod";
 
 const SPEC: BehaviorSpec = {
@@ -53,10 +54,12 @@ function setupSession(overrides: Partial<SessionConfig> = {}): {
 
   const registry = new ToolRegistry();
   const dispatcher = new ToolDispatcher({ registry });
-  const llm = overrides.llm ?? fakeLlmFromEvents([
-    { kind: "text_delta", text: "Default narration." },
-    { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
-  ]);
+  const llm =
+    overrides.llm ??
+    fakeLlmFromEvents([
+      { kind: "text_delta", text: "Default narration." },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
 
   const config: SessionConfig = {
     sessionId: "sess-1",
@@ -511,7 +514,9 @@ describe("runTurn + archiveSession — cold/episodic memory (design doc 0019)", 
     const { session } = setupSession({ llm, memory: { embed, store } });
     await runTurn(session, { speaker: "discord:1", text: "what about that goblin we spared?" });
     const req = (llm as FakeLLMProvider).receivedRequests[0]!;
-    const userText = req.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+    const userText = req.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join(
+      "",
+    );
     expect(userText).toContain("Relevant memory");
     expect(userText).toContain("Yeemik");
   });
@@ -553,5 +558,49 @@ describe("runTurn + archiveSession — cold/episodic memory (design doc 0019)", 
     const { session } = setupSession();
     await runTurn(session, { speaker: "discord:1", text: "hi" });
     expect(await archiveSession(session)).toBeNull();
+  });
+});
+
+describe("runTurn — streamed narration segments (design doc 0028 P1)", () => {
+  it("emits speakable segments in order as the model generates, and still returns the full narration", async () => {
+    const llm = fakeLlmFromEvents([
+      { kind: "text_delta", text: "You enter the hall. " },
+      { kind: "text_delta", text: "[NPC:Sildar] " },
+      { kind: "text_delta", text: '"We made it." ' },
+      { kind: "text_delta", text: "The doors boom shut." },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
+    const { session } = setupSession({ llm });
+    const segments: NarrationSegment[] = [];
+    const out = await runTurn(
+      session,
+      { speaker: "p", text: "we go in" },
+      { onNarrationSegment: (s) => segments.push(s) },
+    );
+
+    // A marker applies until the next marker (no back-to-DM marker exists), so
+    // the trailing sentence stays in Sildar's voice — same attribution as the
+    // batch parser, just split finer (per sentence) for earlier first-audio.
+    expect(segments).toEqual([
+      { kind: "dm", text: "You enter the hall." },
+      { kind: "npc", npcKey: "sildar", text: '"We made it."' },
+      { kind: "npc", npcKey: "sildar", text: "The doors boom shut." },
+    ]);
+    // The full narration is unchanged — still persisted as one turn.
+    expect(out.narration).toBe(
+      'You enter the hall. [NPC:Sildar] "We made it." The doors boom shut.',
+    );
+    expect(session.dialogue.some((d) => d.speaker === "narrator")).toBe(true);
+  });
+
+  it("does not emit segments when no sink is provided (legacy path)", async () => {
+    const { session } = setupSession({
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "A quiet road. Birds sing." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    const out = await runTurn(session, { speaker: "p", text: "look" });
+    expect(out.narration).toBe("A quiet road. Birds sing.");
   });
 });
