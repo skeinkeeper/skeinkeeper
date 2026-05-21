@@ -41,4 +41,5 @@ Like ADRs, accepted design docs are **append-only**: a substantive revision is a
 | [0024](./0024-operator-self-designation.md) | Operator Self-Designation (Console + Slash Command) | Accepted; supersedes §4 of [0023](./0023-session-onboarding-presence-operator-channel.md) |
 | [0025](./0025-operator-control-parity.md) | Operator Control Parity (Console ↔ Slash) + Live State Sync | Accepted |
 | [0026](./0026-player-dm-side-channels.md) | 1:1 Player↔DM Side-Channels (private Q&A + private actions) | Accepted |
+| [0027](./0027-mcp-bridge-gap-reaudit-upstream-proposal.md) | MCP Bridge Gap Re-Audit + Upstream Proposal (extends [0022](./0022-dm-action-coverage-audit.md)) | Accepted |
 | [0028](./0028-real-time-voice-latency.md) | Real-Time Voice Latency (streaming, barge-in, latency masking) | Accepted |
