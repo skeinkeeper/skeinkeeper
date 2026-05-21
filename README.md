@@ -4,7 +4,7 @@
 
 > _Wyrd bið ful aræd._ — Old English: "Fate remains wholly inexorable."
 
-**Skeinkeeper** is a self-hosted AI Dungeon Master for your friend group's tabletop RPG sessions. It joins your Discord voice channel, speaks aloud in distinct character voices, autonomously operates Foundry VTT (maps, tokens, combat, dice), and maintains persistent campaign state across sessions.
+**Skeinkeeper** is a self-hosted AI Dungeon Master for your friend group's tabletop RPG sessions. It joins your Discord voice channel, listens to the whole table and speaks aloud in distinct character voices, drives your Foundry VTT, and maintains persistent campaign state across sessions. You run it from a local web console or right from Discord with slash commands.
 
 The target setup: four to six friends, some in-person, some remote over Discord voice. Skeinkeeper runs the DM side so the humans can focus on playing.
 
@@ -42,10 +42,12 @@ docker compose up
 
 ## What it does
 
-- **Runs the DM side of a tabletop RPG session.** Narrates scenes, voices NPCs, manages combat, calls for rolls, adjudicates rules, tracks state.
-- **Joins your Discord voice channel** and speaks aloud. Distinct per-NPC voices. Always-listening — no wake-word — with an operator-tunable "Eagerness" dial controlling how readily it speaks up.
-- **Operates Foundry VTT autonomously** — moves tokens, manages combat tracker, rolls dice, reveals fog, switches scenes.
-- **Remembers your campaign.** Foundry remains authoritative for the mechanical state of your campaign — character sheets, NPCs, scenes — and Skeinkeeper adds the AI-DM layer on top: quest flags the AI tracks, session transcripts, who said what three sessions ago, post-session summaries, and the audit trail of every tool call. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md).
+- **Runs the DM side of a tabletop RPG session.** Narrates scenes, voices NPCs, calls for rolls, adjudicates rules, tracks state.
+- **Joins your Discord voice channel and speaks aloud.** Distinct per-NPC voices. Always-listening — no wake-word — with an operator-tunable "Eagerness" dial controlling how readily it speaks up.
+- **Onboards your table as people arrive.** When players join the voice channel it welcomes them, asks which character is theirs, and maps each one to its Foundry actor — no manual roster setup. Voice-processing consent is requested per player and is withdrawable at any time. See [design doc 0023](./docs/design/0023-session-onboarding-presence-operator-channel.md).
+- **Driven from a console or from Discord.** A local operator console (`http://localhost:3000`) and `/skeinkeeper` slash commands offer the same controls — start/stop the session, pick the DM voice, tune Eagerness, claim the operator role — and stay in sync live across both surfaces. Setup snags the AI can't resolve in-fiction come to you as a private Discord DM. See [design docs 0024](./docs/design/0024-operator-self-designation.md)–[0025](./docs/design/0025-operator-control-parity.md).
+- **Drives your Foundry VTT.** Switches the active scene/map as the party moves. Foundry stays authoritative for the mechanical state of your campaign — character sheets, NPCs, tokens, combat — which Skeinkeeper reads each turn. Deeper in-play control (token placement, combat-tracker, fog reveal, server-side rolls) lands as the open-source Foundry MCP bridges grow to support it — the gaps we're driving upstream are tracked in [design doc 0022](./docs/design/0022-dm-action-coverage-audit.md).
+- **Remembers your campaign.** On top of Foundry's authoritative state, Skeinkeeper keeps the AI-DM layer: quest flags the AI tracks, session transcripts, who said what three sessions ago, post-session summaries, and the audit trail of every tool call. See [design doc 0007](./docs/design/0007-foundry-as-source-of-truth.md).
 - **Treats the dice with respect.** Open rolls stay open. The AI never fudges player rolls, death saves, or final-blow rolls. The fudging policy (described in [`behavior/default.md`](./behavior/default.md)) is narrow, secret, and exclusively for the players' benefit.
 - **Stays out of your data.** Self-hosted; nothing leaves your machine except calls to the providers you've configured. Zero phone-home by default. See [`docs/PRIVACY.md`](./docs/PRIVACY.md).
 
