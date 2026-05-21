@@ -7,6 +7,7 @@ import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import { ToolRegistry, ToolDispatcher, defineTool } from "./registry.js";
 import { createDefaultRegistry } from "./tools/index.js";
 import { MockFoundryClient } from "./foundry/mock.js";
+import { Mutex } from "./util/mutex.js";
 
 function setup() {
   const db = openDb({ path: ":memory:", runMigrations: true });
@@ -41,7 +42,10 @@ describe("ToolRegistry", () => {
 
   it("createDefaultRegistry registers the core (system-agnostic) tools", () => {
     const r = createDefaultRegistry();
-    const names = r.list().map((t) => t.name).sort();
+    const names = r
+      .list()
+      .map((t) => t.name)
+      .sort();
     expect(names).toEqual(
       [
         "advance_time",
@@ -126,7 +130,10 @@ describe("ToolDispatcher", () => {
     const r = createDefaultRegistry();
     const d = new ToolDispatcher({ registry: r });
     const result = await d.dispatch(
-      { name: "fudge_roll", input: { originalTotal: 1, newTotal: 20, reason: "saving the story arc" } },
+      {
+        name: "fudge_roll",
+        input: { originalTotal: 1, newTotal: 20, reason: "saving the story arc" },
+      },
       makeCtx(tenantDb, { caller: "llm" }),
     );
     expect(result.ok).toBe(false);
@@ -138,7 +145,10 @@ describe("ToolDispatcher", () => {
     const r = createDefaultRegistry();
     const d = new ToolDispatcher({ registry: r });
     const result = await d.dispatch(
-      { name: "fudge_roll", input: { originalTotal: 1, newTotal: 20, reason: "saving the story arc" } },
+      {
+        name: "fudge_roll",
+        input: { originalTotal: 1, newTotal: 20, reason: "saving the story arc" },
+      },
       makeCtx(tenantDb, { caller: "operator" }),
     );
     expect(result.ok).toBe(true);
@@ -149,7 +159,10 @@ describe("ToolDispatcher", () => {
     const r = createDefaultRegistry();
     const d = new ToolDispatcher({ registry: r });
     const result = await d.dispatch(
-      { name: "fudge_roll", input: { originalTotal: 1, newTotal: 20, reason: "string of bad luck" } },
+      {
+        name: "fudge_roll",
+        input: { originalTotal: 1, newTotal: 20, reason: "string of bad luck" },
+      },
       makeCtx(tenantDb, { caller: "llm", flags: { fudgeAllowed: true } }),
     );
     expect(result.ok).toBe(true);
@@ -202,7 +215,10 @@ describe("Builtin tools (end-to-end)", () => {
   it("advance_time accumulates across calls", async () => {
     const { tenantDb, dispatcher } = bootstrap();
     const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const };
-    await dispatcher.dispatch({ name: "advance_time", input: { campaignId: "c1", minutes: 15 } }, ctx);
+    await dispatcher.dispatch(
+      { name: "advance_time", input: { campaignId: "c1", minutes: 15 } },
+      ctx,
+    );
     const r = await dispatcher.dispatch(
       { name: "advance_time", input: { campaignId: "c1", minutes: 30 } },
       ctx,
@@ -214,7 +230,10 @@ describe("Builtin tools (end-to-end)", () => {
     const { tenantDb, dispatcher } = bootstrap();
     const ctx = { tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const };
     await dispatcher.dispatch(
-      { name: "set_quest_flag", input: { campaignId: "c1", key: "cragmaw.cleared", value: "true" } },
+      {
+        name: "set_quest_flag",
+        input: { campaignId: "c1", key: "cragmaw.cleared", value: "true" },
+      },
       ctx,
     );
     await dispatcher.dispatch(
@@ -279,7 +298,80 @@ describe("Builtin tools (end-to-end)", () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect((r.output as { delivered: boolean }).delivered).toBe(false);
   });
+});
 
+describe("ToolDispatcher — write serialization (design doc 0026 §3)", () => {
+  const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+  function slowTool(name: string, events: string[], mutatesWorld: boolean, delay: number) {
+    return defineTool({
+      name,
+      description: name,
+      mutatesWorld,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      async handle() {
+        events.push(`${name}:start`);
+        await tick(delay);
+        events.push(`${name}:end`);
+        return { ok: true };
+      },
+    });
+  }
+
+  const ctx = (tenantDb: TenantDb) =>
+    ({ tenantDb, sessionId: "s", turnId: "t", caller: "operator" as const }) as const;
+
+  it("serializes mutatesWorld handlers FIFO through the writeSerializer", async () => {
+    const { tenantDb } = setup();
+    const events: string[] = [];
+    const r = new ToolRegistry();
+    r.register(slowTool("w1", events, true, 30));
+    r.register(slowTool("w2", events, true, 5));
+    const d = new ToolDispatcher({ registry: r, writeSerializer: new Mutex() });
+
+    await Promise.all([
+      d.dispatch({ name: "w1", input: {} }, ctx(tenantDb)),
+      d.dispatch({ name: "w2", input: {} }, ctx(tenantDb)),
+    ]);
+
+    // w1 (slower) was dispatched first, so it commits first despite the delay.
+    expect(events).toEqual(["w1:start", "w1:end", "w2:start", "w2:end"]);
+  });
+
+  it("does not serialize read-only handlers — they bypass the lock", async () => {
+    const { tenantDb } = setup();
+    const events: string[] = [];
+    const r = new ToolRegistry();
+    r.register(slowTool("writer", events, true, 30)); // holds the lock 30ms
+    r.register(slowTool("reader", events, false, 0)); // read-only, immediate
+    const d = new ToolDispatcher({ registry: r, writeSerializer: new Mutex() });
+
+    await Promise.all([
+      d.dispatch({ name: "writer", input: {} }, ctx(tenantDb)),
+      d.dispatch({ name: "reader", input: {} }, ctx(tenantDb)),
+    ]);
+
+    // The reader finished before the slow writer — it did not wait for the lock.
+    expect(events.indexOf("reader:end")).toBeLessThan(events.indexOf("writer:end"));
+  });
+
+  it("without a writeSerializer, mutating handlers may overlap (legacy single-table flow)", async () => {
+    const { tenantDb } = setup();
+    const events: string[] = [];
+    const r = new ToolRegistry();
+    r.register(slowTool("w1", events, true, 30));
+    r.register(slowTool("w2", events, true, 5));
+    const d = new ToolDispatcher({ registry: r }); // no serializer
+
+    await Promise.all([
+      d.dispatch({ name: "w1", input: {} }, ctx(tenantDb)),
+      d.dispatch({ name: "w2", input: {} }, ctx(tenantDb)),
+    ]);
+
+    // Unserialized: the faster w2 finishes before w1 (they overlapped).
+    expect(events).toEqual(["w1:start", "w2:start", "w2:end", "w1:end"]);
+  });
 });
 
 // (rollFormula is comprehensively tested in dice.test.ts.)
@@ -367,9 +459,9 @@ describe("move_party — activates the Foundry scene (ADR-0015)", () => {
     if (r.ok) expect((r.output as { sceneActivated: boolean }).sceneActivated).toBe(true);
     expect((await foundry.getActiveScene())?.id).toBe("s-cragmaw");
     // quest flag still recorded
-    expect(tenantDb.questFlags.listByCampaign("c1").find((f) => f.key === "party.location")?.value).toBe(
-      "Cragmaw Hideout",
-    );
+    expect(
+      tenantDb.questFlags.listByCampaign("c1").find((f) => f.key === "party.location")?.value,
+    ).toBe("Cragmaw Hideout");
   });
 
   it("still records the flag when no Foundry is in context (sceneActivated false)", async () => {
