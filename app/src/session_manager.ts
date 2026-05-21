@@ -8,9 +8,11 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  Partials,
   PermissionFlagsBits,
   type ChatInputCommandInteraction,
   type Guild,
+  type Message,
   type VoiceBasedChannel,
   type VoiceState,
 } from "discord.js";
@@ -22,6 +24,8 @@ import {
 } from "@discordjs/voice";
 import { DiscordVoiceIO, type PresenceSource } from "@skeinkeeper/voice-discord";
 import {
+  Mutex,
+  PVP_SETTING_KEY,
   ToolDispatcher,
   archiveSession,
   assignNpcVoice as assignNpcVoiceLLM,
@@ -29,7 +33,9 @@ import {
   endSession,
   findDefaultBehaviorSpec,
   loadBehaviorSpec,
+  pvpEnabledFromSetting,
   runAlwaysListeningSession,
+  runTurn,
   startSession,
   VOICE_CONSENT_TEXT,
   type Eagerness,
@@ -38,7 +44,7 @@ import {
   type Session,
   type VoiceIO,
 } from "@skeinkeeper/orchestrator";
-import type { TenantDb } from "@skeinkeeper/server";
+import { playerAudience, playerConversation, type TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { AppConfig } from "./config.js";
 import type { ConsentService } from "./consent.js";
@@ -64,13 +70,18 @@ export type AppEvent =
   | { kind: "turn"; narration: string; tools: ReadonlyArray<string> }
   | { kind: "consent_prompt"; speaker: string }
   /** Live voice-channel roster for the operator picker (design doc 0024). */
-  | { kind: "roster"; members: ReadonlyArray<{ id: string; displayName?: string; isOperator: boolean }> }
+  | {
+      kind: "roster";
+      members: ReadonlyArray<{ id: string; displayName?: string; isOperator: boolean }>;
+    }
   /** The current operator changed (any designation path; design doc 0024). */
   | { kind: "operator"; operatorUserId?: string; displayName?: string }
   /** A control changed from any surface — keeps console ↔ slash in sync
    *  without a refresh (design doc 0025). */
   | { kind: "eagerness"; eagerness: Eagerness }
-  | { kind: "dmVoice"; voiceId: string; personaId?: string };
+  | { kind: "dmVoice"; voiceId: string; personaId?: string }
+  /** PvP toggle changed from any surface (design doc 0026 §6). */
+  | { kind: "pvp"; enabled: boolean };
 
 export interface SessionManagerDeps {
   config: AppConfig;
@@ -114,7 +125,11 @@ async function reply(
  * (config, consent) lives in its own modules.
  */
 export class SessionManager {
-  private readonly controls: { eagerness: Eagerness; dmVoiceId: string };
+  private readonly controls: { eagerness: Eagerness; dmVoiceId: string; pvpEnabled: boolean };
+  /** The single per-campaign serialized writer (design doc 0026 §3): every
+   *  world-mutating tool call — table loop or side-channel — funnels through
+   *  this so concurrent conversations never race shared state. */
+  private readonly writeSerializer = new Mutex();
   /** Operator designation (design doc 0024): persisted snowflake + env fallback. */
   private readonly operator: OperatorService;
   private client: Client | null = null;
@@ -140,7 +155,14 @@ export class SessionManager {
   } | null = null;
 
   constructor(private readonly deps: SessionManagerDeps) {
-    this.controls = { eagerness: deps.config.eagerness, dmVoiceId: deps.config.dmVoiceId };
+    this.controls = {
+      eagerness: deps.config.eagerness,
+      dmVoiceId: deps.config.dmVoiceId,
+      // PvP is per-campaign, persisted, default OFF (design doc 0026 §6).
+      pvpEnabled: pvpEnabledFromSetting(
+        deps.tenantDb.settings.get(deps.campaignId, PVP_SETTING_KEY)?.value,
+      ),
+    };
     this.operator = new OperatorService(
       deps.tenantDb,
       deps.campaignId,
@@ -156,6 +178,23 @@ export class SessionManager {
   setEagerness(eagerness: Eagerness): void {
     this.controls.eagerness = eagerness;
     this.deps.onEvent?.({ kind: "eagerness", eagerness });
+  }
+  get pvpEnabled(): boolean {
+    return this.controls.pvpEnabled;
+  }
+  /** Toggle PvP from any surface (console or slash). Persists the per-campaign
+   *  setting and emits so the other surface updates live (design docs 0026 §6,
+   *  0025 / ADR-0016). Read-at-initiation: a side-channel action already
+   *  underway completes under the value in effect when it began. */
+  setPvpEnabled(enabled: boolean): void {
+    this.controls.pvpEnabled = enabled;
+    this.deps.tenantDb.settings.set({
+      campaignId: this.deps.campaignId,
+      key: PVP_SETTING_KEY,
+      value: enabled ? "true" : "false",
+      updatedAt: Date.now(),
+    });
+    this.deps.onEvent?.({ kind: "pvp", enabled });
   }
   get dmVoiceId(): string {
     return this.controls.dmVoiceId;
@@ -243,9 +282,18 @@ export class SessionManager {
     const { config, providers } = this.deps;
 
     const client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        // Inbound player DMs are the side-channel transport (design doc 0026 §7).
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
+      ],
+      // DM channels/messages arrive uncached; partials let the events fire.
+      partials: [Partials.Channel, Partials.Message],
     });
     this.client = client;
+    this.registerSideChannelDms(client);
     const ready = new Promise<void>((resolve) => client.once(Events.ClientReady, () => resolve()));
     await client.login(config.discord.botToken);
     await ready;
@@ -332,6 +380,9 @@ export class SessionManager {
 
     const dispatcher = new ToolDispatcher({
       registry: createDefaultRegistry(),
+      // Single serialized writer so the table loop and side-channel turns never
+      // race shared world-state (design doc 0026 §3).
+      writeSerializer: this.writeSerializer,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     const behaviorSpec = loadBehaviorSpec(findDefaultBehaviorSpec(import.meta.dirname));
@@ -448,7 +499,10 @@ export class SessionManager {
     interaction: ChatInputCommandInteraction,
     action: string | null,
   ): Promise<void> {
-    if (operatorActionIsPrivileged(action) && !(await this.memberCanManageVoice(interaction.user.id))) {
+    if (
+      operatorActionIsPrivileged(action) &&
+      !(await this.memberCanManageVoice(interaction.user.id))
+    ) {
       await reply(
         interaction,
         "You need the **Manage Channel** permission on the Skeinkeeper voice channel to change the operator.",
@@ -457,16 +511,40 @@ export class SessionManager {
     }
     if (action === "claim") {
       this.setOperator(interaction.user.id);
-      await reply(interaction, "✅ You're now the Skeinkeeper operator — I'll DM you setup notes here.");
+      await reply(
+        interaction,
+        "✅ You're now the Skeinkeeper operator — I'll DM you setup notes here.",
+      );
     } else if (action === "clear") {
       this.clearOperator();
       await reply(interaction, "Operator cleared.");
     } else if (action === "show") {
       const id = this.operatorUserId;
-      await reply(interaction, id !== undefined ? `Current operator: <@${id}>` : "No operator is set.");
+      await reply(
+        interaction,
+        id !== undefined ? `Current operator: <@${id}>` : "No operator is set.",
+      );
     } else {
       await reply(interaction, "Use action: claim, clear, or show.");
     }
+  }
+
+  /** Toggle PvP from the slash surface — operator-gated (Manage Channel),
+   *  since it controls whether players can act against each other (design doc
+   *  0026 §6). Mirrors the console toggle via the same setPvpEnabled write. */
+  private async handlePvpSlash(
+    interaction: ChatInputCommandInteraction,
+    enabled: boolean,
+  ): Promise<void> {
+    if (!(await this.memberCanManageVoice(interaction.user.id))) {
+      await reply(
+        interaction,
+        "You need the **Manage Channel** permission on the Skeinkeeper voice channel to change PvP.",
+      );
+      return;
+    }
+    this.setPvpEnabled(enabled);
+    await reply(interaction, `PvP → ${enabled ? "ON" : "OFF"}`);
   }
 
   /** Whether a user holds Manage Channel on the play voice channel (admins
@@ -475,7 +553,9 @@ export class SessionManager {
     if (this.guild === null || this.voiceChannel === null) return false;
     try {
       const member = await this.guild.members.fetch(userId);
-      return this.voiceChannel.permissionsFor(member)?.has(PermissionFlagsBits.ManageChannels) ?? false;
+      return (
+        this.voiceChannel.permissionsFor(member)?.has(PermissionFlagsBits.ManageChannels) ?? false
+      );
     } catch {
       return false;
     }
@@ -617,6 +697,87 @@ export class SessionManager {
     await user.send({ content: `🧵 **Skeinkeeper (operator note):** ${message}` });
   }
 
+  /**
+   * Inbound side-channel transport (design doc 0026 §7): a player DMs the bot.
+   * Each DM is routed to that player's 1:1 conversation and run as a private
+   * side-channel turn (player audience + conversationId, orchestration tier),
+   * with the answer delivered back in the DM. The structural audience scoping
+   * (design doc 0026 §10) keeps other players' private content and `gm` secrets
+   * out of the turn entirely. LIVE-VALIDATION REQUIRED.
+   */
+  private registerSideChannelDms(client: Client): void {
+    client.on(Events.MessageCreate, (message) => {
+      void this.handleSideChannelDm(message);
+    });
+  }
+
+  private async handleSideChannelDm(message: Message): Promise<void> {
+    if (message.author.bot) return;
+    if (message.guildId !== null) return; // DMs only, never a guild channel
+    const text = message.content.trim();
+    if (text.length === 0) return;
+    const session = this.session;
+    if (session === null || !this.running) return;
+
+    const authorId = message.author.id;
+    // Only actual table participants get a side-channel — a random DM to the bot
+    // shouldn't spin up a turn.
+    if (!this.isTableParticipant(authorId)) return;
+
+    try {
+      if ("sendTyping" in message.channel) {
+        await message.channel.sendTyping(); // the "thinking…" signal (0026 §10)
+      }
+    } catch {
+      // typing indicator is best-effort
+    }
+
+    const displayName =
+      this.guild?.members.cache.get(authorId)?.displayName ?? message.author.username;
+    // Read PvP once, at initiation (0026 §6), and surface it so the model can
+    // apply the §11.3 gate for any PC-targeting action it's asked to resolve.
+    const pvpNote = this.controls.pvpEnabled
+      ? "PvP is ENABLED for this campaign."
+      : "PvP is DISABLED for this campaign — do not resolve an action against another player's character in private; refuse and redirect to the group.";
+
+    try {
+      const turn = await runTurn(
+        session,
+        { speaker: authorId, displayName, text },
+        {
+          conversation: {
+            id: playerConversation(authorId),
+            audience: playerAudience(authorId),
+          },
+          modelTier: "orchestration",
+          systemNote: pvpNote,
+        },
+      );
+      if (turn.narration.trim().length > 0) {
+        await message.reply(turn.narration);
+      }
+    } catch {
+      try {
+        await message.reply(
+          "(Something went wrong handling that privately — try again, or raise it at the table.)",
+        );
+      } catch {
+        // give up if even the fallback reply fails
+      }
+    }
+  }
+
+  /** Whether a DM author is an actual participant at the table — present in the
+   *  voice channel now, or already mapped to a character this campaign. */
+  private isTableParticipant(userId: string): boolean {
+    const present = this.presenceSource?.current().some((m) => m.id === userId) ?? false;
+    if (present) return true;
+    return (
+      this.deps.tenantDb.playerCharacterMap.currentForPlayer(this.deps.campaignId, userId) !==
+      undefined
+    );
+  }
+
   private async registerSlashCommands(guildId: string): Promise<void> {
     try {
       const guild = await this.client?.guilds.fetch(guildId);
@@ -702,6 +863,24 @@ export class SessionManager {
                 },
               ],
             },
+            {
+              type: 1, // SUB_COMMAND
+              name: "pvp",
+              description: "Turn player-vs-player on/off, or show it (operator only)",
+              options: [
+                {
+                  type: 3,
+                  name: "action",
+                  description: "on, off, or show",
+                  required: true,
+                  choices: [
+                    { name: "on", value: "on" },
+                    { name: "off", value: "off" },
+                    { name: "show", value: "show" },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ]);
@@ -771,7 +950,10 @@ export class SessionManager {
         return;
       case "voice.set": {
         const r = this.setDmVoiceByPersona(cmd.personaId);
-        void reply(interaction, r.ok ? `DM voice → ${cmd.personaId}` : (r.error ?? "unknown persona"));
+        void reply(
+          interaction,
+          r.ok ? `DM voice → ${cmd.personaId}` : (r.error ?? "unknown persona"),
+        );
         return;
       }
       case "voice.set_missing":
@@ -779,6 +961,15 @@ export class SessionManager {
         return;
       case "voice.usage":
         void reply(interaction, "Use action: list or set.");
+        return;
+      case "pvp.set":
+        void this.handlePvpSlash(interaction, cmd.enabled);
+        return;
+      case "pvp.show":
+        void reply(interaction, `PvP is currently ${this.pvpEnabled ? "ON" : "OFF"}.`);
+        return;
+      case "pvp.usage":
+        void reply(interaction, "Use action: on, off, or show.");
         return;
       case "consent.grant":
         this.deps.consent.grant(interaction.user.id);

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, extname, join, normalize } from "node:path";
 import type { App } from "../bootstrap.js";
 import type { EventBus } from "./event_bus.js";
-import { getState, setDmVoice, setEagerness, setOperator } from "./api.js";
+import { getState, setDmVoice, setEagerness, setOperator, setPvp } from "./api.js";
 import { mintToken, verifyPassword, verifyToken } from "../auth.js";
 
 /** Optional local-operator auth (design doc 0020 §6). When omitted, the
@@ -178,7 +178,8 @@ export function createWebServer(app: App, bus: EventBus, auth?: WebAuth): Server
       return sendJson(res, 403, { error: "cross-origin request refused" });
     }
 
-    if (method === "GET" && pathname === "/api/state") return sendJson(res, 200, getState(app).body);
+    if (method === "GET" && pathname === "/api/state")
+      return sendJson(res, 200, getState(app).body);
     if (method === "GET" && pathname === "/api/events") return streamEvents(res, bus);
 
     if (method === "POST" && pathname === "/api/eagerness") {
@@ -187,6 +188,10 @@ export function createWebServer(app: App, bus: EventBus, auth?: WebAuth): Server
     }
     if (method === "POST" && pathname === "/api/dm-voice") {
       const r = setDmVoice(app, await readJsonBody(req));
+      return sendJson(res, r.status, r.body);
+    }
+    if (method === "POST" && pathname === "/api/pvp") {
+      const r = setPvp(app, await readJsonBody(req));
       return sendJson(res, r.status, r.body);
     }
     if (method === "POST" && pathname === "/api/operator") {

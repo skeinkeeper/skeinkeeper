@@ -73,9 +73,23 @@ async function refresh() {
     }
   }
 
+  const pvp = $("pvp");
+  if (!pvp.dataset.wired) {
+    pvp.dataset.wired = "1";
+    pvp.addEventListener("change", async () => {
+      // Success is reflected via the pvp SSE echo (single source of truth).
+      await fetch("/api/pvp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: pvp.checked }),
+      });
+    });
+  }
+
   renderOperator(s.operator);
   renderRoster(s.roster ?? []);
   applyEagerness(s.eagerness);
+  applyPvp(s.pvpEnabled);
   const dmAssign = (s.voiceAssignments ?? []).find((v) => v.subjectKind === "dm");
   if (dmAssign && dmAssign.personaId) applyDmVoice(dmAssign.personaId);
 }
@@ -85,6 +99,11 @@ function applyEagerness(level) {
   if (!level) return;
   const radio = document.querySelector(`input[name="eagerness"][value="${level}"]`);
   if (radio) radio.checked = true;
+}
+
+function applyPvp(enabled) {
+  const box = $("pvp");
+  if (box) box.checked = enabled === true;
 }
 
 function applyDmVoice(personaId) {
@@ -168,7 +187,9 @@ $("operator-save").addEventListener("click", () => {
   const username = $("operator-username").value.trim();
   if (username) setOperator({ username }, `operator → @${username}`);
 });
-$("operator-clear").addEventListener("click", () => setOperator({ clear: true }, "operator cleared"));
+$("operator-clear").addEventListener("click", () =>
+  setOperator({ clear: true }, "operator cleared"),
+);
 
 // Event "kind" strings below mirror the AppEvent union in
 // app/src/session_manager.ts — that union is the source of truth (this is
@@ -177,13 +198,24 @@ const events = new EventSource("/api/events");
 events.onmessage = (e) => {
   const ev = JSON.parse(e.data);
   if (ev.kind === "decision") log(`· decide respond=${ev.respond} (${ev.reason}) ← "${ev.heard}"`);
-  else if (ev.kind === "turn") log(`🗣 DM: ${ev.narration}` + (ev.tools.length ? ` [tools: ${ev.tools.join(", ")}]` : ""));
-  else if (ev.kind === "status") { log(`status: ${ev.status}`); refresh(); }
-  else if (ev.kind === "consent_prompt") log(`(consent prompt sent to ${ev.speaker})`);
+  else if (ev.kind === "turn")
+    log(`🗣 DM: ${ev.narration}` + (ev.tools.length ? ` [tools: ${ev.tools.join(", ")}]` : ""));
+  else if (ev.kind === "status") {
+    log(`status: ${ev.status}`);
+    refresh();
+  } else if (ev.kind === "consent_prompt") log(`(consent prompt sent to ${ev.speaker})`);
   else if (ev.kind === "roster") renderRoster(ev.members);
   else if (ev.kind === "operator") renderOperator(ev);
-  else if (ev.kind === "eagerness") { applyEagerness(ev.eagerness); log(`eagerness → ${ev.eagerness}`); }
-  else if (ev.kind === "dmVoice") { applyDmVoice(ev.personaId); log(`DM voice → ${ev.personaId || ev.voiceId}`); }
+  else if (ev.kind === "eagerness") {
+    applyEagerness(ev.eagerness);
+    log(`eagerness → ${ev.eagerness}`);
+  } else if (ev.kind === "dmVoice") {
+    applyDmVoice(ev.personaId);
+    log(`DM voice → ${ev.personaId || ev.voiceId}`);
+  } else if (ev.kind === "pvp") {
+    applyPvp(ev.enabled);
+    log(`PvP → ${ev.enabled ? "on" : "off"}`);
+  }
 };
 
 refresh();

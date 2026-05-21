@@ -57,6 +57,7 @@ It serves the **operator console** at `http://localhost:3000`. From there you:
 - **Start / Stop** a session (the bot joins/leaves your voice channel).
 - Pick the **DM voice** from a curated persona list (you never see provider IDs).
 - Set **Eagerness** (Reserved / Balanced / Eager) — changeable mid-session.
+- Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([design doc 0026](./design/0026-player-dm-side-channels.md)).
 - *(Optional)* Watch the **live feed**: each respond/skip decision, the DM's turns, consent prompts.
 
 During play you only need to watch **Foundry + Discord** — operator notes come to
@@ -71,6 +72,7 @@ and the console reflects it without a refresh, and vice versa ([design doc 0025]
 - `/skeinkeeper eagerness level:reserved|balanced|eager`.
 - `/skeinkeeper voice action:list` / `action:set persona:<name>`.
 - `/skeinkeeper operator action:claim|clear|show` (see "Operator notes").
+- `/skeinkeeper pvp action:on|off|show` — toggle player-vs-player (operator only; needs Manage Channel on the voice channel).
 
 (Cold-*starting* a session is console-only for now — the bot has to be online to
 receive a slash command, and starting is what brings it online.)
@@ -97,6 +99,15 @@ bot DMs them the consent text; they grant or withdraw with
 `/skeinkeeper consent grant|withdraw` (or the buttons on the DM). Audio is not
 transcribed until consent is granted. Note the consent text discloses that the
 campaign's **shared memory** is not individually erasable ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)).
+
+**Private side-channels.** A player can **DM the bot directly** for a side
+question or a surprise action — the DM answers privately, and what's said stays
+out of the other players' view ([design doc 0026](./design/0026-player-dm-side-channels.md)).
+The DM keeps such things private by default and won't split the party or resolve
+a private action against another character unless you've enabled **PvP**. As the
+operator, you can review side-channel transcripts like any other session
+content; "private" means private from the *other players*, not from *you* (see
+[PRIVACY.md](./PRIVACY.md)).
 
 **Operator notes (Discord).** When the AI hits a setup snag it can't resolve
 in-fiction — for example, a player claims a character that isn't in the world —

@@ -35,7 +35,9 @@ describe("parseSlashCommand", () => {
     expect(parseSlashCommand(input({ sub: "eagerness", level: "nonsense" })).kind).toBe(
       "eagerness.usage",
     );
-    expect(parseSlashCommand(input({ sub: "eagerness", level: null })).kind).toBe("eagerness.usage");
+    expect(parseSlashCommand(input({ sub: "eagerness", level: null })).kind).toBe(
+      "eagerness.usage",
+    );
   });
 
   it("routes voice list / set, and flags a missing persona", () => {
@@ -50,8 +52,23 @@ describe("parseSlashCommand", () => {
     expect(parseSlashCommand(input({ sub: "voice", action: "bogus" })).kind).toBe("voice.usage");
   });
 
+  it("routes the pvp toggle (on/off/show), falling back to usage", () => {
+    expect(parseSlashCommand(input({ sub: "pvp", action: "on" }))).toEqual({
+      kind: "pvp.set",
+      enabled: true,
+    });
+    expect(parseSlashCommand(input({ sub: "pvp", action: "off" }))).toEqual({
+      kind: "pvp.set",
+      enabled: false,
+    });
+    expect(parseSlashCommand(input({ sub: "pvp", action: "show" })).kind).toBe("pvp.show");
+    expect(parseSlashCommand(input({ sub: "pvp", action: "bogus" })).kind).toBe("pvp.usage");
+  });
+
   it("defaults to consent for the consent subcommand and unknown subs", () => {
-    expect(parseSlashCommand(input({ sub: "consent", action: "grant" })).kind).toBe("consent.grant");
+    expect(parseSlashCommand(input({ sub: "consent", action: "grant" })).kind).toBe(
+      "consent.grant",
+    );
     expect(parseSlashCommand(input({ sub: "consent", action: "withdraw" })).kind).toBe(
       "consent.withdraw",
     );

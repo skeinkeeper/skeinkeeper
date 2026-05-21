@@ -23,6 +23,7 @@ export function getState(app: App): ApiResult {
       running: app.manager.isRunning,
       eagerness: app.manager.eagerness,
       dmVoiceId: app.manager.dmVoiceId,
+      pvpEnabled: app.manager.pvpEnabled,
       campaignId: app.config.campaignId,
       personas: dmPersonas(),
       voiceAssignments: app.tenantDb.voiceAssignments.listByCampaign(app.config.campaignId),
@@ -72,6 +73,17 @@ export function setEagerness(app: App, body: unknown): ApiResult {
   }
   app.manager.setEagerness(value as Eagerness);
   return { status: 200, body: { eagerness: value } };
+}
+
+export function setPvp(app: App, body: unknown): ApiResult {
+  const value = (body as { enabled?: unknown } | null)?.enabled;
+  if (typeof value !== "boolean") {
+    return { status: 400, body: { error: "enabled must be a boolean" } };
+  }
+  // Single write path: the manager persists the per-campaign setting and emits a
+  // `pvp` event so the slash surface stays in sync (design docs 0026 §6, 0025).
+  app.manager.setPvpEnabled(value);
+  return { status: 200, body: { pvpEnabled: value } };
 }
 
 export function setDmVoice(app: App, body: unknown): ApiResult {
