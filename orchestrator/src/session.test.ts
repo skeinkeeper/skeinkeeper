@@ -53,10 +53,12 @@ function setupSession(overrides: Partial<SessionConfig> = {}): {
 
   const registry = new ToolRegistry();
   const dispatcher = new ToolDispatcher({ registry });
-  const llm = overrides.llm ?? fakeLlmFromEvents([
-    { kind: "text_delta", text: "Default narration." },
-    { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
-  ]);
+  const llm =
+    overrides.llm ??
+    fakeLlmFromEvents([
+      { kind: "text_delta", text: "Default narration." },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
 
   const config: SessionConfig = {
     sessionId: "sess-1",
@@ -511,7 +513,9 @@ describe("runTurn + archiveSession — cold/episodic memory (design doc 0019)", 
     const { session } = setupSession({ llm, memory: { embed, store } });
     await runTurn(session, { speaker: "discord:1", text: "what about that goblin we spared?" });
     const req = (llm as FakeLLMProvider).receivedRequests[0]!;
-    const userText = req.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+    const userText = req.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join(
+      "",
+    );
     expect(userText).toContain("Relevant memory");
     expect(userText).toContain("Yeemik");
   });
@@ -553,5 +557,118 @@ describe("runTurn + archiveSession — cold/episodic memory (design doc 0019)", 
     const { session } = setupSession();
     await runTurn(session, { speaker: "discord:1", text: "hi" });
     expect(await archiveSession(session)).toBeNull();
+  });
+});
+
+describe("runTurn — side-channel scoping (design doc 0026)", () => {
+  function hotContextText(llm: FakeLLMProvider, i = 0): string {
+    const block = llm.receivedRequests[i]!.messages[0]!.content[0] as { text?: string };
+    return block.text ?? "";
+  }
+
+  it("persists a private audience + conversationId and uses the requested model tier", async () => {
+    const llm = fakeLlmFromEvents([
+      { kind: "text_delta", text: "Psst — the chest is trapped." },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
+    const { session, tenantDb } = setupSession({ llm });
+
+    const out = await runTurn(
+      session,
+      { speaker: "discord:dana", text: "Quietly: is the chest trapped?" },
+      {
+        conversation: { id: "player:discord:dana", audience: "player:discord:dana" },
+        modelTier: "orchestration",
+      },
+    );
+
+    expect(out.narration).toBe("Psst — the chest is trapped.");
+    expect(llm.receivedRequests[0]!.modelTier).toBe("orchestration");
+
+    // The player's question and the DM's reply are both stored privately.
+    const danaThread = tenantDb.dialogue.listByConversation("sess-1", "player:discord:dana");
+    expect(danaThread.map((r) => r.speaker)).toEqual(["discord:dana", "narrator"]);
+    expect(danaThread.map((r) => r.audience)).toEqual([
+      "player:discord:dana",
+      "player:discord:dana",
+    ]);
+    // Nothing leaked into the shared table conversation.
+    expect(tenantDb.dialogue.listByConversation("sess-1", "table")).toHaveLength(0);
+  });
+
+  it("a side-channel's context excludes gm secrets and other players' private content (§10)", async () => {
+    const llm = fakeLlmFromEvents([
+      { kind: "text_delta", text: "ok" },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
+    const { session } = setupSession({ llm });
+    session.dialogue.push(
+      {
+        speaker: "narrator",
+        text: "SHARED tavern scene",
+        timestamp: 1,
+        audience: "table",
+        conversationId: "table",
+      },
+      {
+        speaker: "gm",
+        text: "GMSECRET the chest DC is 18",
+        timestamp: 2,
+        audience: "gm",
+        conversationId: "table",
+      },
+      {
+        speaker: "discord:eli",
+        text: "ELIPRIVATE plan to steal",
+        timestamp: 3,
+        audience: "player:discord:eli",
+        conversationId: "player:discord:eli",
+      },
+    );
+
+    await runTurn(
+      session,
+      { speaker: "discord:dana", text: "what do I see?" },
+      {
+        conversation: { id: "player:discord:dana", audience: "player:discord:dana" },
+        modelTier: "orchestration",
+      },
+    );
+
+    const prompt = hotContextText(llm);
+    expect(prompt).toContain("SHARED tavern scene"); // shared world is visible
+    expect(prompt).toContain("what do I see?"); // the player's own input is visible
+    expect(prompt).not.toContain("GMSECRET"); // gm secrets are not
+    expect(prompt).not.toContain("ELIPRIVATE"); // another player's private content is not
+  });
+
+  it("the table loop sees gm secrets but never a player's private content", async () => {
+    const llm = fakeLlmFromEvents([
+      { kind: "text_delta", text: "ok" },
+      { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+    ]);
+    const { session } = setupSession({ llm });
+    session.dialogue.push(
+      {
+        speaker: "gm",
+        text: "GMSECRET DC 18",
+        timestamp: 1,
+        audience: "gm",
+        conversationId: "table",
+      },
+      {
+        speaker: "discord:eli",
+        text: "ELIPRIVATE plan",
+        timestamp: 2,
+        audience: "player:discord:eli",
+        conversationId: "player:discord:eli",
+      },
+    );
+
+    await runTurn(session, { speaker: "discord:dana", text: "I open the door." });
+
+    const prompt = hotContextText(llm);
+    expect(prompt).toContain("GMSECRET DC 18"); // the DM brain sees gm secrets at the table
+    expect(prompt).not.toContain("ELIPRIVATE"); // but never a player's private side-channel
   });
 });
