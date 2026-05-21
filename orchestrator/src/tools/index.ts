@@ -63,6 +63,7 @@ const setQuestFlagDef = defineTool({
   name: "set_quest_flag",
   description:
     "Set a Skeinkeeper-internal quest flag by string key. AI-DM-side state, distinct from Foundry's world state.",
+  mutatesWorld: true,
   inputSchema: z.object({
     campaignId: z.string(),
     key: z.string().min(1),
@@ -89,6 +90,7 @@ const movePartyDef = defineTool({
   name: "move_party",
   description:
     "Move the party to a new location, given a Foundry scene name or ID. Activates that scene in Foundry (the map players see) and records it as the 'party.location' quest flag. Use the scene name as it appears in the world.",
+  mutatesWorld: true,
   inputSchema: z.object({
     campaignId: z.string(),
     locationId: z.string(),
@@ -126,6 +128,7 @@ const advanceTimeDef = defineTool({
   name: "advance_time",
   description:
     "Advance in-game time by the given number of minutes. Increments the 'time.minutes_elapsed' quest flag. The active Foundry system may have its own time-tracking; this is the Skeinkeeper-side counter for AI awareness.",
+  mutatesWorld: true,
   inputSchema: z.object({
     campaignId: z.string(),
     minutes: z.number().int().nonnegative(),
@@ -187,6 +190,7 @@ const recordPlayerCharacterDef = defineTool({
   name: "record_player_character",
   description:
     "Record which Foundry character a Discord player controls. Call this during the session-start introductions once a player names their character and you've matched it to an actor in the party. Confirm aloud to the player afterward.",
+  mutatesWorld: true,
   inputSchema: z.object({
     campaignId: z.string(),
     discordUserId: z.string(),

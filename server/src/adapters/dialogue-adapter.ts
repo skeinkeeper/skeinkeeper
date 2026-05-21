@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import type { Db } from "../db.js";
 import type { DeletionAdapter, ErasureScope } from "../erasure.js";
 import type { ExportAdapter, ExportPayload } from "../export.js";
+import { playerAudience } from "../audience.js";
 import { dialogue } from "../schema/index.js";
 
 /**
@@ -13,6 +14,11 @@ import { dialogue } from "../schema/index.js";
  * sessions; tenant scope clears everything. Campaign scope is handled by
  * FK cascade (deleting a campaign cascades to its sessions and their
  * dialogue), so this adapter doesn't claim it.
+ *
+ * Player scope also removes the DM's *private side-channel turns* addressed to
+ * that player (`audience = "player:<id>"`, typically `speaker = "narrator"`) —
+ * not just the rows the player spoke. That private content is player-scoped and
+ * individually erasable per ADR-0017; shared `table`/`gm` turns persist.
  */
 export class DialogueAdapter implements DeletionAdapter, ExportAdapter {
   readonly name = "dialogue";
@@ -24,7 +30,15 @@ export class DialogueAdapter implements DeletionAdapter, ExportAdapter {
     if (scope.kind === "player") {
       const res = this.db
         .delete(dialogue)
-        .where(and(eq(dialogue.tenantId, scope.tenantId), eq(dialogue.speaker, scope.subjectId)))
+        .where(
+          and(
+            eq(dialogue.tenantId, scope.tenantId),
+            or(
+              eq(dialogue.speaker, scope.subjectId),
+              eq(dialogue.audience, playerAudience(scope.subjectId)),
+            ),
+          ),
+        )
         .run();
       return res.changes;
     }
@@ -40,15 +54,29 @@ export class DialogueAdapter implements DeletionAdapter, ExportAdapter {
       const rows = this.db
         .select()
         .from(dialogue)
-        .where(and(eq(dialogue.tenantId, scope.tenantId), eq(dialogue.speaker, scope.subjectId)))
+        .where(
+          and(
+            eq(dialogue.tenantId, scope.tenantId),
+            or(
+              eq(dialogue.speaker, scope.subjectId),
+              eq(dialogue.audience, playerAudience(scope.subjectId)),
+            ),
+          ),
+        )
         .all();
       return {
         data: rows,
-        summary: [`${rows.length} dialogue line(s) spoken by this subject`],
+        summary: [
+          `${rows.length} dialogue line(s) spoken by or privately addressed to this subject`,
+        ],
       };
     }
     if (scope.kind === "tenant") {
-      const rows = this.db.select().from(dialogue).where(eq(dialogue.tenantId, scope.tenantId)).all();
+      const rows = this.db
+        .select()
+        .from(dialogue)
+        .where(eq(dialogue.tenantId, scope.tenantId))
+        .all();
       return {
         data: rows,
         summary: [`${rows.length} dialogue line(s) across all sessions`],
