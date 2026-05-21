@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { App } from "../bootstrap.js";
-import { getState, setEagerness, setDmVoice, setOperator } from "./api.js";
+import { getState, setEagerness, setDmVoice, setOperator, setPvp } from "./api.js";
 
 interface Upsert {
   subjectKind: string;
@@ -14,6 +14,7 @@ interface Upsert {
 interface StubState {
   eagerness: string;
   dmVoiceId: string;
+  pvpEnabled: boolean;
   upserts: Upsert[];
   operator: string | undefined;
   usernameResult: { ok: boolean; pending?: boolean; reason?: string; displayName?: string };
@@ -26,6 +27,7 @@ function stubApp(): { app: App; state: StubState } {
   const state: StubState = {
     eagerness: "balanced",
     dmVoiceId: "v0",
+    pvpEnabled: false,
     upserts: [],
     operator: undefined,
     usernameResult: { ok: true },
@@ -45,6 +47,12 @@ function stubApp(): { app: App; state: StubState } {
       },
       setEagerness(e: string) {
         state.eagerness = e;
+      },
+      get pvpEnabled() {
+        return state.pvpEnabled;
+      },
+      setPvpEnabled(enabled: boolean) {
+        state.pvpEnabled = enabled;
       },
       setDmVoiceByPersona(personaId: string) {
         state.dmVoiceCalls.push(personaId);
@@ -104,6 +112,22 @@ describe("operator API", () => {
     expect(setEagerness(app, { eagerness: "nope" }).status).toBe(400);
   });
 
+  it("setPvp validates the boolean and applies it (design doc 0026 §6)", () => {
+    const { app, state } = stubApp();
+    expect(setPvp(app, { enabled: true }).status).toBe(200);
+    expect(state.pvpEnabled).toBe(true);
+    expect(setPvp(app, { enabled: false }).status).toBe(200);
+    expect(state.pvpEnabled).toBe(false);
+    // Non-boolean is rejected.
+    expect(setPvp(app, { enabled: "yes" }).status).toBe(400);
+    expect(setPvp(app, {}).status).toBe(400);
+  });
+
+  it("getState reports pvpEnabled", () => {
+    const { app } = stubApp();
+    expect((getState(app).body as { pvpEnabled: boolean }).pvpEnabled).toBe(false);
+  });
+
   it("setDmVoice delegates to the manager and maps ok/err to status", () => {
     const { app, state } = stubApp();
     const r = setDmVoice(app, { personaId: "warm-storyteller" });
@@ -121,7 +145,10 @@ describe("operator API", () => {
   it("getState includes operator + roster", () => {
     const { app, state } = stubApp();
     state.operator = "op-1";
-    const body = getState(app).body as { operator: { operatorUserId: string | null }; roster: unknown[] };
+    const body = getState(app).body as {
+      operator: { operatorUserId: string | null };
+      roster: unknown[];
+    };
     expect(body.operator.operatorUserId).toBe("op-1");
     expect(Array.isArray(body.roster)).toBe(true);
   });

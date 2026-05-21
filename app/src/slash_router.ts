@@ -22,7 +22,10 @@ export type SlashCommand =
   | { kind: "voice.list" }
   | { kind: "voice.set"; personaId: string }
   | { kind: "voice.set_missing" }
-  | { kind: "voice.usage" };
+  | { kind: "voice.usage" }
+  | { kind: "pvp.set"; enabled: boolean } // PvP toggle (design doc 0026 §6)
+  | { kind: "pvp.show" }
+  | { kind: "pvp.usage" };
 
 export interface SlashInput {
   sub: string | null;
@@ -54,6 +57,13 @@ export function parseSlashCommand(input: SlashInput): SlashCommand {
         : { kind: "voice.set_missing" };
     }
     return { kind: "voice.usage" };
+  }
+
+  if (sub === "pvp") {
+    if (action === "on") return { kind: "pvp.set", enabled: true };
+    if (action === "off") return { kind: "pvp.set", enabled: false };
+    if (action === "show") return { kind: "pvp.show" };
+    return { kind: "pvp.usage" };
   }
 
   // Default / consent subcommand.

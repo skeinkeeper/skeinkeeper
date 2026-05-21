@@ -219,6 +219,13 @@ export interface TurnOptions {
    * "narration" (Opus). Defaults to "narration".
    */
   modelTier?: ModelTier;
+  /**
+   * A transient operator/runtime note appended to this turn's context (not
+   * stored). Used to surface live state the model must read at this moment —
+   * e.g. the PvP toggle's current value for a side-channel action (design doc
+   * 0026 §6 "read-at-initiation").
+   */
+  systemNote?: string;
 }
 
 export interface DispatchedToolCall {
@@ -493,7 +500,10 @@ export async function runTurn(
     retrievedMemory,
     ...(options.presentPlayers !== undefined ? { presentPlayers: options.presentPlayers } : {}),
   });
-  const hotContextText = formatHotContextAsText(hotContext);
+  const hotContextText =
+    options.systemNote !== undefined && options.systemNote.length > 0
+      ? `${formatHotContextAsText(hotContext)}\n\n[Note] ${options.systemNote}`
+      : formatHotContextAsText(hotContext);
 
   // Tools.
   const toolSpecs = cfg.dispatcher.registry().list().map(toolDefinitionToLlmSpec);
