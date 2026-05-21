@@ -138,6 +138,13 @@ export interface TTSOptions {
 /** Text-to-speech provider. Composed by a VoiceIO adapter. */
 export interface TTSProvider {
   readonly name: string;
-  /** Synthesize audio bytes for `text`. */
+  /** Synthesize audio bytes for `text` (one shot). */
   synthesize(text: string, opts?: TTSOptions): Promise<Uint8Array>;
+  /**
+   * Stream audio chunks as they synthesize, for lower time-to-first-audio
+   * (design doc 0028 P1) — playback can begin on the first chunk instead of
+   * waiting for the whole clip. Optional; adapters prefer it over `synthesize`
+   * when present and fall back otherwise.
+   */
+  synthesizeStream?(text: string, opts?: TTSOptions): AsyncIterable<Uint8Array>;
 }

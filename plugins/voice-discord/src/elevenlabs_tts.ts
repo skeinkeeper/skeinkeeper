@@ -57,4 +57,42 @@ export class ElevenLabsTTS implements TTSProvider {
     const buf = await res.arrayBuffer();
     return new Uint8Array(buf);
   }
+
+  /**
+   * Stream audio chunks from ElevenLabs' `/stream` endpoint as they arrive, so
+   * the adapter can start playback on the first chunk (design doc 0028 P1).
+   */
+  async *synthesizeStream(text: string, opts?: TTSOptions): AsyncIterable<Uint8Array> {
+    const voiceId = opts?.voiceId ?? this.options.defaultVoiceId;
+    if (voiceId === undefined) {
+      throw new Error(
+        "ElevenLabsTTS.synthesizeStream: no voiceId provided and no defaultVoiceId set",
+      );
+    }
+    const url = new URL(`${this.baseUrl}/v1/text-to-speech/${voiceId}/stream`);
+    if (this.options.outputFormat) url.searchParams.set("output_format", this.options.outputFormat);
+
+    const res = await this.fetchImpl(url, {
+      method: "POST",
+      headers: {
+        "xi-api-key": this.options.apiKey,
+        "content-type": "application/json",
+        accept: "audio/mpeg",
+      },
+      body: JSON.stringify({ text, model_id: this.modelId }),
+    });
+    assertOk(res, "ElevenLabs TTS stream request");
+    const body = res.body;
+    if (body === null) return;
+    const reader = body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
 }
