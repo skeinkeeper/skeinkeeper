@@ -25,3 +25,14 @@ export { loadOrCreateSalt } from "./salt.js";
 export { runCli } from "./cli.js";
 export { TenantDb } from "./tenant_db.js";
 export { seedFromFile } from "./seed.js";
+export {
+  TABLE_AUDIENCE,
+  GM_AUDIENCE,
+  TABLE_CONVERSATION,
+  playerAudience,
+  playerConversation,
+  isPlayerScoped,
+  playerIdOf,
+  type Audience,
+  type ConversationId,
+} from "./audience.js";
