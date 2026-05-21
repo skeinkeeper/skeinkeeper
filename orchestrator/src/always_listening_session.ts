@@ -2,7 +2,7 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import type { PresentPlayer } from "./hot_context.js";
-import type { PresenceMember, VoiceIO } from "./interfaces/voice.js";
+import { InterruptedError, type PresenceMember, type VoiceIO } from "./interfaces/voice.js";
 import { runTurn, type Session, type TurnInput, type TurnOutput } from "./session.js";
 import { TranscriptionBuffer, utteranceToFragment, type BufferFragment } from "./voice/buffer.js";
 import { decideShouldRespond, type RespondDecision } from "./voice/decider.js";
@@ -252,28 +252,52 @@ async function runTurnAndSpeak(
   roster: ReadonlyArray<PresentPlayer>,
 ): Promise<TurnOutput> {
   const routing = config.voiceRouting;
+  // Barge-in (design doc 0028 P2): if a segment's playback is interrupted (the
+  // player talks over the DM), abort the rest of the turn's generation so we
+  // stop talking over them instead of finishing the monologue.
+  const abort = new AbortController();
+
   if (routing === undefined) {
-    const turn = await runTurn(config.session, input, { presentPlayers: roster });
-    await speakTurn(config, turn);
+    const turn = await runTurn(config.session, input, {
+      presentPlayers: roster,
+      signal: abort.signal,
+    });
+    try {
+      await speakTurn(config, turn);
+    } catch (err) {
+      if (!(err instanceof InterruptedError)) throw err; // playback stopped — fine
+    }
     return turn;
   }
 
   // Serial speaker: each segment chains onto the previous so audio plays FIFO
-  // while the model keeps generating. A failed segment is swallowed so one
-  // dropped sentence doesn't kill the rest of the turn's audio.
+  // while the model keeps generating. A dropped segment is swallowed; a barge-in
+  // interrupt aborts the in-flight generation.
   let speakChain: Promise<void> = Promise.resolve();
   let streamed = false;
   const turn = await runTurn(config.session, input, {
     presentPlayers: roster,
+    signal: abort.signal,
     onNarrationSegment: (seg) => {
       streamed = true;
       speakChain = speakChain
         .then(() => speakSegment(config.voiceIO, routing, seg))
-        .catch(() => {});
+        .catch((err: unknown) => {
+          if (err instanceof InterruptedError) {
+            abort.abort(); // stop generating; the player is talking
+            config.voiceIO.interrupt?.();
+          }
+        });
     },
   });
   await speakChain; // drain queued audio before returning
-  if (!streamed && turn.narration.length > 0) await speakTurn(config, turn);
+  if (!streamed && turn.narration.length > 0) {
+    try {
+      await speakTurn(config, turn);
+    } catch (err) {
+      if (!(err instanceof InterruptedError)) throw err;
+    }
+  }
   return turn;
 }
 

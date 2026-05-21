@@ -201,6 +201,13 @@ export interface TurnOptions {
    * split happens after the turn, as before).
    */
   onNarrationSegment?: (segment: NarrationSegment) => void;
+  /**
+   * Abort the turn mid-flight (design doc 0028 P2 barge-in). When the signal
+   * fires — e.g. a player talks over the DM — the LLM stream is cancelled and
+   * the turn ends with `stopReason: "aborted"`, keeping whatever narration had
+   * already streamed.
+   */
+  signal?: AbortSignal;
 }
 
 export interface DispatchedToolCall {
@@ -211,7 +218,12 @@ export interface DispatchedToolCall {
   ok: boolean;
 }
 
-export type TurnStopReason = "end_turn" | "max_tool_iterations" | "refusal" | "llm_error";
+export type TurnStopReason =
+  | "end_turn"
+  | "max_tool_iterations"
+  | "refusal"
+  | "llm_error"
+  | "aborted";
 
 export interface TurnOutput {
   narration: string;
@@ -270,6 +282,7 @@ async function runLlmIterations(
   turnId: string,
   maxIter: number,
   onSegment?: (segment: NarrationSegment) => void,
+  signal?: AbortSignal,
 ): Promise<IterationsResult> {
   const allToolCalls: DispatchedToolCall[] = [];
   let narration = "";
@@ -283,6 +296,13 @@ async function runLlmIterations(
   for (let i = 1; i <= maxIter; i++) {
     iterations = i;
     const iterStart = Date.now();
+
+    // Barge-in: stop before another round-trip if the turn was aborted
+    // (design doc 0028 P2).
+    if (signal?.aborted) {
+      stopReason = "aborted";
+      break;
+    }
 
     const req: LLMRequest = {
       systemPrompt: cfg.behaviorSpec.content,
@@ -298,7 +318,7 @@ async function runLlmIterations(
     let usage: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number } | null =
       null;
 
-    for await (const ev of cfg.llm.complete(req)) {
+    for await (const ev of cfg.llm.complete(req, signal ? { signal } : undefined)) {
       if (ev.kind === "text_delta") {
         narration += ev.text;
         iterationText += ev.text;
@@ -334,7 +354,10 @@ async function runLlmIterations(
     }
 
     if (iterationErrored) {
-      stopReason = "llm_error";
+      // A cancelled stream from an abort is a barge-in, not a failure: keep the
+      // narration streamed so far and stop cleanly (design doc 0028 P2).
+      stopReason =
+        signal?.aborted || errorMessage?.startsWith("cancelled") ? "aborted" : "llm_error";
       break;
     }
 
@@ -472,7 +495,15 @@ export async function runTurn(
     stopReason,
     errorMessage,
     iterations,
-  } = await runLlmIterations(cfg, messages, toolSpecs, turnId, maxIter, options.onNarrationSegment);
+  } = await runLlmIterations(
+    cfg,
+    messages,
+    toolSpecs,
+    turnId,
+    maxIter,
+    options.onNarrationSegment,
+    options.signal,
+  );
 
   // Persist the AI's narration as a narrator dialogue turn so future turns
   // see it in hot context (in-memory + DB).

@@ -8,7 +8,12 @@ import { MockFoundryClient } from "./foundry/mock.js";
 import { FakeLLMProvider } from "./interfaces/fake_llm_provider.js";
 import { FakeVoiceIO } from "./interfaces/fake_voice_io.js";
 import type { TokenUsage } from "./interfaces/llm.js";
-import type { VoiceEvent, Utterance, VoiceIO } from "./interfaces/voice.js";
+import {
+  InterruptedError,
+  type VoiceEvent,
+  type Utterance,
+  type VoiceIO,
+} from "./interfaces/voice.js";
 import { ToolDispatcher, ToolRegistry } from "./registry.js";
 import { startSession, type Session } from "./session.js";
 import {
@@ -131,7 +136,9 @@ describe("runAlwaysListeningSession", () => {
 
     await runAlwaysListeningSession({ voiceIO, session, consentText: "c" });
 
-    const playerLine = tenantDb.dialogue.listBySession("sess-1").find((l) => l.speaker === "discord:bob");
+    const playerLine = tenantDb.dialogue
+      .listBySession("sess-1")
+      .find((l) => l.speaker === "discord:bob");
     expect(playerLine?.text).toContain("[Alice] I take point");
     expect(playerLine?.text).toContain("[Bob] I'm right behind");
   });
@@ -154,7 +161,9 @@ describe("runAlwaysListeningSession", () => {
 
     expect(seen).toEqual(["read"]);
     const sentDecider = llm.receivedRequests.find((r) => r.modelTier === "orchestration")!;
-    const text = sentDecider.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+    const text = sentDecider.messages[0]!.content.map((c) =>
+      c.type === "text" ? c.text : "",
+    ).join("");
     expect(text).toContain("EAGER");
   });
 
@@ -331,10 +340,7 @@ describe("runAlwaysListeningSession", () => {
   });
 
   it("folds a newcomer's introduction into the onboarding turn", async () => {
-    const llm = deciderAndNarration(
-      '{"respond": false}',
-      "Welcome, Alice — you're playing Mirna.",
-    );
+    const llm = deciderAndNarration('{"respond": false}', "Welcome, Alice — you're playing Mirna.");
     const { session, tenantDb } = setupSession(llm);
     const voiceIO = new FakeVoiceIO([
       presence([{ id: "discord:alice", displayName: "Alice" }]),
@@ -351,9 +357,7 @@ describe("runAlwaysListeningSession", () => {
   it("requests consent for unconsented speakers", async () => {
     const llm = deciderAndNarration('{"respond": false}', "x");
     const { session } = setupSession(llm);
-    const voiceIO = new FakeVoiceIO([
-      { kind: "consent_needed", speaker: "discord:carol" },
-    ]);
+    const voiceIO = new FakeVoiceIO([{ kind: "consent_needed", speaker: "discord:carol" }]);
 
     await runAlwaysListeningSession({ voiceIO, session, consentText: "please consent" });
 
@@ -391,5 +395,41 @@ describe("mergeFragmentsToTurnInput", () => {
     ]);
     expect(input?.speaker).toBe("discord:2");
     expect(input?.text).toBe("[Alice] I take point\n[Bob] behind you");
+  });
+});
+
+describe("runAlwaysListeningSession — barge-in (design doc 0028 P2)", () => {
+  it("invokes interrupt() and finishes cleanly when playback is interrupted", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "The guard scowls. He steps forward.");
+    const { session } = setupSession(llm);
+
+    // A VoiceIO whose playback is barged in on (speak rejects), exposing an
+    // interrupt spy — mimics a player talking over the DM mid-sentence.
+    const base = new FakeVoiceIO([utter("a", "I approach"), { kind: "lull" }]);
+    let interrupts = 0;
+    const voiceIO: VoiceIO = {
+      name: "barge",
+      listen: () => base.listen(),
+      speak: () => Promise.reject(new InterruptedError()),
+      requestConsent: async () => {},
+      interrupt: () => {
+        interrupts += 1;
+      },
+      close: async () => {},
+    };
+
+    // Must not throw out of the loop, and the barge-in must trigger interrupt().
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      voiceRouting: {
+        dmVoiceId: "dm-voice",
+        getNpcVoice: () => "npc-voice",
+        assignNpcVoice: async () => "npc-voice",
+      },
+    });
+    expect(result.turnCount).toBe(1);
+    expect(interrupts).toBeGreaterThanOrEqual(1);
   });
 });
