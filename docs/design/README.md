@@ -40,3 +40,4 @@ Like ADRs, accepted design docs are **append-only**: a substantive revision is a
 | [0023](./0023-session-onboarding-presence-operator-channel.md) | Session-Start Onboarding, Voice Presence, Operator-in-Discord Channel | Accepted; §4 superseded by [0024](./0024-operator-self-designation.md) |
 | [0024](./0024-operator-self-designation.md) | Operator Self-Designation (Console + Slash Command) | Accepted; supersedes §4 of [0023](./0023-session-onboarding-presence-operator-channel.md) |
 | [0025](./0025-operator-control-parity.md) | Operator Control Parity (Console ↔ Slash) + Live State Sync | Accepted |
+| [0026](./0026-player-dm-side-channels.md) | 1:1 Player↔DM Side-Channels (private Q&A + private actions) | Accepted |

@@ -1,7 +1,7 @@
 # ADR-0014: Episodic Memory Is Campaign-Scoped Shared Content
 
 ## Status
-Accepted (2026-05-19).
+Accepted (2026-05-19). Refined by [ADR-0017](./0017-per-audience-memory-visibility-erasure.md) (2026-05-20), which adds the per-audience dimension for private side-channels; this decision (shared memory is campaign-scoped, not per-player erasable) is unchanged.
 
 ## Context
 
