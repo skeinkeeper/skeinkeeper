@@ -49,6 +49,7 @@ What follows from this decision — good, bad, neutral?
 | [0011](./0011-prefer-oss-foundry-mcp-bridges.md) | Prefer fully-OSS Foundry MCP bridges (supersedes 0001's bridge choice) | Accepted |
 | [0012](./0012-drop-ruleset-plugin-interface.md) | Drop the `Ruleset` plugin interface (supersedes 0004's Ruleset portion) | Accepted |
 | [0013](./0013-warm-tier-after-foundry-source-of-truth.md) | Warm-tier state after Foundry-as-source-of-truth (supersedes 0002's warm-tier description) | Accepted |
-| [0014](./0014-episodic-memory-campaign-scoped-erasure.md) | Episodic memory is campaign-scoped shared content (erasure not per-player) | Accepted |
+| [0014](./0014-episodic-memory-campaign-scoped-erasure.md) | Episodic memory is campaign-scoped shared content (erasure not per-player) | Accepted; refined by [0017](./0017-per-audience-memory-visibility-erasure.md) |
 | [0015](./0015-operator-pregame-ai-performs-in-play-dm-actions.md) | Operator configures pre-game; Skeinkeeper performs all in-play DM actions | Accepted |
 | [0016](./0016-operator-control-parity-across-surfaces.md) | Operator controls have parity across the console and Discord, via one write path | Accepted |
+| [0017](./0017-per-audience-memory-visibility-erasure.md) | Per-audience memory visibility & erasure (refines 0014 for private side-channels) | Accepted |
