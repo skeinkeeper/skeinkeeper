@@ -13,6 +13,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runCli } from "@skeinkeeper/server/cli";
+import { createPiiCrypto, EnvKeySource, loadOrCreateSalt } from "@skeinkeeper/server";
 import { LanceMemoryStore, MemoryAdapter } from "@skeinkeeper/memory-lance";
 
 // Load repo-root .env into process.env so `secrets:seal` can read the secret
@@ -34,10 +35,18 @@ function loadDotenv(path) {
 loadDotenv(join(REPO_ROOT, ".env"));
 
 const dataDir = process.env.SKEINKEEPER_DATA_DIR ?? "./data";
+// The same PII hasher the app uses (TDD 0030), so player-scope memory erasure
+// matches the hashed `player:<hash>` audience tokens written at runtime. Built
+// from the same per-install salt + passphrase KeySource.
+const piiCrypto = createPiiCrypto({
+  keySource: new EnvKeySource(process.env),
+  salt: loadOrCreateSalt(join(dataDir, ".salt")),
+});
 // Deletion ignores embedding `dimensions` (it opens the existing table and
 // drops rows), so a placeholder is fine for the erasure-only CLI use.
 const memoryAdapter = new MemoryAdapter(
   (tenantId) => new LanceMemoryStore({ dir: join(dataDir, "memory", tenantId), dimensions: 0 }),
+  piiCrypto,
 );
 
 const exit = await runCli(process.argv.slice(2), {}, { extraDeletionAdapters: [memoryAdapter] });
