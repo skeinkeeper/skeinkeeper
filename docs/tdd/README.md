@@ -68,3 +68,4 @@ All docs below are `Status: implemented` unless the Notes column says otherwise.
 | [0027](./0027-mcp-bridge-gap-reaudit-upstream-proposal.md) | MCP Bridge Gap Re-Audit + Upstream Proposal (extends [0022](./0022-dm-action-coverage-audit.md)) | |
 | [0028](./0028-real-time-voice-latency.md) | Real-Time Voice Latency (streaming, barge-in, latency masking) | cascade-not-S2S decision → [ADR-0021](../adr/0021-cascaded-voice-not-s2s.md) |
 | [0029](./0029-sealed-credential-store.md) | Sealed Credential Store | store lives in `server` (not `app`) — dep-cycle |
+| [0030](./0030-pii-column-encryption.md) | Per-Column PII Encryption | new — `Status: ready` (design PR); supersedes ADR-0019 → [0022](../adr/0022-pii-encryption-node-crypto.md) |
