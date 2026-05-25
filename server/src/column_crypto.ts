@@ -99,3 +99,20 @@ export function createPiiCrypto(opts: { keySource: KeySource; salt: string }): P
     },
   };
 }
+
+/**
+ * A disabled PiiCrypto for contexts that don't inject one (tests, and the
+ * back-compat default on TenantDb / the deletion adapters). Encryption is OFF
+ * (plaintext passthrough) and the hash uses a fixed dev salt — NEVER turns on
+ * encryption. Production paths (bootstrap, the CLI) MUST inject a real one built
+ * from the per-install salt + KeySource so runtime writes and CLI erasure agree
+ * on the hash. A forgotten injection leaves encryption off (the alpha default),
+ * never a plaintext-vs-ciphertext mismatch, because only an injected passphrase
+ * turns encryption on.
+ */
+export function defaultPiiCrypto(): PiiCrypto {
+  return createPiiCrypto({
+    keySource: { getPassphrase: () => undefined },
+    salt: "skeinkeeper-default-pii-hash-salt",
+  });
+}
