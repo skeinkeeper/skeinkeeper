@@ -33,14 +33,14 @@ Skeinkeeper is a single-process application that an operator runs on one machine
                                   │  (authoritative   │      │  (Discord)  │
                                   │  mechanical state │      └─────────────┘
                                   │  per ADR-0011 +   │
-                                  │  design doc 0007) │
+                                  │  TDD 0007)        │
                                   └───────────────────┘
               │
       ┌───────▼────────┐
       │  Local State   │
       │ (SQLite +      │   AI-DM-side state only — campaign metadata,
       │  LanceDB +     │   sessions, audit log, consents, quest flags,
-      │  audit log)    │   cold + episodic memory (LanceDB, design doc 0019)
+      │  audit log)    │   cold + episodic memory (LanceDB, TDD 0019)
       └────────────────┘
 ```
 
@@ -72,7 +72,7 @@ The LLM's "memory" across sessions is split into four tiers with different mecha
 |---|---|---|
 | **Hot** | Current scene, last ~20 turns, party, active NPCs, active rules | In-prompt, sliding window |
 | **Warm** | *From Foundry:* character sheets, NPCs on scene, active scene, combat tracker — whatever the active Foundry system module exposes. *From Skeinkeeper SQLite:* campaign metadata, sessions, audit log, consents, quest flags | Per-turn read from `FoundryClient` + `TenantDb`; mutations always via typed tool calls |
-| **Cold** | Campaign content, SRD rules, monster stat blocks | LanceDB vector store, retrieved per turn (design doc 0019; on-box embeddings by default) |
+| **Cold** | Campaign content, SRD rules, monster stat blocks | LanceDB vector store, retrieved per turn (TDD 0019; on-box embeddings by default) |
 | **Episodic** | Per-session summaries, key beats, NPC deltas | Generated post-session; embedded + retrieved; campaign-scoped shared memory ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)) |
 
 The classic mistake is stuffing everything into the context window. This four-tier split keeps prompts small, costs predictable, and state authoritative.
@@ -91,7 +91,7 @@ Three pluggable surfaces, each with a stable interface and one default implement
 | `FoundryClient` | `McpFoundryClient` (via the OSS Foundry MCP bridge of ADR-0011) | Operate the visual tabletop; authoritative for mechanical state |
 | `VoiceIO` | `DiscordVoiceIO` | Bridge to players (STT + TTS + Discord transport) |
 
-A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts` and per-system mutation tools are registered by the Foundry plugin at session start based on the active Foundry system. See [design doc 0007](./design/0007-foundry-as-source-of-truth.md).
+A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts` and per-system mutation tools are registered by the Foundry plugin at session start based on the active Foundry system. See [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md).
 
 See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP bridge choice (supersedes [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md)) and [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
 
@@ -102,7 +102,7 @@ A simplified flow:
 1. **Player speaks** in Discord voice channel.
 2. **VoiceIO** transcribes via STT, attributes to player by Discord user ID.
 3. **Orchestrator** assembles hot context: warm-state snapshot (Foundry read + Skeinkeeper SQLite read) + retrieved cold knowledge + dialogue window + behavior spec.
-4. **LLM call** with tools available. Core tools (system-agnostic), the eight registered today: `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator DM for setup escalations). System-specific *mutation* tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [design doc 0014](./design/0014-mcp-foundry-client.md).
+4. **LLM call** with tools available. Core tools (system-agnostic), the eight registered today: `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator DM for setup escalations). System-specific *mutation* tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
 5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to MCP calls (reads + scene activation today; broader mutation as the bridge gains it). Either way, the dispatcher writes an audit-log row and returns results to the model.
 6. **Model narrates** over the deterministic outcome.
 7. **VoiceIO** streams TTS back to Discord. Foundry's chat log reflects any actor/scene changes that routed through MCP.

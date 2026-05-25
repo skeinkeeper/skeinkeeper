@@ -2,7 +2,7 @@
 
 Scenario fixtures used by the eval harness. Each `*.eval.yaml` file describes one scenario plus a set of expectations the AI DM's response must satisfy.
 
-See [`docs/design/0004-eval-harness.md`](../../docs/design/0004-eval-harness.md) for the file format and supported expectation kinds.
+See [`docs/tdd/0004-eval-harness.md`](../../docs/tdd/0004-eval-harness.md) for the file format and supported expectation kinds.
 
 ## What these fixtures do (and don't) cover
 

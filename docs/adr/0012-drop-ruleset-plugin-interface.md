@@ -9,7 +9,7 @@ ADR-0004 (2026-05-17) defined four plugin interfaces — `LLMProvider`, `Ruleset
 
 The `Ruleset` interface had not yet been implemented in code when we revisited it.
 
-[Design doc 0007 (Foundry-as-source-of-truth)](../design/0007-foundry-as-source-of-truth.md), accepted 2026-05-19, identified that Foundry's per-system data models — `actor.system`, validated by each Foundry system's `defineSchema()` module — already provide exactly the abstraction the `Ruleset` interface was meant to provide. The `dnd5e`, `pf2e`, `fate-core`, and PbtA community systems already implement what we were planning to design from scratch. Building a parallel `Ruleset` abstraction in our codebase would be reinventing what an integrated dependency already provides — the anti-pattern captured in [CLAUDE.md hard rule #9](../../CLAUDE.md).
+[TDD 0007 (Foundry-as-source-of-truth)](../tdd/0007-foundry-as-source-of-truth.md), accepted 2026-05-19, identified that Foundry's per-system data models — `actor.system`, validated by each Foundry system's `defineSchema()` module — already provide exactly the abstraction the `Ruleset` interface was meant to provide. The `dnd5e`, `pf2e`, `fate-core`, and PbtA community systems already implement what we were planning to design from scratch. Building a parallel `Ruleset` abstraction in our codebase would be reinventing what an integrated dependency already provides — the anti-pattern captured in [CLAUDE.md hard rule #9](../../CLAUDE.md).
 
 ## Decision
 

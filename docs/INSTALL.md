@@ -57,7 +57,7 @@ It serves the **operator console** at `http://localhost:3000`. From there you:
 - **Start / Stop** a session (the bot joins/leaves your voice channel).
 - Pick the **DM voice** from a curated persona list (you never see provider IDs).
 - Set **Eagerness** (Reserved / Balanced / Eager) — changeable mid-session.
-- Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([design doc 0026](./design/0026-player-dm-side-channels.md)).
+- Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([TDD 0026](./tdd/0026-player-dm-side-channels.md)).
 - *(Optional)* Watch the **live feed**: each respond/skip decision, the DM's turns, consent prompts.
 
 During play you only need to watch **Foundry + Discord** — operator notes come to
@@ -66,7 +66,7 @@ optional observability, not something you have to babysit.
 
 **Same controls from Discord.** Every operator control above is also a slash
 command, and the two surfaces stay in sync live — change the DM voice in Discord
-and the console reflects it without a refresh, and vice versa ([design doc 0025](./design/0025-operator-control-parity.md)):
+and the console reflects it without a refresh, and vice versa ([TDD 0025](./tdd/0025-operator-control-parity.md)):
 
 - `/skeinkeeper session action:stop` — end the session.
 - `/skeinkeeper eagerness level:reserved|balanced|eager`.
@@ -78,7 +78,7 @@ and the console reflects it without a refresh, and vice versa ([design doc 0025]
 receive a slash command, and starting is what brings it online.)
 
 **Before you click Start (pre-flight).** You ready the *world*; Skeinkeeper
-onboards the *people* live ([design doc 0023](./design/0023-session-onboarding-presence-operator-channel.md)).
+onboards the *people* live ([TDD 0023](./tdd/0023-session-onboarding-presence-operator-channel.md)).
 Make sure:
 
 - Foundry is running and the MCP bridge is reachable (or accept the mock fallback).
@@ -102,7 +102,7 @@ campaign's **shared memory** is not individually erasable ([ADR-0014](./adr/0014
 
 **Private side-channels.** A player can **DM the bot directly** for a side
 question or a surprise action — the DM answers privately, and what's said stays
-out of the other players' view ([design doc 0026](./design/0026-player-dm-side-channels.md)).
+out of the other players' view ([TDD 0026](./tdd/0026-player-dm-side-channels.md)).
 The DM keeps such things private by default and won't split the party or resolve
 a private action against another character unless you've enabled **PvP**. As the
 operator, you can review side-channel transcripts like any other session
@@ -112,7 +112,7 @@ content; "private" means private from the *other players*, not from *you* (see
 **Operator notes (Discord).** When the AI hits a setup snag it can't resolve
 in-fiction — for example, a player claims a character that isn't in the world —
 it DMs *you*. Players never see these notes. Designate yourself the operator any
-of three ways ([design doc 0024](./design/0024-operator-self-designation.md)):
+of three ways ([TDD 0024](./tdd/0024-operator-self-designation.md)):
 
 - **In Discord:** type `/skeinkeeper operator claim` — you become the operator;
   no IDs or usernames needed. (`clear` / `show` manage it.) `claim`/`clear`
@@ -156,7 +156,7 @@ so you can diagnose):
 > app connects at session start and discovers your Foundry system. If it's
 > unset, or the bridge can't be reached, the app falls back to a mock Foundry so
 > a session can still run. The `McpFoundryClient` read/mutation surface and its
-> mutation-gap findings are in [design doc 0014](./design/0014-mcp-foundry-client.md)
+> mutation-gap findings are in [TDD 0014](./tdd/0014-mcp-foundry-client.md)
 > — note the OSS bridge can't do a direct HP-set or a server-side roll, so some
 > D&D mutations aren't available yet.
 
@@ -222,7 +222,7 @@ You need Foundry VTT running and one of the OSS MCP bridges installed. The bridg
 1. Install the bridge's Foundry module.
 2. Set `FOUNDRY_MCP_COMMAND` to the command that starts its MCP server (e.g. via `bunx`), if it speaks MCP over stdio.
 
-Either bridge works with Skeinkeeper through the same `FoundryClient` interface (see [design doc 0007](./design/0007-foundry-as-source-of-truth.md)).
+Either bridge works with Skeinkeeper through the same `FoundryClient` interface (see [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md)).
 
 ## Seeding your first campaign
 

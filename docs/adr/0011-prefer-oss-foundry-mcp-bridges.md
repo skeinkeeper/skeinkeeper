@@ -31,7 +31,7 @@ This ADR also formalizes a project-wide stance that comes out of the [global har
    - Broadest feature surface of the OSS options (actor management, content creation, campaign tracking).
    - Actively maintained.
 
-2. **[`laurigates/foundryvtt-mcp`](https://github.com/laurigates/foundryvtt-mcp) is supported as a simpler alternative.** Operators who prefer a single standalone server with a narrower surface may use it instead. The `FoundryClient` interface (see [design doc 0007](../design/0007-foundry-as-source-of-truth.md)) abstracts over both; only the adapter package changes.
+2. **[`laurigates/foundryvtt-mcp`](https://github.com/laurigates/foundryvtt-mcp) is supported as a simpler alternative.** Operators who prefer a single standalone server with a narrower surface may use it instead. The `FoundryClient` interface (see [TDD 0007](../tdd/0007-foundry-as-source-of-truth.md)) abstracts over both; only the adapter package changes.
 
 3. **The `alexivenkov` bridge is ruled out for the recommended path.** Its MIT-licensed client code is fine to reference, but the integration as shipped requires a Patreon subscription — incompatible with Skeinkeeper's OSS-first, no-commercial-gates stance.
 
@@ -49,7 +49,7 @@ This ADR also formalizes a project-wide stance that comes out of the [global har
 - The original ADR-0001 survey was incomplete; we built on a default that had to be reversed. Process implication captured in CONTRIBUTING.md: evaluate fully-OSS alternatives at the ADR stage, not after.
 
 **Neutral**
-- The `FoundryClient` interface from design doc 0007 was the abstraction that made this swap cheap. Without it, swapping bridges would have rippled into the orchestrator. Confirms the value of that interface.
+- The `FoundryClient` interface from TDD 0007 was the abstraction that made this swap cheap. Without it, swapping bridges would have rippled into the orchestrator. Confirms the value of that interface.
 
 ## Revisit when
 - A clearly superior fully-OSS bridge emerges.

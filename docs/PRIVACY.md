@@ -12,7 +12,7 @@ Skeinkeeper is software you run on your own machine. This document explains what
 
 ## What Skeinkeeper stores locally
 
-Skeinkeeper's local database holds **AI-DM-side state** only. Per [design doc 0007](./design/0007-foundry-as-source-of-truth.md), the mechanical state of your campaign — character sheets, NPCs, scenes — lives in your Foundry VTT instance, not in Skeinkeeper. Skeinkeeper reads from Foundry per turn; it does not duplicate that data.
+Skeinkeeper's local database holds **AI-DM-side state** only. Per [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md), the mechanical state of your campaign — character sheets, NPCs, scenes — lives in your Foundry VTT instance, not in Skeinkeeper. Skeinkeeper reads from Foundry per turn; it does not duplicate that data.
 
 What Skeinkeeper stores:
 
@@ -94,7 +94,7 @@ pnpm skeinkeeper player:delete --tenant <id> --subject <discord-id> [--yes]
 
 Cascades across the player's **personal** data: dialogue transcripts (their spoken/typed lines), player↔character mappings, consent records, their audit-log entries, and their **private side-channel content** — their 1:1 DMs with the DM and the DM's private replies addressed to them, plus any private memory derived from them ([ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)). (`--yes` skips the confirmation prompt.) A record of the deletion is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
 
-**Private side-channels: what "private" means.** A player can message the DM privately (a Discord DM) for a side question or a surprise action (design doc 0026). That content is **private from the other players** — it never enters another player's context, by construction. It is **not private from you, the operator**: side-channel transcripts are stored and reviewable like any other session content (operator sovereignty / replay-any-session). Don't promise players secrecy from the operator. Private side-channel content is **player-scoped and individually erasable** (the per-player deletion above), unlike the campaign's shared memory.
+**Private side-channels: what "private" means.** A player can message the DM privately (a Discord DM) for a side question or a surprise action (TDD 0026). That content is **private from the other players** — it never enters another player's context, by construction. It is **not private from you, the operator**: side-channel transcripts are stored and reviewable like any other session content (operator sovereignty / replay-any-session). Don't promise players secrecy from the operator. Private side-channel content is **player-scoped and individually erasable** (the per-player deletion above), unlike the campaign's shared memory.
 
 **What per-player deletion does *not* remove: the campaign's shared memory.** The AI's episodic memory — the session-by-session summaries of what happened at the table — is a *shared, jointly-authored record of the whole group's story*, not one player's personal data. One player asking to be forgotten doesn't make the rest of the table forget the campaign they played together, any more than it would in real life. Those summaries (and operator-imported lore) persist and are erased only when the **campaign or the whole tenant** is deleted:
 

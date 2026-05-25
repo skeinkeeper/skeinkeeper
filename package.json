@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "eval": "node scripts/run-eval.mjs",
     "eval:live": "pnpm --filter @skeinkeeper/eval eval:live",
+    "verify:all": "pnpm check:headers && pnpm check:telemetry-events && pnpm lint && pnpm type-check && pnpm test && pnpm eval",
     "check:headers": "node scripts/check-license-headers.mjs",
     "check:telemetry-events": "node scripts/validate-telemetry-events.mjs",
     "check:voice": "tsx scripts/check-voice-providers.ts",

@@ -63,5 +63,5 @@ body:
       options:
         - label: I've read [ADR-0004 (plugin interfaces)](../../docs/adr/0004-plugin-interface-pattern.md).
           required: true
-        - label: I understand non-trivial implementations require a design doc before code.
+        - label: I understand non-trivial implementations require a TDD (technical design doc) before code.
           required: true

@@ -5,7 +5,7 @@ Accepted (2026-05-19). Refined by [ADR-0017](./0017-per-audience-memory-visibili
 
 ## Context
 
-Phase 4 adds the episodic memory tier (ADR-0002, [design doc 0019](../design/0019-cold-episodic-memory.md)): per-session structured summaries, embedded for retrieval, so the AI DM can reference Session 2 in Session 9.
+Phase 4 adds the episodic memory tier (ADR-0002, [TDD 0019](../tdd/0019-cold-episodic-memory.md)): per-session structured summaries, embedded for retrieval, so the AI DM can reference Session 2 in Session 9.
 
 ADR-0010 (privacy as architecture) requires every persistent store to have a documented deletion path, and per-player erasure across the data model. That raises a question for episodic summaries: when a player invokes erasure, must the campaign's session summaries that *mention* them also be deleted or regenerated?
 
