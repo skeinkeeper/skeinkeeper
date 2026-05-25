@@ -14,6 +14,24 @@ pre-commit:
       run: pnpm eslint --fix {staged_files}
       stage_fixed: true
 
+# Auto-append a DCO sign-off when one is missing, derived from the committer's
+# git identity. This keeps interactive commits ergonomic AND lets unattended
+# tooling (e.g. the greenfield /implement runner, which commits with plain
+# `git commit -m`) satisfy the commit-msg check below and the dco.yml CI gate
+# without a manual `-s`. Runs in linked worktrees too: the prepare-commit-msg
+# driver lives in the shared .git/hooks dir and this config is committed, so a
+# detached build inherits it. Override per-commit with `LEFTHOOK=0`.
+prepare-commit-msg:
+  commands:
+    add-dco-signoff:
+      run: |
+        if ! grep -qE "^Signed-off-by: .+ <.+@.+>" {1}; then
+          name="$(git config user.name)"; email="$(git config user.email)"
+          if [ -n "$name" ] && [ -n "$email" ]; then
+            printf '\nSigned-off-by: %s <%s>\n' "$name" "$email" >> {1}
+          fi
+        fi
+
 commit-msg:
   commands:
     dco-signoff:
@@ -21,5 +39,7 @@ commit-msg:
         if ! grep -qE "^Signed-off-by: .+ <.+@.+>" {1}; then
           echo "Commit message is missing a DCO sign-off line."
           echo "Use 'git commit -s' or add 'Signed-off-by: Your Name <email>' manually."
+          echo "(prepare-commit-msg auto-adds one from your git identity; set"
+          echo " git config user.name/user.email if this fires.)"
           exit 1
         fi

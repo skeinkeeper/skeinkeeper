@@ -165,6 +165,22 @@ pnpm lint                 # ESLint + Prettier check.
 docker compose up         # Runs the whole stack; web UI at localhost:3000.
 ```
 
+## Repo gates
+
+Before treating a change as done, satisfy the gates CI enforces — easiest via the
+single command `pnpm verify:all` (headers + telemetry registry + lint + type-check
++ tests + eval). The individual gates:
+
+- **SPDX header** on every committed source file (`.ts/.tsx/.js/.mjs/.cjs` under
+  the code dirs) — the two lines in [`LICENSE-HEADER.txt`](./LICENSE-HEADER.txt).
+  CI's `check:headers` fails the PR without it.
+- **DCO sign-off** on every commit. No need for `git commit -s`: a
+  `prepare-commit-msg` hook auto-appends `Signed-off-by:` from your git identity
+  (set `git config user.name` / `user.email` if it's missing).
+
+Detached `/implement` builds run in a fresh git worktree; dependency install there
+is handled automatically by the build runner.
+
 ## Anti-patterns — never do this
 
 - **Stuffing more state into the LLM prompt because retrieval is broken.** Fix retrieval. The prompt is for transient context.

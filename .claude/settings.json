@@ -1,15 +1,7 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/format-on-write.mjs"
-          }
-        ]
-      }
-    ]
+  "env": {
+    "VERIFY_TEST_CMD": "pnpm install --frozen-lockfile && pnpm -s verify:all",
+    "VERIFY_TYPECHECK_CMD": "",
+    "VERIFY_LINT_CMD": ""
   }
 }
