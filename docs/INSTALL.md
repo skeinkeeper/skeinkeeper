@@ -58,7 +58,7 @@ It serves the **operator console** at `http://localhost:3000`. From there you:
 - Pick the **DM voice** from a curated persona list (you never see provider IDs).
 - Set **Eagerness** (Reserved / Balanced / Eager) — changeable mid-session.
 - Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([TDD 0026](./tdd/0026-player-dm-side-channels.md)).
-- *(Optional)* Watch the **live feed**: each respond/skip decision, the DM's turns, consent prompts.
+- _(Optional)_ Watch the **live feed**: each respond/skip decision, the DM's turns, consent prompts.
 
 During play you only need to watch **Foundry + Discord** — operator notes come to
 you as Discord DMs (see "Operator notes" below), so the console's live feed is
@@ -74,11 +74,11 @@ and the console reflects it without a refresh, and vice versa ([TDD 0025](./tdd/
 - `/skeinkeeper operator action:claim|clear|show` (see "Operator notes").
 - `/skeinkeeper pvp action:on|off|show` — toggle player-vs-player (operator only; needs Manage Channel on the voice channel).
 
-(Cold-*starting* a session is console-only for now — the bot has to be online to
+(Cold-_starting_ a session is console-only for now — the bot has to be online to
 receive a slash command, and starting is what brings it online.)
 
-**Before you click Start (pre-flight).** You ready the *world*; Skeinkeeper
-onboards the *people* live ([TDD 0023](./tdd/0023-session-onboarding-presence-operator-channel.md)).
+**Before you click Start (pre-flight).** You ready the _world_; Skeinkeeper
+onboards the _people_ live ([TDD 0023](./tdd/0023-session-onboarding-presence-operator-channel.md)).
 Make sure:
 
 - Foundry is running and the MCP bridge is reachable (or accept the mock fallback).
@@ -106,12 +106,12 @@ out of the other players' view ([TDD 0026](./tdd/0026-player-dm-side-channels.md
 The DM keeps such things private by default and won't split the party or resolve
 a private action against another character unless you've enabled **PvP**. As the
 operator, you can review side-channel transcripts like any other session
-content; "private" means private from the *other players*, not from *you* (see
+content; "private" means private from the _other players_, not from _you_ (see
 [PRIVACY.md](./PRIVACY.md)).
 
 **Operator notes (Discord).** When the AI hits a setup snag it can't resolve
 in-fiction — for example, a player claims a character that isn't in the world —
-it DMs *you*. Players never see these notes. Designate yourself the operator any
+it DMs _you_. Players never see these notes. Designate yourself the operator any
 of three ways ([TDD 0024](./tdd/0024-operator-self-designation.md)):
 
 - **In Discord:** type `/skeinkeeper operator claim` — you become the operator;
@@ -149,7 +149,7 @@ so you can diagnose):
   protocol; we ship `@discordjs/voice` ≥ 0.19 (which bundles `@snazzah/davey`) so
   this works. An older version is rejected with close code 4017.
 - **WSL2** → if you run under WSL, Discord voice works on the default NAT
-  networking; mirrored mode is *not* required.
+  networking; mirrored mode is _not_ required.
 
 > **Foundry.** Set `FOUNDRY_MCP_COMMAND` to the command that launches your OSS
 > MCP bridge server — it speaks MCP over **stdio**, so the app spawns it. The
@@ -177,28 +177,28 @@ the `./data` volume.
 
 `.env.example` documents every variable Skeinkeeper reads. The required-for-alpha ones:
 
-| Variable | Purpose |
-|---|---|
-| `DISCORD_BOT_TOKEN` | Your bot's token from the Discord developer portal. |
-| `FOUNDRY_URL` | Informational: the app connects via the MCP bridge (`FOUNDRY_MCP_COMMAND`), not this URL. Your bridge may use it in its own config. |
-| `FOUNDRY_MCP_COMMAND` | Command to launch the OSS MCP bridge server (spawned over stdio), e.g. `node /path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js`. Unset = mock Foundry. |
-| `FOUNDRY_MCP_PORT` | Port the bridge uses for its own Foundry-module link. Default `31415`. |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key (Claude). |
-| `ELEVENLABS_API_KEY` | Your ElevenLabs API key (TTS). |
-| `DEEPGRAM_API_KEY` | Your Deepgram API key (STT). Skip if using local Whisper. |
-| `DISCORD_GUILD_ID` | The Discord server (guild) ID the bot operates in. |
-| `DISCORD_VOICE_CHANNEL_ID` | The voice channel the bot joins. |
-| `DISCORD_OPERATOR_USER_ID` | Optional **fallback** for the operator who gets setup DMs. Prefer `/skeinkeeper operator claim` or the console Operator panel — a designation set there is persisted and overrides this. Unset everywhere = notes fall back to the server log. |
-| `SKEINKEEPER_DATA_DIR` | Where Skeinkeeper stores its SQLite + LanceDB data. Defaults to `./data`. |
-| `SKEINKEEPER_WEB_PORT` | Operator console port. Defaults to `3000`. |
-| `SKEINKEEPER_WEB_HOST` | Operator console bind address. Defaults to `127.0.0.1` (localhost). Set `0.0.0.0` to expose it on your network — only if you understand the risk. |
-| `ANTHROPIC_MODEL_NARRATION` / `ANTHROPIC_MODEL_ORCHESTRATION` | Optional model overrides; the provider's per-tier defaults apply when unset. |
-| `SKEINKEEPER_CAMPAIGN_ID` | Campaign identifier. Defaults to `default`. |
-| `SKEINKEEPER_EAGERNESS` | Default DM eagerness: `reserved` \| `balanced` \| `eager`. Defaults to `balanced`; tunable at runtime in the console. |
-| `ELEVENLABS_DM_VOICE_ID` | Optional override for the DM voice (otherwise set via the console's persona picker). |
-| `SKEINKEEPER_OPERATOR_PASSWORD_HASH` | Optional. Set (via `hashPassword`) to require login to the console. Unset = open on localhost. |
-| `SKEINKEEPER_SESSION_SECRET` | Optional HMAC secret for session cookies; a random one is used if unset (sessions reset on restart). |
-| `SKEINKEEPER_SECRET_PASSPHRASE` | Optional. Passphrase that opens the sealed credential store (`secrets:seal`). Supply via your shell/host secret, **not** `.env`. Unset = secrets read from `.env`. |
+| Variable                                                      | Purpose                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_BOT_TOKEN`                                           | Your bot's token from the Discord developer portal.                                                                                                                                                                                                               |
+| `FOUNDRY_URL`                                                 | Informational: the app connects via the MCP bridge (`FOUNDRY_MCP_COMMAND`), not this URL. Your bridge may use it in its own config.                                                                                                                               |
+| `FOUNDRY_MCP_COMMAND`                                         | Command to launch the OSS MCP bridge server (spawned over stdio), e.g. `node /path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js`. Unset = mock Foundry.                                                                                                   |
+| `FOUNDRY_MCP_PORT`                                            | Port the bridge uses for its own Foundry-module link. Default `31415`.                                                                                                                                                                                            |
+| `ANTHROPIC_API_KEY`                                           | Your Anthropic API key (Claude).                                                                                                                                                                                                                                  |
+| `ELEVENLABS_API_KEY`                                          | Your ElevenLabs API key (TTS).                                                                                                                                                                                                                                    |
+| `DEEPGRAM_API_KEY`                                            | Your Deepgram API key (STT). Skip if using local Whisper.                                                                                                                                                                                                         |
+| `DISCORD_GUILD_ID`                                            | The Discord server (guild) ID the bot operates in.                                                                                                                                                                                                                |
+| `DISCORD_VOICE_CHANNEL_ID`                                    | The voice channel the bot joins.                                                                                                                                                                                                                                  |
+| `DISCORD_OPERATOR_USER_ID`                                    | Optional **fallback** for the operator who gets setup DMs. Prefer `/skeinkeeper operator claim` or the console Operator panel — a designation set there is persisted and overrides this. Unset everywhere = notes fall back to the server log.                    |
+| `SKEINKEEPER_DATA_DIR`                                        | Where Skeinkeeper stores its SQLite + LanceDB data. Defaults to `./data`.                                                                                                                                                                                         |
+| `SKEINKEEPER_WEB_PORT`                                        | Operator console port. Defaults to `3000`.                                                                                                                                                                                                                        |
+| `SKEINKEEPER_WEB_HOST`                                        | Operator console bind address. Defaults to `127.0.0.1` (localhost). Set `0.0.0.0` to expose it on your network — only if you understand the risk.                                                                                                                 |
+| `ANTHROPIC_MODEL_NARRATION` / `ANTHROPIC_MODEL_ORCHESTRATION` | Optional model overrides; the provider's per-tier defaults apply when unset.                                                                                                                                                                                      |
+| `SKEINKEEPER_CAMPAIGN_ID`                                     | Campaign identifier. Defaults to `default`.                                                                                                                                                                                                                       |
+| `SKEINKEEPER_EAGERNESS`                                       | Default DM eagerness: `reserved` \| `balanced` \| `eager`. Defaults to `balanced`; tunable at runtime in the console.                                                                                                                                             |
+| `ELEVENLABS_DM_VOICE_ID`                                      | Optional override for the DM voice (otherwise set via the console's persona picker).                                                                                                                                                                              |
+| `SKEINKEEPER_OPERATOR_PASSWORD_HASH`                          | Optional. Set (via `hashPassword`) to require login to the console. Unset = open on localhost.                                                                                                                                                                    |
+| `SKEINKEEPER_SESSION_SECRET`                                  | Optional HMAC secret for session cookies; a random one is used if unset (sessions reset on restart).                                                                                                                                                              |
+| `SKEINKEEPER_SECRET_PASSPHRASE`                               | Optional. Passphrase that opens the sealed credential store (`secrets:seal`) **and** turns on per-column PII encryption at rest (`pii:encrypt`). Supply via your shell/host secret, **not** `.env`. Unset = secrets read from `.env` and PII stored as plaintext. |
 
 ### Sealing your secrets at rest (optional)
 
@@ -210,13 +210,23 @@ By default the bot token + provider keys are read from `.env`. To keep them encr
 
 Manage it with `secrets:status` (lists sealed key names), `secrets:rotate --new-passphrase <p>`, and `secrets:unseal [--remove]`. An OS-keyring key source is planned. See [ADR-0010](./adr/0010-privacy-as-architecture.md) and [TDD 0029](./tdd/0029-sealed-credential-store.md).
 
+### Encrypting PII at rest (optional)
+
+The same `SKEINKEEPER_SECRET_PASSPHRASE` also turns on **per-column encryption of personal data** (Discord IDs, display names, transcript text, audit payloads, operator settings) using AES-256-GCM ([ADR-0022](./adr/0022-pii-encryption-node-crypto.md), [TDD 0030](./tdd/0030-pii-column-encryption.md)). With the passphrase set, new writes are encrypted automatically. To encrypt a database that already has plaintext rows, run it once:
+
+```bash
+pnpm skeinkeeper pii:encrypt
+```
+
+It walks every PII table, encrypts the values, and backfills the salted-hash lookup companions; it's idempotent, so re-running is safe (and it's the migration step after `secrets:rotate`). Deletion and export (`player:delete`, `campaign:export`, …) keep working without the passphrase because they match on the hash companions — only reading PII back in plaintext needs the key. Without a passphrase, PII is stored as plaintext (the alpha default).
+
 **Never commit `.env`.** It's already in `.gitignore`.
 
 ## Setting up the Discord bot
 
 1. Create an application at https://discord.com/developers/applications.
-2. Under **Bot**, generate a token; paste it into `.env` as `DISCORD_BOT_TOKEN`. Enable the *message content*, *server members*, and *voice state* intents.
-3. Under **OAuth2 → URL Generator**, select the `bot` and `applications.commands` scopes, plus the permissions: *View Channels*, *Send Messages*, *Read Message History*, *Connect*, *Speak*, *Use Voice Activity*. Use the generated URL to invite the bot to the server where your group plays.
+2. Under **Bot**, generate a token; paste it into `.env` as `DISCORD_BOT_TOKEN`. Enable the _message content_, _server members_, and _voice state_ intents.
+3. Under **OAuth2 → URL Generator**, select the `bot` and `applications.commands` scopes, plus the permissions: _View Channels_, _Send Messages_, _Read Message History_, _Connect_, _Speak_, _Use Voice Activity_. Use the generated URL to invite the bot to the server where your group plays.
 
 ## Setting up Foundry + the MCP bridge
 
@@ -224,7 +234,7 @@ You need Foundry VTT running and one of the OSS MCP bridges installed. The bridg
 
 **For the `adambdooley` bridge (recommended):**
 
-1. Install the *FoundryVTT MCP* module in Foundry from the URL in the [bridge's README](https://github.com/adambdooley/foundry-vtt-mcp), and build its `mcp-server` package per its docs.
+1. Install the _FoundryVTT MCP_ module in Foundry from the URL in the [bridge's README](https://github.com/adambdooley/foundry-vtt-mcp), and build its `mcp-server` package per its docs.
 2. Set `FOUNDRY_MCP_COMMAND` to launch that server, e.g. `node /path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js`. Skeinkeeper spawns it over stdio; the server makes its own connection to the Foundry module (default port `FOUNDRY_MCP_PORT=31415`).
 
 **For the `laurigates` bridge:**
@@ -244,7 +254,7 @@ cp data/seed.example.yaml data/seed.yaml
 pnpm tsx server/src/seed-cli.ts
 ```
 
-The seed is idempotent — re-running it on an existing DB won't duplicate rows. Character sheets are *not* in the seed file; they live in Foundry. See `data/seed.example.yaml` for the schema.
+The seed is idempotent — re-running it on an existing DB won't duplicate rows. Character sheets are _not_ in the seed file; they live in Foundry. See `data/seed.example.yaml` for the schema.
 
 ## Voice consent
 
@@ -252,15 +262,15 @@ When a player first joins a Skeinkeeper-monitored voice channel, the bot DMs the
 
 ## What works in the alpha vs. what's coming
 
-| Feature | Alpha | v0.5 | v1.0+ |
-|---|:-:|:-:|:-:|
-| Local orchestrator + tool registry | ✅ | | |
-| Foundry MCP integration | real (stdio bridge; some D&D mutations gated by the bridge) | ✅ | |
-| Discord voice (STT/TTS) | | ✅ | |
-| Web UI for state inspection / overrides | minimal | ✅ | |
-| `docker compose` deployment | | ✅ | |
-| Multiple ruleset support beyond D&D 5e | | | ✅ |
-| Multiple VTT support beyond Foundry | | | ✅ |
+| Feature                                 |                            Alpha                            | v0.5 | v1.0+ |
+| --------------------------------------- | :---------------------------------------------------------: | :--: | :---: |
+| Local orchestrator + tool registry      |                             ✅                              |      |       |
+| Foundry MCP integration                 | real (stdio bridge; some D&D mutations gated by the bridge) |  ✅  |       |
+| Discord voice (STT/TTS)                 |                                                             |  ✅  |       |
+| Web UI for state inspection / overrides |                           minimal                           |  ✅  |       |
+| `docker compose` deployment             |                                                             |  ✅  |       |
+| Multiple ruleset support beyond D&D 5e  |                                                             |      |  ✅   |
+| Multiple VTT support beyond Foundry     |                                                             |      |  ✅   |
 
 The alpha is meant for tinkering by people comfortable running TypeScript from source. The v0.5 milestone targets the friend-group-can-actually-play experience.
 

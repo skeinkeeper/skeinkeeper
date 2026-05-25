@@ -10,8 +10,8 @@ import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
  * tenant-scope only).
  *
  * `payloadJson` may contain PII (e.g., a whispered player's Discord ID
- * surfaced via a tool call). Encryption-at-rest applies once the shim
- * lands per design doc 0002.
+ * surfaced via a tool call). It is AEAD-encrypted at rest when a passphrase is
+ * set (TDD 0030); deletion is tenant-scoped, so it never needs the key.
  */
 export const auditLog = sqliteTable(
   "audit_log",

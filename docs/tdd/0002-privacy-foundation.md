@@ -1,4 +1,5 @@
 # TDD 0002: Privacy Foundation
+
 Status: implemented
 PRD refs: 5.5, 5.6
 PRD-rev: 10391ba
@@ -120,6 +121,8 @@ export const deletionLog = sqliteTable(
 ### Encryption-at-rest
 
 > The per-column encryption approach below is recorded as [ADR-0019](../adr/0019-per-column-pii-encryption.md); this TDD retains its design and rationale.
+>
+> **Implemented.** The shim this section promised was built in [TDD 0030](./0030-pii-column-encryption.md). The _primitive and key source_ changed — [ADR-0022](../adr/0022-pii-encryption-node-crypto.md) (superseding ADR-0019) uses Node-crypto AES-256-GCM keyed from the `SKEINKEEPER_SECRET_PASSPHRASE` `KeySource`, not libsodium + OS keyring — but the per-column-AEAD and key-free-deletion decisions below stand. The hash companions live on the columns, not a generic `encryptedColumn()` wrapper.
 
 The implementation is deferred to Phase 0.7 (which adds the first read/write path against the consents table). The mechanism, decided here:
 
@@ -139,11 +142,11 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.5 | Per-player consent management with deletion/erasure paths | `consents` table (per-player, per-purpose consent records); `deletion_log` table (anonymous audit trail); deletion adapter pattern |
-| 5.5 | PII fields annotated and protected at the type level | `PII<T>` brand in `@skeinkeeper/core`; `NoPII<T>` enforced at call sites |
-| 5.6 | Encryption-at-rest for PII-marked columns | per-column AEAD (XSalsa20-Poly1305 / libsodium) via `encryptedColumn()` helpers; key from OS keyring |
+| PRD ref | Requirement                                               | Satisfied by                                                                                                                       |
+| ------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 5.5     | Per-player consent management with deletion/erasure paths | `consents` table (per-player, per-purpose consent records); `deletion_log` table (anonymous audit trail); deletion adapter pattern |
+| 5.5     | PII fields annotated and protected at the type level      | `PII<T>` brand in `@skeinkeeper/core`; `NoPII<T>` enforced at call sites                                                           |
+| 5.6     | Encryption-at-rest for PII-marked columns                 | per-column AEAD (XSalsa20-Poly1305 / libsodium) via `encryptedColumn()` helpers; key from OS keyring                               |
 
 ## Dependencies considered
 

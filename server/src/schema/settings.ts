@@ -11,9 +11,10 @@ import { campaigns } from "./campaigns";
  * snowflake of the human the AI DMs for setup escalations.
  *
  * `value` may hold PII at the application layer (the operator's own Discord
- * user ID). Erased by FK cascade when the campaign is deleted — the same path
- * as quest_flags, covering both campaign- and tenant-scope erasure via the
- * CampaignAdapter (no separate deletion adapter). See docs/PRIVACY.md.
+ * user ID): AEAD-encrypted at rest when a passphrase is set (TDD 0030). Erased
+ * by FK cascade when the campaign is deleted — the same path as quest_flags,
+ * covering both campaign- and tenant-scope erasure via the CampaignAdapter (no
+ * separate deletion adapter). See docs/PRIVACY.md.
  */
 export const settings = sqliteTable(
   "settings",
