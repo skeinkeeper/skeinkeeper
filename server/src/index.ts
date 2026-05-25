@@ -23,7 +23,12 @@ export { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 export { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
 export { loadOrCreateSalt } from "./salt.js";
 export { seal, open, SecretOpenError } from "./secrets.js";
-export { createPiiCrypto, PiiDecryptError, type PiiCrypto } from "./column_crypto.js";
+export {
+  createPiiCrypto,
+  defaultPiiCrypto,
+  PiiDecryptError,
+  type PiiCrypto,
+} from "./column_crypto.js";
 export {
   EnvKeySource,
   SEALABLE_KEYS,
@@ -46,5 +51,6 @@ export {
   isPlayerScoped,
   playerIdOf,
   type Audience,
+  type AudienceHasher,
   type ConversationId,
 } from "./audience.js";

@@ -43,8 +43,9 @@ export class DialogueAdapter implements DeletionAdapter, ExportAdapter {
   private bySubject(subjectId: string) {
     return or(
       eq(dialogue.speakerHash, this.crypto.hash(subjectId)),
-      eq(dialogue.speaker, subjectId),
-      eq(dialogue.audience, playerAudience(subjectId)),
+      eq(dialogue.speaker, subjectId), // legacy plaintext speaker (pre-encryption)
+      eq(dialogue.audience, playerAudience(this.crypto, subjectId)), // hashed audience token
+      eq(dialogue.audience, `player:${subjectId}`), // legacy pre-0030 raw-id token
     );
   }
 
