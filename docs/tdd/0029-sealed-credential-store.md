@@ -1,5 +1,5 @@
 # TDD 0029: Sealed Credential Store
-Status: ready
+Status: implemented
 PRD refs: 4.5, 5.5
 PRD-rev: 66c079f
 ADR constraints: 0010
