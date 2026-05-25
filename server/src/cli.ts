@@ -16,6 +16,9 @@ import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 import { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
 import { loadOrCreateSalt } from "./salt.js";
 import { runSecretsCli } from "./secrets_cli.js";
+import { EnvKeySource } from "./secret_store.js";
+import { createPiiCrypto } from "./column_crypto.js";
+import { encryptPiiColumns } from "./pii_migrate.js";
 
 const USAGE = `\
 skeinkeeper — local operator CLI
@@ -31,6 +34,8 @@ Usage:
   skeinkeeper secrets:status                        list sealed key names (no values)
   skeinkeeper secrets:rotate  --new-passphrase <p>  re-seal under a new passphrase
   skeinkeeper secrets:unseal  [--remove]            print sealed values; --remove deletes the file
+
+  skeinkeeper pii:encrypt                           encrypt PII columns at rest (needs the passphrase)
 
 Defaults:
   --tenant  default
@@ -69,6 +74,38 @@ export async function runCli(
     const r = runSecretsCli(argv, process.env);
     stdout.write(r.output);
     return r.code;
+  }
+
+  // pii:encrypt migrates PII columns to ciphertext at rest (design doc 0030).
+  // Encryption is gated on the passphrase, so refuse without it (fail closed).
+  if (command === "pii:encrypt") {
+    const keySource = new EnvKeySource(process.env);
+    if (keySource.getPassphrase() === undefined) {
+      stdout.write(
+        "pii:encrypt needs SKEINKEEPER_SECRET_PASSPHRASE set — encryption at rest is gated on it.\n" +
+          "Set the passphrase (the same one used for secrets:seal) and re-run.\n",
+      );
+      return 2;
+    }
+    const dbPath = env.dbPath ?? process.env.SKEINKEEPER_DB_PATH ?? "./data/skeinkeeper.db";
+    const saltPath = env.saltPath ?? process.env.SKEINKEEPER_SALT_PATH ?? "./data/.salt";
+    const db = openDb({ path: dbPath, runMigrations: true });
+    try {
+      const crypto = createPiiCrypto({ keySource, salt: loadOrCreateSalt(saltPath) });
+      const r = encryptPiiColumns(db, crypto);
+      const total = r.consents + r.playerCharacterMap + r.dialogue + r.settings + r.auditLog;
+      stdout.write(
+        `Encrypted PII columns — ${total} row(s) migrated:\n` +
+          `  consents: ${r.consents}\n` +
+          `  player_character_map: ${r.playerCharacterMap}\n` +
+          `  dialogue: ${r.dialogue}\n` +
+          `  settings: ${r.settings}\n` +
+          `  audit_log: ${r.auditLog}\n`,
+      );
+      return 0;
+    } finally {
+      db.close();
+    }
   }
 
   const { values } = parseArgs({
