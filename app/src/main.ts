@@ -2,13 +2,14 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 /**
- * Headless operator-app entrypoint (Phase 5a). Loads config, wires the app,
- * and runs the always-listening session until interrupted. The web UI
- * (Phase 5b) mounts on the same App; this is the no-UI path.
+ * Operator-app entrypoint. Loads config + secrets, wires the App, and starts the
+ * operator console (web UI) on localhost. The console drives start/stop — the app
+ * does NOT auto-join a voice channel on boot.
  *
- *   pnpm app:start
+ *   pnpm app:start            # then open the console URL it logs
  *
- * Foundry defaults to a Mock until the real MCP transport lands (see README).
+ * Foundry connects to the real OSS MCP bridge when FOUNDRY_MCP_COMMAND is set
+ * (spawned at session start); otherwise it falls back to a mock.
  */
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -51,7 +52,9 @@ async function main(): Promise<void> {
     ...(process.env["POSTHOG_PROJECT_API_KEY"] !== undefined
       ? { posthogKey: process.env["POSTHOG_PROJECT_API_KEY"] }
       : {}),
-    ...(process.env["POSTHOG_HOST"] !== undefined ? { posthogHost: process.env["POSTHOG_HOST"] } : {}),
+    ...(process.env["POSTHOG_HOST"] !== undefined
+      ? { posthogHost: process.env["POSTHOG_HOST"] }
+      : {}),
   });
   const crash = createCrash({
     enabled: process.env["SKEINKEEPER_TELEMETRY_CRASH"] === "1",
@@ -81,7 +84,8 @@ async function main(): Promise<void> {
   const web = createWebServer(app, bus, auth);
   web.listen(config.webPort, host, () => {
     console.log(`Skeinkeeper operator console: http://${host}:${config.webPort}`);
-    if (auth === undefined) console.log("  (no operator password set — console is unauthenticated)");
+    if (auth === undefined)
+      console.log("  (no operator password set — console is unauthenticated)");
     if (host !== "127.0.0.1" && host !== "localhost") {
       console.log(`  (WARNING: bound to ${host} — the console is reachable on the network)`);
     }

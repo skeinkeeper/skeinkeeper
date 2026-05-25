@@ -244,8 +244,9 @@ export class DiscordVoiceIO implements VoiceIO {
 
   async requestConsent(_subjectId: string, _consentText: string): Promise<void> {
     // The consent prompt is delivered out-of-band (a Discord DM / slash-command
-    // flow) by the operator app, which owns the gateway client. This transport
-    // only gates audio; it does not send DMs. Wired in Phase 5.
+    // flow) by the operator app, which owns the gateway client and wires that
+    // flow (see session_manager). This transport only gates audio; it does not
+    // send DMs.
     throw new Error(
       "DiscordVoiceIO.requestConsent is delivered by the operator app (gateway client), not the voice transport.",
     );

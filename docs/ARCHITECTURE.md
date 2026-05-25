@@ -71,7 +71,7 @@ The LLM's "memory" across sessions is split into four tiers with different mecha
 | Tier | Contents | Mechanism |
 |---|---|---|
 | **Hot** | Current scene, last ~20 turns, party, active NPCs, active rules | In-prompt, sliding window |
-| **Warm** | *From Foundry:* character sheets, NPCs on scene, active scene, combat tracker — whatever the active Foundry system module exposes. *From Skeinkeeper SQLite:* campaign metadata, sessions, audit log, consents, quest flags | Per-turn read from `FoundryClient` + `TenantDb`; mutations always via typed tool calls |
+| **Warm** | *From Foundry:* character sheets, NPCs on scene, active scene — whatever the active Foundry system module exposes. *From Skeinkeeper SQLite:* campaign metadata, sessions, audit log, consents, quest flags | Per-turn read from `FoundryClient` + `TenantDb`; mutations always via typed tool calls |
 | **Cold** | Campaign content, SRD rules, monster stat blocks | LanceDB vector store, retrieved per turn (TDD 0019; on-box embeddings by default) |
 | **Episodic** | Per-session summaries, key beats, NPC deltas | Generated post-session; embedded + retrieved; campaign-scoped shared memory ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)) |
 
@@ -91,7 +91,7 @@ Three pluggable surfaces, each with a stable interface and one default implement
 | `FoundryClient` | `McpFoundryClient` (via the OSS Foundry MCP bridge of ADR-0011) | Operate the visual tabletop; authoritative for mechanical state |
 | `VoiceIO` | `DiscordVoiceIO` | Bridge to players (STT + TTS + Discord transport) |
 
-A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts` and per-system mutation tools are registered by the Foundry plugin at session start based on the active Foundry system. See [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md).
+A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts`. Per-system mutation tools are planned to be registered by the Foundry plugin at session start, but are not yet wired (see "How a turn works" below and the mutation gap in [TDD 0014](./tdd/0014-mcp-foundry-client.md)). See [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md).
 
 See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP bridge choice (supersedes [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md)) and [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
 

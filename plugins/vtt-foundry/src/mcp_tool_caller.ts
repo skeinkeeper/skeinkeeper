@@ -2,9 +2,9 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 /**
- * Minimal MCP tool-calling surface the McpFoundryClient depends on. A real
- * implementation (Phase 3-live) spawns the adambdooley bridge MCP server as
- * a subprocess and speaks the Model Context Protocol over stdio via
+ * Minimal MCP tool-calling surface the McpFoundryClient depends on. The real
+ * implementation (`StdioMcpToolCaller`) spawns the adambdooley bridge MCP server
+ * as a subprocess and speaks the Model Context Protocol over stdio via
  * `@modelcontextprotocol/sdk`, returning the parsed JSON payload from each
  * tool's content. Tests use FakeMcpToolCaller.
  *
@@ -35,8 +35,6 @@ export class FakeMcpToolCaller implements McpToolCaller {
       throw new Error(`FakeMcpToolCaller: no scripted response for tool "${name}"`);
     }
     const r = this.responses[name];
-    return typeof r === "function"
-      ? (r as (a: Record<string, unknown>) => unknown)(args)
-      : r;
+    return typeof r === "function" ? (r as (a: Record<string, unknown>) => unknown)(args) : r;
   }
 }

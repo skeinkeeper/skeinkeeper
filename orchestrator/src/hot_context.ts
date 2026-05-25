@@ -116,8 +116,8 @@ export function assembleHotContext(
 
 /**
  * Render the hot context as a plain-text block suitable for injection
- * into a system prompt. The LLM provider (Phase 1.5) decides whether
- * to embed it as a system message or as the leading user message.
+ * into a system prompt. The session embeds it as the leading user-message
+ * block (see session.ts).
  */
 export function formatHotContextAsText(ctx: HotContext): string {
   const lines: string[] = [];

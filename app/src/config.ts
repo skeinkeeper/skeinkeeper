@@ -5,8 +5,8 @@ import { DEFAULT_EAGERNESS, isEagerness, type Eagerness } from "@skeinkeeper/orc
 
 /**
  * Operator app configuration (design doc 0020). Loaded from the environment
- * (dev: .env; production: sealed secret store + config file, Phase 5c). Pure +
- * testable: `loadConfig` takes an env map and returns a validated config or
+ * (dev/alpha: .env; a sealed secret store + config file is planned, ADR-0010).
+ * Pure + testable: `loadConfig` takes an env map and returns a validated config or
  * throws a ConfigError listing everything missing.
  */
 export interface AppConfig {
@@ -94,7 +94,9 @@ export function loadConfig(env: Env): AppConfig {
         : {}),
     },
     dmVoiceId: env["ELEVENLABS_DM_VOICE_ID"] ?? DEFAULT_DM_VOICE_ID,
-    eagerness: isEagerness(env["SKEINKEEPER_EAGERNESS"] ?? "") ? (env["SKEINKEEPER_EAGERNESS"] as Eagerness) : DEFAULT_EAGERNESS,
+    eagerness: isEagerness(env["SKEINKEEPER_EAGERNESS"] ?? "")
+      ? (env["SKEINKEEPER_EAGERNESS"] as Eagerness)
+      : DEFAULT_EAGERNESS,
   };
   if (missing.length > 0) throw new ConfigError(missing);
   return config;

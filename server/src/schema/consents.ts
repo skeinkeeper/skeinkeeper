@@ -9,8 +9,8 @@ import { sqliteTable, integer, text, index } from "drizzle-orm/sqlite-core";
  * state for a (subject, purpose) is the most recent row.
  *
  * `subject_id` is a Discord user ID and is PII at the application layer.
- * Per design doc 0002, this column is targeted for at-rest encryption when
- * the writer ships in Phase 0.7.
+ * Per ADR-0019 this column is targeted for per-column AEAD encryption at rest;
+ * the encryption helpers are not yet implemented.
  */
 export const consents = sqliteTable(
   "consents",

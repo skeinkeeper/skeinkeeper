@@ -72,14 +72,14 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 
 ## Tech stack
 
-- **Language:** TypeScript end-to-end (Node 22+ on server, Next.js or similar for the local web UI).
+- **Language:** TypeScript end-to-end (Node 22+). The local web console is plain Node `http` + static assets — no web framework.
 - **Database:** SQLite. Tenant-scoped tables per [ADR-0008](./docs/adr/0008-tenant-scoping.md).
 - **Vector store:** LanceDB. Per-tenant namespaces.
 - **Auth:** Local password + optional WebAuthn passkey. No remote auth.
 - **LLM:** Anthropic Messages API (Claude) as default. Other providers via the plugin interface per [ADR-0004](./docs/adr/0004-plugin-interface-pattern.md).
 - **Discord bot:** discord.js v14+, with `@discordjs/voice` for audio. The operator runs their own bot under their own token.
 - **Voice:** Deepgram (STT, default), ElevenLabs (TTS, default). Plugin-swappable. Operator brings their own API keys.
-- **Foundry integration:** Foundry MCP module ([ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)) — consume, don't reimplement.
+- **Foundry integration:** OSS Foundry MCP bridge ([ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md), superseding [ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)) — consume, don't reimplement.
 - **Observability (local):** structured logging to file. Langfuse for LLM tracing (operator-configured if desired).
 - **Observability (opt-in remote):** PostHog (product analytics), Sentry (errors), both off by default per [ADR-0009](./docs/adr/0009-telemetry-opt-in.md).
 - **Deployment:** `docker compose up`. Web UI served on `localhost:3000`.
@@ -142,7 +142,6 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 │                                # model + retrieved SRD/compendium content.
 ├── /telemetry/                  # Typed event emission wrapper + event registry.
 ├── /app/                        # Operator app: Discord gateway + voice loop + web console.
-├── /web/                        # (legacy placeholder; operator UI now lives in /app)
 ├── /server/                     # Local DB, schema, auth, secret storage, erasure/export.
 ├── /eval/                       # Eval harness + fixtures.
 └── /scripts/                    # Dev/ops + live-validation utilities.

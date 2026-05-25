@@ -118,7 +118,7 @@ async function reply(
  * The operator app's composition root (design doc 0020 §2). Owns the Discord
  * gateway client, joins voice, wires DiscordVoiceIO + the Session + memory +
  * per-character voice routing, and runs the always-listening loop. The web UI
- * (Phase 5b) drives it: `setEagerness` is read each decision cycle, and
+ * (app/src/web) drives it: `setEagerness` is read each decision cycle, and
  * start/stop are in-process calls.
  *
  * LIVE-VALIDATION REQUIRED — real gateway + voice I/O. The testable logic

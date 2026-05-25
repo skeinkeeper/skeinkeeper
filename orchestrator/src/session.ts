@@ -42,9 +42,9 @@ import { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
 import { buildWarmStateSnapshot } from "./warm_state.js";
 
 /**
- * Orchestrator turn loop per design doc 0011. Pulls the Phase 1 pieces
- * (behavior spec, hot context, warm state, LLM provider, tool dispatcher,
- * audit log) into a single runTurn(input) function.
+ * Orchestrator turn loop per design doc 0011. Pulls the behavior spec, hot
+ * context, warm + episodic memory, LLM provider, tool dispatcher, and audit
+ * log into a single runTurn(input) function.
  */
 
 export interface SessionConfig {

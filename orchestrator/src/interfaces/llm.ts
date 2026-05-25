@@ -119,16 +119,11 @@ export interface LLMOptions {
   signal?: AbortSignal;
   /** Called once per completion when usage is known, typically near
    *  the `done` event. The orchestrator wires this to audit-log entries
-   *  and (in Phase 4+) a local cost-tracking store. */
+   *  (and, if a local cost-tracking store is added, into that store). */
   onUsage?: (usage: TokenUsage) => void;
 }
 
-export type StopReason =
-  | "end_turn"
-  | "tool_use"
-  | "max_tokens"
-  | "compacted"
-  | "refusal";
+export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "compacted" | "refusal";
 
 export type LLMErrorKind =
   | "rate_limited"

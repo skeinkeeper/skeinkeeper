@@ -9,12 +9,14 @@ import { rollFormula } from "../dice.js";
  * Core tools — system-agnostic, owned by Skeinkeeper. Per design doc
  * 0007, system-specific mutation tools (apply_damage, heal,
  * set_condition for D&D; apply_stress, take_consequence for Fate;
- * apply_harm, tick_harm_clock for PbtA) are registered by the
- * Foundry plugin at session start based on the active Foundry system.
+ * apply_harm, tick_harm_clock for PbtA) are planned to be registered by
+ * the Foundry plugin at session start — not yet wired (the OSS bridge
+ * mutation gap, design doc 0014).
  *
  * The tools here are universal:
- *  - Dice: thin wrapper that delegates to FoundryClient.rollDice() in
- *    Phase 3 so rolls land in Foundry's chat log. Until then, no-op.
+ *  - Dice: tries FoundryClient.rollDice() so rolls land in Foundry's chat
+ *    log, falling back to the local crypto roller when the bridge can't
+ *    roll server-side (design doc 0014).
  *  - World state: quest flags, party movement, in-game time.
  *  - Player whisper: Discord side, not VTT side.
  *  - Fudge: meta-mechanic, not system-specific.
