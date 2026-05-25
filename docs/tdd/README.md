@@ -35,7 +35,7 @@ and the [ADR index](../adr/INDEX.md) for the supersede-don't-edit convention.
 
 ## Index
 
-All docs below are `Status: implemented`. Supersession notes are kept for the historical map.
+All docs below are `Status: implemented` unless the Notes column says otherwise. Supersession notes are kept for the historical map.
 
 | # | Title | Notes |
 |---|---|---|
@@ -67,3 +67,4 @@ All docs below are `Status: implemented`. Supersession notes are kept for the hi
 | [0026](./0026-player-dm-side-channels.md) | 1:1 Player↔DM Side-Channels (private Q&A + private actions) | single-scene invariant → [ADR-0020](../adr/0020-single-scene-invariant.md) |
 | [0027](./0027-mcp-bridge-gap-reaudit-upstream-proposal.md) | MCP Bridge Gap Re-Audit + Upstream Proposal (extends [0022](./0022-dm-action-coverage-audit.md)) | |
 | [0028](./0028-real-time-voice-latency.md) | Real-Time Voice Latency (streaming, barge-in, latency masking) | cascade-not-S2S decision → [ADR-0021](../adr/0021-cascaded-voice-not-s2s.md) |
+| [0029](./0029-sealed-credential-store.md) | Sealed Credential Store | new — `Status: ready` (design PR) |
