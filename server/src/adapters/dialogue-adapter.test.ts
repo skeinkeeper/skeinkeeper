@@ -8,6 +8,7 @@ import { TenantDb } from "../tenant_db.js";
 import { campaigns, dialogue, sessions, tenants } from "../schema/index.js";
 import { DialogueAdapter } from "./dialogue-adapter.js";
 import { createPiiCrypto } from "../column_crypto.js";
+import { playerAudience, playerConversation } from "../audience.js";
 
 const PII_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const enabledCrypto = () =>
@@ -199,6 +200,49 @@ describe("DialogueAdapter — encrypted rows (TDD 0030)", () => {
     });
     expect(deleted).toBe(1);
     expect(db.select().from(dialogue).all()).toHaveLength(1);
+  });
+
+  it("erases the DM's private replies addressed via the hashed audience token (bySubject condition 3)", async () => {
+    const { db } = setup();
+    const c = enabledCrypto();
+    const base = Date.now();
+    // The DM's PRIVATE reply to Alice: spoken by "narrator", addressed via the
+    // hashed audience token. The only predicate that can match it for Alice's
+    // erasure is the hashed audience (speaker_hash is narrator's, not Alice's).
+    db.insert(dialogue)
+      .values({
+        tenantId: "default",
+        sessionId: "s1",
+        speaker: c.enc("narrator"),
+        speakerHash: c.hash("narrator"),
+        text: c.enc("psst, the chest is trapped"),
+        timestamp: base,
+        audience: playerAudience(c, "discord:alice"),
+        conversationId: playerConversation(c, "discord:alice"),
+      })
+      .run();
+    // Another player's private reply (hashed audience) — must persist.
+    db.insert(dialogue)
+      .values({
+        tenantId: "default",
+        sessionId: "s1",
+        speaker: c.enc("narrator"),
+        speakerHash: c.hash("narrator"),
+        text: c.enc("for bob only"),
+        timestamp: base + 1,
+        audience: playerAudience(c, "discord:bob"),
+        conversationId: playerConversation(c, "discord:bob"),
+      })
+      .run();
+    const deleted = await new DialogueAdapter(db, c).delete({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:alice",
+    });
+    expect(deleted).toBe(1);
+    const remaining = db.select().from(dialogue).all();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.audience).toBe(playerAudience(c, "discord:bob"));
   });
 
   it("decrypts speaker + text when exporting encrypted rows", async () => {

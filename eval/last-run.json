@@ -93,10 +93,29 @@
           "status": "pass"
         }
       ]
+    },
+    {
+      "name": "side-channel-out-of-scene-refusal",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/006-side-channel-out-of-scene-refusal.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "not_empty",
+          "status": "pass"
+        },
+        {
+          "kind": "tool_not_called",
+          "status": "pass"
+        },
+        {
+          "kind": "contains_any_of",
+          "status": "pass"
+        }
+      ]
     }
   ],
   "totals": {
-    "pass": 6,
+    "pass": 7,
     "fail": 0,
     "skipped": 0
   }
