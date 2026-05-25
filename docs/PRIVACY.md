@@ -26,7 +26,7 @@ What Skeinkeeper stores:
 - **Episodic memory** — structured summaries of past sessions, embedded for retrieval
 - **Consent records** — per-player records of voice processing consent
 - **Deletion log** — anonymous record that an erasure happened (no personally-identifying content)
-- **Configuration** — your Discord bot token, Foundry credentials, LLM/voice API keys (in this alpha, read from your local `.env`; at-rest sealing is planned — see [Encryption](#encryption))
+- **Configuration** — your Discord bot token, Foundry credentials, LLM/voice API keys (read from your local `.env`, or **sealed at rest** via `secrets:seal` — see [Encryption](#encryption))
 
 What lives in **Foundry** (not in Skeinkeeper's database):
 
@@ -132,7 +132,7 @@ A "Local mode only" badge appears in the web UI when both streams are off, as a 
 
 ## Encryption
 
-- In this alpha, credentials (API keys, Discord bot token, etc.) are read from your local `.env`. At-rest sealing — an AES-256-GCM-sealed config file, with optional OS-keyring integration — ships as a library and is being wired in as the default store (planned for v0.5, per [ADR-0010](./adr/0010-privacy-as-architecture.md)).
+- Credentials (API keys, Discord bot token, etc.) can be **sealed at rest** in an AES-256-GCM config file, opened at boot with a passphrase you supply via `SKEINKEEPER_SECRET_PASSPHRASE` (run `pnpm skeinkeeper secrets:seal`, then delete the plaintext from `.env`). Without sealing, they are read from your local `.env`. An OS-keyring key source is planned (per [ADR-0010](./adr/0010-privacy-as-architecture.md)).
 - Traffic to external providers uses HTTPS/TLS; the operator console binds to localhost (`127.0.0.1`) and is plain HTTP on your own machine.
 - PII fields are type-marked in code (`PII<>`); per-column AEAD encryption at rest is planned ([ADR-0019](./adr/0019-per-column-pii-encryption.md)), not yet implemented.
 

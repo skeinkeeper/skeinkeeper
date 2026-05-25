@@ -4,11 +4,12 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 
 /**
- * Sealed secret values (hard rule #7, design doc 0020 §6). Provider API keys
- * are sealed at rest with a passphrase, so production secrets don't live in
- * plaintext .env. Authenticated AES-256-GCM with a scrypt-derived key — Node
- * crypto only, no dependencies. Pure round-trip functions, unit-tested; the
- * operator app reads them into config at boot from a sealed config file.
+ * Sealed secret values (hard rule #7, design docs 0020 §6 + 0029). Provider API
+ * keys + the bot token are sealed at rest with a passphrase, so production
+ * secrets don't live in plaintext .env. Authenticated AES-256-GCM with a
+ * scrypt-derived key — Node crypto only, no dependencies. Pure round-trip
+ * functions; `secret_store.ts` wraps these for the file store + boot overlay,
+ * and the app opens them into config at boot.
  */
 const ALGO = "aes-256-gcm";
 

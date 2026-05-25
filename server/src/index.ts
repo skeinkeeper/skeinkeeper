@@ -22,6 +22,17 @@ export { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 export { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 export { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
 export { loadOrCreateSalt } from "./salt.js";
+export { seal, open, SecretOpenError } from "./secrets.js";
+export {
+  EnvKeySource,
+  SEALABLE_KEYS,
+  SecretStoreError,
+  loadEffectiveEnv,
+  loadSealedSecrets,
+  sealSecrets,
+  sealedKeyNames,
+  type KeySource,
+} from "./secret_store.js";
 export { runCli } from "./cli.js";
 export { TenantDb } from "./tenant_db.js";
 export { seedFromFile } from "./seed.js";

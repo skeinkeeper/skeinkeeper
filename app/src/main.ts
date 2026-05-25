@@ -19,6 +19,7 @@ import { VERSION } from "@skeinkeeper/core";
 import { createAnalytics, createCrash } from "@skeinkeeper/telemetry";
 import { loadConfig } from "./config.js";
 import { createApp } from "./bootstrap.js";
+import { EnvKeySource, loadEffectiveEnv } from "@skeinkeeper/server";
 import { loadDotenv } from "./dotenv.js";
 import { EventBus } from "./web/event_bus.js";
 import { createWebServer } from "./web/server.js";
@@ -41,25 +42,33 @@ function loadOrCreateInstallationId(dataDir: string): string {
 
 async function main(): Promise<void> {
   loadDotenv(REPO_ROOT);
-  const config = loadConfig(process.env);
+  // Overlay sealed credentials onto the env before building config (design doc
+  // 0029) so secrets live encrypted at rest, not in plaintext .env — and stay out
+  // of the global process.env (so spawned subprocesses don't inherit them). Fail
+  // closed: a present-but-unopenable sealed file throws here and aborts boot.
+  const baseEnv = process.env;
+  const dataDir = baseEnv["SKEINKEEPER_DATA_DIR"] ?? "./data";
+  const env = loadEffectiveEnv(baseEnv, {
+    path: join(dataDir, "secrets.sealed"),
+    keySource: new EnvKeySource(baseEnv),
+  });
+  const config = loadConfig(env);
 
   // Telemetry — off unless the operator opted in (ADR-0009). The orchestrator
   // emits events through this client; when disabled it's a no-op.
   const installationId = loadOrCreateInstallationId(config.dataDir);
   const analytics = createAnalytics({
-    enabled: process.env["SKEINKEEPER_TELEMETRY_ANALYTICS"] === "1",
+    enabled: env["SKEINKEEPER_TELEMETRY_ANALYTICS"] === "1",
     installationId,
-    ...(process.env["POSTHOG_PROJECT_API_KEY"] !== undefined
-      ? { posthogKey: process.env["POSTHOG_PROJECT_API_KEY"] }
+    ...(env["POSTHOG_PROJECT_API_KEY"] !== undefined
+      ? { posthogKey: env["POSTHOG_PROJECT_API_KEY"] }
       : {}),
-    ...(process.env["POSTHOG_HOST"] !== undefined
-      ? { posthogHost: process.env["POSTHOG_HOST"] }
-      : {}),
+    ...(env["POSTHOG_HOST"] !== undefined ? { posthogHost: env["POSTHOG_HOST"] } : {}),
   });
   const crash = createCrash({
-    enabled: process.env["SKEINKEEPER_TELEMETRY_CRASH"] === "1",
+    enabled: env["SKEINKEEPER_TELEMETRY_CRASH"] === "1",
     installationId,
-    ...(process.env["SENTRY_DSN"] !== undefined ? { sentryDsn: process.env["SENTRY_DSN"] } : {}),
+    ...(env["SENTRY_DSN"] !== undefined ? { sentryDsn: env["SENTRY_DSN"] } : {}),
   });
   analytics.track("app.started", { version: VERSION, nodeVersion: process.version });
 
@@ -68,19 +77,19 @@ async function main(): Promise<void> {
 
   // Optional local auth: set SKEINKEEPER_OPERATOR_PASSWORD_HASH (from
   // `hashPassword`) to require login; otherwise the localhost console is open.
-  const passwordHash = process.env["SKEINKEEPER_OPERATOR_PASSWORD_HASH"];
+  const passwordHash = env["SKEINKEEPER_OPERATOR_PASSWORD_HASH"];
   const auth =
     passwordHash !== undefined && passwordHash.length > 0
       ? {
           passwordHash,
-          tokenSecret: process.env["SKEINKEEPER_SESSION_SECRET"] ?? randomBytes(32).toString("hex"),
+          tokenSecret: env["SKEINKEEPER_SESSION_SECRET"] ?? randomBytes(32).toString("hex"),
         }
       : undefined;
 
   // The operator console drives start/stop; we don't auto-join on boot.
   // Bind to loopback by default so the console isn't exposed on the network
   // (override with SKEINKEEPER_WEB_HOST=0.0.0.0 only if you understand the risk).
-  const host = process.env["SKEINKEEPER_WEB_HOST"] ?? "127.0.0.1";
+  const host = env["SKEINKEEPER_WEB_HOST"] ?? "127.0.0.1";
   const web = createWebServer(app, bus, auth);
   web.listen(config.webPort, host, () => {
     console.log(`Skeinkeeper operator console: http://${host}:${config.webPort}`);

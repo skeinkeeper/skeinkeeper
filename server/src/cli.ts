@@ -15,6 +15,7 @@ import { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 import { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
 import { loadOrCreateSalt } from "./salt.js";
+import { runSecretsCli } from "./secrets_cli.js";
 
 const USAGE = `\
 skeinkeeper — local operator CLI
@@ -25,6 +26,11 @@ Usage:
   skeinkeeper campaign:export --tenant <id> --campaign <id>          [--out <dir>]
   skeinkeeper campaign:delete --tenant <id> --campaign <id>          [--yes]
   skeinkeeper tenant:delete   --tenant <id>                          [--yes]
+
+  skeinkeeper secrets:seal                          seal .env secrets to a sealed file
+  skeinkeeper secrets:status                        list sealed key names (no values)
+  skeinkeeper secrets:rotate  --new-passphrase <p>  re-seal under a new passphrase
+  skeinkeeper secrets:unseal  [--remove]            print sealed values; --remove deletes the file
 
 Defaults:
   --tenant  default
@@ -57,6 +63,14 @@ export async function runCli(
     return command ? 0 : 1;
   }
 
+  // secrets:* manage the sealed credential store (design doc 0029) — no DB needed,
+  // and their own flags (--new-passphrase/--remove) must not hit the erasure parser.
+  if (command.startsWith("secrets:")) {
+    const r = runSecretsCli(argv, process.env);
+    stdout.write(r.output);
+    return r.code;
+  }
+
   const { values } = parseArgs({
     args: [...argv.slice(1)],
     options: {
@@ -87,7 +101,13 @@ export async function runCli(
     const auditLogAdapter = new AuditLogAdapter(db);
     const dialogueAdapter = new DialogueAdapter(db);
     const pcMapAdapter = new PlayerCharacterMapAdapter(db);
-    for (const a of [consentsAdapter, campaignAdapter, auditLogAdapter, dialogueAdapter, pcMapAdapter]) {
+    for (const a of [
+      consentsAdapter,
+      campaignAdapter,
+      auditLogAdapter,
+      dialogueAdapter,
+      pcMapAdapter,
+    ]) {
       erasure.register(a);
     }
     // Injected adapters from packages `server` can't import (cycle): e.g. the
@@ -131,16 +151,22 @@ export async function runCli(
 
     if (command.endsWith(":delete")) {
       if (!values.yes) {
-        const confirmed = await confirm(`Delete ${describeScope(scope)}? This cannot be undone. [y/N] `);
+        const confirmed = await confirm(
+          `Delete ${describeScope(scope)}? This cannot be undone. [y/N] `,
+        );
         if (!confirmed) {
           stdout.write("Aborted.\n");
           return 1;
         }
       }
       const report = await erasure.erase(scope);
-      stdout.write(`Deleted ${report.totalRecords} record(s) across ${report.perAdapter.length} adapter(s).\n`);
+      stdout.write(
+        `Deleted ${report.totalRecords} record(s) across ${report.perAdapter.length} adapter(s).\n`,
+      );
       for (const r of report.perAdapter) {
-        stdout.write(`  ${r.adapter}: ${r.error !== undefined ? `FAILED — ${r.error}` : r.recordsDeleted}\n`);
+        stdout.write(
+          `  ${r.adapter}: ${r.error !== undefined ? `FAILED — ${r.error}` : r.recordsDeleted}\n`,
+        );
       }
       if (report.failures > 0) {
         stdout.write(

@@ -4,8 +4,9 @@
 import { DEFAULT_EAGERNESS, isEagerness, type Eagerness } from "@skeinkeeper/orchestrator";
 
 /**
- * Operator app configuration (design doc 0020). Loaded from the environment
- * (dev/alpha: .env; a sealed secret store + config file is planned, ADR-0010).
+ * Operator app configuration (design doc 0020). Loaded from the environment —
+ * either plaintext .env or, when present, the sealed secret store opened at boot
+ * and overlaid before loadConfig (design doc 0029).
  * Pure + testable: `loadConfig` takes an env map and returns a validated config or
  * throws a ConfigError listing everything missing.
  */

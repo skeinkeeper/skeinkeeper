@@ -198,8 +198,17 @@ the `./data` volume.
 | `ELEVENLABS_DM_VOICE_ID` | Optional override for the DM voice (otherwise set via the console's persona picker). |
 | `SKEINKEEPER_OPERATOR_PASSWORD_HASH` | Optional. Set (via `hashPassword`) to require login to the console. Unset = open on localhost. |
 | `SKEINKEEPER_SESSION_SECRET` | Optional HMAC secret for session cookies; a random one is used if unset (sessions reset on restart). |
+| `SKEINKEEPER_SECRET_PASSPHRASE` | Optional. Passphrase that opens the sealed credential store (`secrets:seal`). Supply via your shell/host secret, **not** `.env`. Unset = secrets read from `.env`. |
 
-In dev, secrets live in `.env`, loaded at startup. For at-rest sealing the app ships `seal`/`open` (passphrase-derived AES-256-GCM); wiring a sealed config file as the default production store (and optional OS-keyring integration) is in progress. See [ADR-0010](./adr/0010-privacy-as-architecture.md).
+### Sealing your secrets at rest (optional)
+
+By default the bot token + provider keys are read from `.env`. To keep them encrypted at rest instead:
+
+1. Export a passphrase in your shell (or inject it as a docker/systemd secret — keep it out of `.env`): `export SKEINKEEPER_SECRET_PASSPHRASE=…`.
+2. Run `pnpm skeinkeeper secrets:seal` — it seals the secret values currently in your environment into `${SKEINKEEPER_DATA_DIR}/secrets.sealed` (AES-256-GCM).
+3. Delete those plaintext lines from `.env`. At boot the app opens the sealed file and overlays the secrets; a present-but-unopenable file fails startup (no silent fallback).
+
+Manage it with `secrets:status` (lists sealed key names), `secrets:rotate --new-passphrase <p>`, and `secrets:unseal [--remove]`. An OS-keyring key source is planned. See [ADR-0010](./adr/0010-privacy-as-architecture.md) and [TDD 0029](./tdd/0029-sealed-credential-store.md).
 
 **Never commit `.env`.** It's already in `.gitignore`.
 
