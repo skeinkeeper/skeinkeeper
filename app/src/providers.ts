@@ -27,7 +27,15 @@ export interface AppProviders {
 
 export function buildProviders(config: AppConfig): AppProviders {
   return {
-    llm: new AnthropicProvider({ apiKey: config.anthropicApiKey }),
+    llm: new AnthropicProvider({
+      apiKey: config.anthropicApiKey,
+      ...(config.anthropicModelNarration !== undefined
+        ? { modelNarration: config.anthropicModelNarration }
+        : {}),
+      ...(config.anthropicModelOrchestration !== undefined
+        ? { modelOrchestration: config.anthropicModelOrchestration }
+        : {}),
+    }),
     stt: new DeepgramStreamingSTT({
       apiKey: config.deepgramApiKey,
       encoding: "linear16",

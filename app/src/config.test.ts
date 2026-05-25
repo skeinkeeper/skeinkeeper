@@ -44,6 +44,21 @@ describe("loadConfig", () => {
     expect(blank.discord.operatorUserId).toBeUndefined();
   });
 
+  it("reads optional Anthropic model overrides, omitting them when blank", () => {
+    expect(loadConfig(FULL).anthropicModelNarration).toBeUndefined();
+    expect(loadConfig(FULL).anthropicModelOrchestration).toBeUndefined();
+    const over = loadConfig({
+      ...FULL,
+      ANTHROPIC_MODEL_NARRATION: "  claude-x  ",
+      ANTHROPIC_MODEL_ORCHESTRATION: "claude-y",
+    });
+    expect(over.anthropicModelNarration).toBe("claude-x");
+    expect(over.anthropicModelOrchestration).toBe("claude-y");
+    expect(
+      loadConfig({ ...FULL, ANTHROPIC_MODEL_NARRATION: "   " }).anthropicModelNarration,
+    ).toBeUndefined();
+  });
+
   it("falls back to the default port on a non-numeric value (no NaN)", () => {
     expect(loadConfig({ ...FULL, SKEINKEEPER_WEB_PORT: "not-a-port" }).webPort).toBe(3000);
     expect(loadConfig({ ...FULL, FOUNDRY_MCP_PORT: "abc" }).foundry.mcpPort).toBe(31415);
@@ -51,7 +66,11 @@ describe("loadConfig", () => {
   });
 
   it("honors overrides and falls back to balanced on an invalid eagerness", () => {
-    const cfg = loadConfig({ ...FULL, SKEINKEEPER_WEB_PORT: "8080", SKEINKEEPER_EAGERNESS: "nonsense" });
+    const cfg = loadConfig({
+      ...FULL,
+      SKEINKEEPER_WEB_PORT: "8080",
+      SKEINKEEPER_EAGERNESS: "nonsense",
+    });
     expect(cfg.webPort).toBe(8080);
     expect(cfg.eagerness).toBe("balanced");
     const eager = loadConfig({ ...FULL, SKEINKEEPER_EAGERNESS: "eager" });

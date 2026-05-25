@@ -23,6 +23,10 @@ export interface AppConfig {
     operatorUserId?: string;
   };
   anthropicApiKey: string;
+  /** Optional model overrides (ANTHROPIC_MODEL_NARRATION / _ORCHESTRATION);
+   *  the provider's per-tier defaults apply when unset. */
+  anthropicModelNarration?: string;
+  anthropicModelOrchestration?: string;
   deepgramApiKey: string;
   elevenLabsApiKey: string;
   foundry: {
@@ -84,6 +88,13 @@ export function loadConfig(env: Env): AppConfig {
         : {}),
     },
     anthropicApiKey: req(env, "ANTHROPIC_API_KEY", missing),
+    ...(env["ANTHROPIC_MODEL_NARRATION"] && env["ANTHROPIC_MODEL_NARRATION"].trim().length > 0
+      ? { anthropicModelNarration: env["ANTHROPIC_MODEL_NARRATION"].trim() }
+      : {}),
+    ...(env["ANTHROPIC_MODEL_ORCHESTRATION"] &&
+    env["ANTHROPIC_MODEL_ORCHESTRATION"].trim().length > 0
+      ? { anthropicModelOrchestration: env["ANTHROPIC_MODEL_ORCHESTRATION"].trim() }
+      : {}),
     deepgramApiKey: req(env, "DEEPGRAM_API_KEY", missing),
     elevenLabsApiKey: req(env, "ELEVENLABS_API_KEY", missing),
     foundry: {
