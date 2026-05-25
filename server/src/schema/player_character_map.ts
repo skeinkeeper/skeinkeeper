@@ -10,8 +10,11 @@ import { campaigns } from "./campaigns";
  * can attribute actions to the right sheet. Created by the DM's session-
  * start intro ritual; correctable by the operator.
  *
- * `discordUserId` is PII at the app layer; covered by the
- * PlayerCharacterMapAdapter erasure path (player + tenant scopes).
+ * `discordUserId` (and `displayName`) is PII at the app layer; covered by the
+ * PlayerCharacterMapAdapter erasure path (player + tenant scopes). Per ADR-0022 /
+ * TDD 0030 both are AEAD-encrypted at rest when a passphrase is set;
+ * `discord_user_id_hash` is the salted-hash companion for key-free equality +
+ * erasure (nullable for pre-companion rows; backfilled by `pii:encrypt`).
  * Append-ish: a player remapping (character swap) writes a newer row;
  * current state is the most recent row per (tenant, campaign, player).
  */
@@ -24,6 +27,7 @@ export const playerCharacterMap = sqliteTable(
       .notNull()
       .references(() => campaigns.id, { onDelete: "cascade" }),
     discordUserId: text("discord_user_id").notNull(),
+    discordUserIdHash: text("discord_user_id_hash"),
     foundryActorId: text("foundry_actor_id").notNull(),
     displayName: text("display_name"),
     /** "player" (set via the intro ritual) or "operator" (override). */
@@ -31,12 +35,14 @@ export const playerCharacterMap = sqliteTable(
     confirmedAt: integer("confirmed_at").notNull(),
   },
   (t) => ({
-    byPlayer: index("pcmap_tenant_campaign_player").on(
+    byPlayer: index("pcmap_tenant_campaign_player").on(t.tenantId, t.campaignId, t.discordUserId),
+    bySubject: index("pcmap_tenant_player").on(t.tenantId, t.discordUserId),
+    byPlayerHash: index("pcmap_tenant_campaign_player_hash").on(
       t.tenantId,
       t.campaignId,
-      t.discordUserId,
+      t.discordUserIdHash,
     ),
-    bySubject: index("pcmap_tenant_player").on(t.tenantId, t.discordUserId),
+    bySubjectHash: index("pcmap_tenant_player_hash").on(t.tenantId, t.discordUserIdHash),
   }),
 );
 
