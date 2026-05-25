@@ -11,7 +11,7 @@ You need:
 - **Node.js 22 or later** (`node --version` to check).
 - **pnpm 9 or later** (`npm install -g pnpm`).
 - **ffmpeg** on your `PATH` (`ffmpeg -version`). The voice stack decodes/encodes audio through it; without it the bot connects but plays no sound. (`sudo apt install ffmpeg`, `brew install ffmpeg`, etc.)
-- **A Discord bot** you've registered in your own [Discord developer account](https://discord.com/developers/applications). Skeinkeeper needs your bot's token and application ID; it never sees your Discord account password.
+- **A Discord bot** you've registered in your own [Discord developer account](https://discord.com/developers/applications). Skeinkeeper needs your bot's token; it never sees your Discord account password.
 - **A Foundry VTT instance** (self-hosted or via The Forge), with one of the OSS Foundry MCP bridges installed and running. See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md):
   - **Default:** [`adambdooley/foundry-vtt-mcp`](https://github.com/adambdooley/foundry-vtt-mcp) — Foundry module + Node MCP server, both MIT, fully self-hosted, no API key.
   - **Simpler alternative:** [`laurigates/foundryvtt-mcp`](https://github.com/laurigates/foundryvtt-mcp) — single standalone server via `bunx`.
@@ -169,8 +169,9 @@ docker compose up
 
 The `app` service builds the image, installs ffmpeg + the native deps, and serves
 the console on `localhost:3000`. Your Foundry instance and the MCP bridge run
-outside the container (on the host or their own services); point `FOUNDRY_URL` at
-them. Data persists in the `./data` volume.
+outside the container (on the host or their own services); the app reaches
+Foundry through the bridge it spawns via `FOUNDRY_MCP_COMMAND`. Data persists in
+the `./data` volume.
 
 ## Configuration
 
@@ -179,8 +180,7 @@ them. Data persists in the `./data` volume.
 | Variable | Purpose |
 |---|---|
 | `DISCORD_BOT_TOKEN` | Your bot's token from the Discord developer portal. |
-| `DISCORD_APPLICATION_ID` | Your bot's application ID. Used for slash-command registration. |
-| `FOUNDRY_URL` | The URL of your Foundry instance (e.g., `http://localhost:30000`). |
+| `FOUNDRY_URL` | Informational: the app connects via the MCP bridge (`FOUNDRY_MCP_COMMAND`), not this URL. Your bridge may use it in its own config. |
 | `FOUNDRY_MCP_COMMAND` | Command to launch the OSS MCP bridge server (spawned over stdio), e.g. `node /path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js`. Unset = mock Foundry. |
 | `FOUNDRY_MCP_PORT` | Port the bridge uses for its own Foundry-module link. Default `31415`. |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (Claude). |
@@ -191,6 +191,8 @@ them. Data persists in the `./data` volume.
 | `DISCORD_OPERATOR_USER_ID` | Optional **fallback** for the operator who gets setup DMs. Prefer `/skeinkeeper operator claim` or the console Operator panel — a designation set there is persisted and overrides this. Unset everywhere = notes fall back to the server log. |
 | `SKEINKEEPER_DATA_DIR` | Where Skeinkeeper stores its SQLite + LanceDB data. Defaults to `./data`. |
 | `SKEINKEEPER_WEB_PORT` | Operator console port. Defaults to `3000`. |
+| `SKEINKEEPER_WEB_HOST` | Operator console bind address. Defaults to `127.0.0.1` (localhost). Set `0.0.0.0` to expose it on your network — only if you understand the risk. |
+| `ANTHROPIC_MODEL_NARRATION` / `ANTHROPIC_MODEL_ORCHESTRATION` | Optional model overrides; the provider's per-tier defaults apply when unset. |
 | `SKEINKEEPER_CAMPAIGN_ID` | Campaign identifier. Defaults to `default`. |
 | `SKEINKEEPER_EAGERNESS` | Default DM eagerness: `reserved` \| `balanced` \| `eager`. Defaults to `balanced`; tunable at runtime in the console. |
 | `ELEVENLABS_DM_VOICE_ID` | Optional override for the DM voice (otherwise set via the console's persona picker). |
@@ -205,8 +207,7 @@ In dev, secrets live in `.env`, loaded at startup. For at-rest sealing the app s
 
 1. Create an application at https://discord.com/developers/applications.
 2. Under **Bot**, generate a token; paste it into `.env` as `DISCORD_BOT_TOKEN`. Enable the *message content*, *server members*, and *voice state* intents.
-3. Under **General Information**, copy the *Application ID* into `.env` as `DISCORD_APPLICATION_ID`.
-4. Under **OAuth2 → URL Generator**, select the `bot` and `applications.commands` scopes, plus the permissions: *View Channels*, *Send Messages*, *Read Message History*, *Connect*, *Speak*, *Use Voice Activity*. Use the generated URL to invite the bot to the server where your group plays.
+3. Under **OAuth2 → URL Generator**, select the `bot` and `applications.commands` scopes, plus the permissions: *View Channels*, *Send Messages*, *Read Message History*, *Connect*, *Speak*, *Use Voice Activity*. Use the generated URL to invite the bot to the server where your group plays.
 
 ## Setting up Foundry + the MCP bridge
 

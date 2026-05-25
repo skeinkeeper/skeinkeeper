@@ -23,10 +23,10 @@ What Skeinkeeper stores:
 - **Operator setting** — the Discord user ID of the **operator** who receives setup-note DMs, when you designate yourself in the console or via `/skeinkeeper operator claim`. It's the operator's own ID (operator config, not data collected about a player); removed when the campaign is deleted.
 - **Session transcripts** — the text of what was said, both player utterances and AI narration
 - **Audit log** — every tool call, state mutation, and AI decision, with timestamps
-- **Episodic memory** — structured summaries of past sessions, embedded for retrieval (lands in Phase 4)
+- **Episodic memory** — structured summaries of past sessions, embedded for retrieval
 - **Consent records** — per-player records of voice processing consent
 - **Deletion log** — anonymous record that an erasure happened (no personally-identifying content)
-- **Configuration** — your Discord bot token, Foundry credentials, LLM/voice API keys (all encrypted at rest using your OS keyring)
+- **Configuration** — your Discord bot token, Foundry credentials, LLM/voice API keys (in this alpha, read from your local `.env`; at-rest sealing is planned — see [Encryption](#encryption))
 
 What lives in **Foundry** (not in Skeinkeeper's database):
 
@@ -92,7 +92,7 @@ Writes an archive (JSON + a readable HTML summary) of everything Skeinkeeper has
 pnpm skeinkeeper player:delete --tenant <id> --subject <discord-id> [--yes]
 ```
 
-Cascades across the player's **personal** data: dialogue transcripts (their spoken/typed lines), player↔character mappings, consent records, their audit-log entries, and their **private side-channel content** — their 1:1 DMs with the DM and the DM's private replies addressed to them, plus any private memory derived from them ([ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)). (`--yes` skips the confirmation prompt.) A record of the deletion is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
+Cascades across the player's **personal** data: dialogue transcripts (their spoken/typed lines), player↔character mappings, consent records, and their **private side-channel content** — their 1:1 DMs with the DM and the DM's private replies addressed to them, plus any private memory derived from them ([ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)). (`--yes` skips the confirmation prompt.) The **audit log is not erased per-player** — it's part of the tamper-evident audit trail and is removed only on full tenant deletion. A record of the deletion itself is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
 
 **Private side-channels: what "private" means.** A player can message the DM privately (a Discord DM) for a side question or a surprise action (TDD 0026). That content is **private from the other players** — it never enters another player's context, by construction. It is **not private from you, the operator**: side-channel transcripts are stored and reviewable like any other session content (operator sovereignty / replay-any-session). Don't promise players secrecy from the operator. Private side-channel content is **player-scoped and individually erasable** (the per-player deletion above), unlike the campaign's shared memory.
 
@@ -103,7 +103,7 @@ pnpm skeinkeeper campaign:delete --tenant <id> --campaign <id> [--yes]   # erase
 pnpm skeinkeeper tenant:delete   --tenant <id> [--yes]                   # erases the whole tenant
 ```
 
-Campaign/tenant deletion cascades the SQLite tables **and** the on-box episodic vector store (LanceDB). This is a deliberate design decision ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)); the consent flow discloses it up front. If you embed memory with a **hosted** provider (Voyage/OpenAI) instead of the on-box default, that content also reaches your chosen embedding provider — the local default keeps it on your machine.
+Campaign/tenant deletion cascades the SQLite tables **and** the on-box episodic vector store (LanceDB). This is a deliberate design decision ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)); the consent flow discloses it up front. Embeddings are computed **on-box** (the local embedding provider), so memory content does not reach any external embedding service.
 
 (`campaign:export` and `tenant:delete` follow the same flag shape; run `pnpm skeinkeeper --help` for the full list.)
 
@@ -132,9 +132,9 @@ A "Local mode only" badge appears in the web UI when both streams are off, as a 
 
 ## Encryption
 
-- All credentials (API keys, Discord bot token, etc.) are encrypted at rest using your OS keyring (libsecret on Linux, Keychain on macOS, Credential Manager on Windows), with a libsodium-sealed config file as fallback.
-- All network traffic uses TLS 1.3.
-- PII-marked fields in the database are encrypted at rest.
+- In this alpha, credentials (API keys, Discord bot token, etc.) are read from your local `.env`. At-rest sealing — an AES-256-GCM-sealed config file, with optional OS-keyring integration — ships as a library and is being wired in as the default store (planned for v0.5, per [ADR-0010](./adr/0010-privacy-as-architecture.md)).
+- Traffic to external providers uses HTTPS/TLS; the operator console binds to localhost (`127.0.0.1`) and is plain HTTP on your own machine.
+- PII fields are type-marked in code (`PII<>`); per-column AEAD encryption at rest is planned ([ADR-0019](./adr/0019-per-column-pii-encryption.md)), not yet implemented.
 
 ## Security disclosure
 
