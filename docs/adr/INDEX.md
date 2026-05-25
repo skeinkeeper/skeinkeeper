@@ -40,6 +40,7 @@ one significant architectural choice — the **context** that forced it, the **d
 | [0016](./0016-operator-control-parity-across-surfaces.md) | Operator controls have parity across console and Discord, via one write path | accepted | operator-controls |
 | [0017](./0017-per-audience-memory-visibility-erasure.md) | Per-audience memory visibility & erasure | accepted | memory/privacy |
 | [0018](./0018-foundry-source-of-truth.md) | Foundry is the authoritative source of truth for mechanical state | accepted | state-ownership |
-| [0019](./0019-per-column-pii-encryption.md) | Per-column AEAD encryption for PII, keyed from OS keyring | accepted | privacy |
+| [0019](./0019-per-column-pii-encryption.md) | Per-column AEAD encryption for PII, keyed from OS keyring | superseded by [0022](./0022-pii-encryption-node-crypto.md) | privacy |
 | [0020](./0020-single-scene-invariant.md) | Single shared scene invariant (no party-splitting) | accepted | session-model |
 | [0021](./0021-cascaded-voice-not-s2s.md) | Cascaded voice architecture, not speech-to-speech | accepted | voice-architecture |
+| [0022](./0022-pii-encryption-node-crypto.md) | Per-column PII encryption via Node-crypto AEAD, keyed from the sealed-secret passphrase | accepted (supersedes [0019](./0019-per-column-pii-encryption.md)) | privacy |

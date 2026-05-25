@@ -1,6 +1,6 @@
 # ADR-0019: Per-column AEAD encryption for PII, keyed from the OS keyring
 
-Status: accepted
+Status: superseded by [ADR-0022](./0022-pii-encryption-node-crypto.md)
 Date: 2026-05-24
 Scope: privacy
 Relates to: ADR-0010
