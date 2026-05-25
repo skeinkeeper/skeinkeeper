@@ -3,7 +3,11 @@
 
 import { describe, expect, it } from "vitest";
 import { InMemoryMemoryStore, type MemoryRecord } from "@skeinkeeper/orchestrator";
+import { createPiiCrypto, playerAudience } from "@skeinkeeper/server";
 import { MemoryAdapter } from "./memory_adapter.js";
+
+const SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const crypto = createPiiCrypto({ keySource: { getPassphrase: () => undefined }, salt: SALT });
 
 function rec(
   id: string,
@@ -45,18 +49,19 @@ describe("MemoryAdapter (ADR-0014 / ADR-0017 erasure scoping)", () => {
     expect(await adapter.delete({ kind: "tenant", tenantId: "t" })).toBe(3);
   });
 
-  it("player scope erases only that player's private side-channel memory (ADR-0017); shared persists (ADR-0014)", async () => {
+  it("player scope erases that player's private side-channel memory by hashed + legacy tokens (ADR-0017, TDD 0030); shared persists (ADR-0014)", async () => {
     const store = new InMemoryMemoryStore();
     await store.upsert([
       rec("shared-1", "c1"), // table (default)
       rec("shared-2", "c1", "table"),
-      rec("dana-secret", "c1", "player:discord:1"),
-      rec("eli-secret", "c1", "player:discord:2"),
+      rec("dana-hashed", "c1", playerAudience(crypto, "discord:1")), // post-0030 token
+      rec("dana-legacy", "c1", "player:discord:1"), // pre-0030 raw token
+      rec("eli-secret", "c1", playerAudience(crypto, "discord:2")),
     ]);
-    const adapter = new MemoryAdapter(() => store);
+    const adapter = new MemoryAdapter(() => store, crypto);
 
-    // Only Dana's private record goes; shared + other players' private stay.
-    expect(await adapter.delete({ kind: "player", tenantId: "t", subjectId: "discord:1" })).toBe(1);
+    // Both of Dana's private records go (hashed + legacy); shared + Eli's stay.
+    expect(await adapter.delete({ kind: "player", tenantId: "t", subjectId: "discord:1" })).toBe(2);
     const remaining = await store.query([1, 0], { campaignId: "c1", topK: 9 });
     expect(remaining.map((r) => r.id).sort()).toEqual(["eli-secret", "shared-1", "shared-2"]);
   });

@@ -1,5 +1,5 @@
 # TDD 0030: Per-Column PII Encryption
-Status: ready
+Status: implemented
 PRD refs: 5.5, 5.6
 PRD-rev: 66c079f
 ADR constraints: 0008, 0010, 0022

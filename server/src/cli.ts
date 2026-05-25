@@ -16,6 +16,9 @@ import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 import { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
 import { loadOrCreateSalt } from "./salt.js";
 import { runSecretsCli } from "./secrets_cli.js";
+import { EnvKeySource } from "./secret_store.js";
+import { createPiiCrypto } from "./column_crypto.js";
+import { encryptPiiColumns } from "./pii_migrate.js";
 
 const USAGE = `\
 skeinkeeper — local operator CLI
@@ -31,6 +34,8 @@ Usage:
   skeinkeeper secrets:status                        list sealed key names (no values)
   skeinkeeper secrets:rotate  --new-passphrase <p>  re-seal under a new passphrase
   skeinkeeper secrets:unseal  [--remove]            print sealed values; --remove deletes the file
+
+  skeinkeeper pii:encrypt                           encrypt PII columns at rest (needs the passphrase)
 
 Defaults:
   --tenant  default
@@ -71,6 +76,36 @@ export async function runCli(
     return r.code;
   }
 
+  // pii:encrypt migrates PII columns to ciphertext at rest (design doc 0030).
+  // Encryption is gated on the passphrase, so refuse without it (fail closed).
+  if (command === "pii:encrypt") {
+    const keySource = new EnvKeySource(process.env);
+    if (keySource.getPassphrase() === undefined) {
+      stdout.write(
+        "pii:encrypt needs SKEINKEEPER_SECRET_PASSPHRASE set — encryption at rest is gated on it.\n" +
+          "Set the passphrase (the same one used for secrets:seal) and re-run.\n",
+      );
+      return 2;
+    }
+    const db = openDb({ path: resolveDbPath(env), runMigrations: true });
+    try {
+      const crypto = createPiiCrypto({ keySource, salt: loadOrCreateSalt(resolveSaltPath(env)) });
+      const r = encryptPiiColumns(db, crypto);
+      const total = r.consents + r.playerCharacterMap + r.dialogue + r.settings + r.auditLog;
+      stdout.write(
+        `Encrypted PII columns — ${total} row(s) migrated:\n` +
+          `  consents: ${r.consents}\n` +
+          `  player_character_map: ${r.playerCharacterMap}\n` +
+          `  dialogue: ${r.dialogue}\n` +
+          `  settings: ${r.settings}\n` +
+          `  audit_log: ${r.auditLog}\n`,
+      );
+      return 0;
+    } finally {
+      db.close();
+    }
+  }
+
   const { values } = parseArgs({
     args: [...argv.slice(1)],
     options: {
@@ -84,23 +119,24 @@ export async function runCli(
     allowPositionals: false,
   });
 
-  const dbPath = env.dbPath ?? process.env.SKEINKEEPER_DB_PATH ?? "./data/skeinkeeper.db";
-  const saltPath = env.saltPath ?? process.env.SKEINKEEPER_SALT_PATH ?? "./data/.salt";
-
-  const db = openDb({ path: dbPath, runMigrations: true });
+  const db = openDb({ path: resolveDbPath(env), runMigrations: true });
   try {
-    const salt = loadOrCreateSalt(saltPath);
+    const salt = loadOrCreateSalt(resolveSaltPath(env));
     const erasure = new ErasureService({ db, salt });
     const exporter = new ExportService();
+    // The same PII crypto the running app uses (TDD 0030), so erasure matches
+    // the hash companions and export decrypts. Disabled (passthrough) without a
+    // passphrase; the hash still works off the per-install salt.
+    const piiCrypto = createPiiCrypto({ keySource: new EnvKeySource(process.env), salt });
 
     // Register every adapter so each erasure/export scope is fully handled.
     // (Previously only consents was wired, so campaign:delete and audit-log
     // erasure silently no-op'd — fixed here alongside the new dialogue store.)
-    const consentsAdapter = new ConsentsAdapter(db);
+    const consentsAdapter = new ConsentsAdapter(db, piiCrypto);
     const campaignAdapter = new CampaignAdapter(db);
     const auditLogAdapter = new AuditLogAdapter(db);
-    const dialogueAdapter = new DialogueAdapter(db);
-    const pcMapAdapter = new PlayerCharacterMapAdapter(db);
+    const dialogueAdapter = new DialogueAdapter(db, piiCrypto);
+    const pcMapAdapter = new PlayerCharacterMapAdapter(db, piiCrypto);
     for (const a of [
       consentsAdapter,
       campaignAdapter,
@@ -182,6 +218,17 @@ export async function runCli(
   } finally {
     db.close();
   }
+}
+
+/** Where the DB / salt live. Defaults derive from SKEINKEEPER_DATA_DIR (the same
+ *  knob the app + memory composition root use) so runtime and CLI agree. */
+function resolveDbPath(env: CliEnv): string {
+  const dataDir = process.env.SKEINKEEPER_DATA_DIR ?? "./data";
+  return env.dbPath ?? process.env.SKEINKEEPER_DB_PATH ?? join(dataDir, "skeinkeeper.db");
+}
+function resolveSaltPath(env: CliEnv): string {
+  const dataDir = process.env.SKEINKEEPER_DATA_DIR ?? "./data";
+  return env.saltPath ?? process.env.SKEINKEEPER_SALT_PATH ?? join(dataDir, ".salt");
 }
 
 function scopeFromArgs(command: string, values: Record<string, unknown>): ErasureScope | null {

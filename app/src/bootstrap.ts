@@ -3,7 +3,14 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { openDb, TenantDb, schema } from "@skeinkeeper/server";
+import {
+  createPiiCrypto,
+  EnvKeySource,
+  loadOrCreateSalt,
+  openDb,
+  TenantDb,
+  schema,
+} from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { AppConfig } from "./config.js";
 import { ConsentService } from "./consent.js";
@@ -56,7 +63,15 @@ export function createApp(
     .onConflictDoNothing()
     .run();
 
-  const tenantDb = new TenantDb(db, config.tenantId);
+  // Per-column PII encryption (TDD 0030): the same per-install salt + passphrase
+  // KeySource as the credential store, so runtime writes and CLI erasure agree on
+  // the hash companions. Encryption is on only when SKEINKEEPER_SECRET_PASSPHRASE
+  // is set; otherwise PII is plaintext at rest (the alpha default).
+  const piiCrypto = createPiiCrypto({
+    keySource: new EnvKeySource(process.env),
+    salt: loadOrCreateSalt(join(config.dataDir, ".salt")),
+  });
+  const tenantDb = new TenantDb(db, config.tenantId, piiCrypto);
   const providers = buildProviders(config);
   const memoryStore = memoryStoreFor(config, providers.embed.dimensions, config.tenantId);
   const foundry = opts.foundry ?? createFoundrySource(config, process.env);

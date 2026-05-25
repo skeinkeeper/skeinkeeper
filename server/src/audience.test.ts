@@ -11,15 +11,22 @@ import {
   playerConversation,
   playerIdOf,
 } from "./audience.js";
+import { createPiiCrypto } from "./column_crypto.js";
 
-describe("audience vocabulary (design doc 0026, ADR-0017)", () => {
-  it("builds player-scoped audience + conversation ids from a Discord id", () => {
-    expect(playerAudience("discord:42")).toBe("player:discord:42");
-    expect(playerConversation("discord:42")).toBe("player:discord:42");
+const SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const crypto = createPiiCrypto({ keySource: { getPassphrase: () => undefined }, salt: SALT });
+
+describe("audience vocabulary (design doc 0026, ADR-0017, TDD 0030)", () => {
+  it("embeds the HASH of the Discord id, never the raw id", () => {
+    const expected = `player:${crypto.hash("discord:42")}`;
+    expect(playerAudience(crypto, "discord:42")).toBe(expected);
+    expect(playerConversation(crypto, "discord:42")).toBe(expected);
+    // The routing token must not carry the recoverable Discord id.
+    expect(playerAudience(crypto, "discord:42")).not.toContain("discord:42");
   });
 
   it("recognizes player-scoped values, rejects table/gm and the bare prefix", () => {
-    expect(isPlayerScoped("player:discord:42")).toBe(true);
+    expect(isPlayerScoped(playerAudience(crypto, "discord:42"))).toBe(true);
     expect(isPlayerScoped(TABLE_AUDIENCE)).toBe(false);
     expect(isPlayerScoped(GM_AUDIENCE)).toBe(false);
     expect(isPlayerScoped(TABLE_CONVERSATION)).toBe(false);
@@ -27,15 +34,15 @@ describe("audience vocabulary (design doc 0026, ADR-0017)", () => {
     expect(isPlayerScoped("player:")).toBe(false);
   });
 
-  it("extracts the embedded Discord id, or null for non-player scopes", () => {
-    expect(playerIdOf("player:discord:42")).toBe("discord:42");
+  it("extracts the embedded hash from a player token, or null for non-player scopes", () => {
+    expect(playerIdOf(playerAudience(crypto, "discord:42"))).toBe(crypto.hash("discord:42"));
     expect(playerIdOf(TABLE_AUDIENCE)).toBeNull();
     expect(playerIdOf(GM_AUDIENCE)).toBeNull();
     expect(playerIdOf("player:")).toBeNull();
   });
 
-  it("round-trips id → audience → id", () => {
+  it("round-trips id → audience → embedded hash", () => {
     const id = "discord:abc123";
-    expect(playerIdOf(playerAudience(id))).toBe(id);
+    expect(playerIdOf(playerAudience(crypto, id))).toBe(crypto.hash(id));
   });
 });

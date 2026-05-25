@@ -24,6 +24,12 @@ export { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapt
 export { loadOrCreateSalt } from "./salt.js";
 export { seal, open, SecretOpenError } from "./secrets.js";
 export {
+  createPiiCrypto,
+  defaultPiiCrypto,
+  PiiDecryptError,
+  type PiiCrypto,
+} from "./column_crypto.js";
+export {
   EnvKeySource,
   SEALABLE_KEYS,
   SecretStoreError,
@@ -45,5 +51,6 @@ export {
   isPlayerScoped,
   playerIdOf,
   type Audience,
+  type AudienceHasher,
   type ConversationId,
 } from "./audience.js";

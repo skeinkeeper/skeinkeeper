@@ -746,8 +746,8 @@ export class SessionManager {
         { speaker: authorId, displayName, text },
         {
           conversation: {
-            id: playerConversation(authorId),
-            audience: playerAudience(authorId),
+            id: playerConversation(this.deps.tenantDb.piiCrypto, authorId),
+            audience: playerAudience(this.deps.tenantDb.piiCrypto, authorId),
           },
           modelTier: "orchestration",
           systemNote: pvpNote,

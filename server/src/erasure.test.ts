@@ -8,6 +8,11 @@ import { ExportService } from "./export.js";
 import { ConsentsAdapter } from "./adapters/consents-adapter.js";
 import { consents, deletionLog } from "./schema/index.js";
 import { eq } from "drizzle-orm";
+import { createPiiCrypto } from "./column_crypto.js";
+
+const PII_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const enabledCrypto = () =>
+  createPiiCrypto({ keySource: { getPassphrase: () => "pw" }, salt: PII_SALT });
 
 function setup() {
   const db = openDb({ path: ":memory:", runMigrations: true });
@@ -124,6 +129,55 @@ describe("ErasureService + ConsentsAdapter", () => {
     });
     expect(report.perAdapter).toHaveLength(0);
     expect(db.select().from(consents).all()).toHaveLength(1);
+  });
+});
+
+describe("ConsentsAdapter — encrypted rows (TDD 0030)", () => {
+  it("erases an AEAD-encrypted consent row by its hash companion", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const c = enabledCrypto();
+    db.insert(consents)
+      .values({
+        tenantId: "default",
+        subjectId: c.enc("discord:111"),
+        subjectIdHash: c.hash("discord:111"),
+        purpose: "voice_processing",
+        consentTextVersion: "v1",
+        action: "granted",
+        timestamp: Date.now(),
+      })
+      .run();
+    const deleted = await new ConsentsAdapter(db, c).delete({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:111",
+    });
+    expect(deleted).toBe(1);
+    expect(db.select().from(consents).all()).toHaveLength(0);
+  });
+
+  it("decrypts the subject id when exporting an encrypted row", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const c = enabledCrypto();
+    db.insert(consents)
+      .values({
+        tenantId: "default",
+        subjectId: c.enc("discord:111"),
+        subjectIdHash: c.hash("discord:111"),
+        purpose: "voice_processing",
+        consentTextVersion: "v1",
+        action: "granted",
+        timestamp: Date.now(),
+      })
+      .run();
+    const payload = await new ConsentsAdapter(db, c).export({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:111",
+    });
+    const rows = payload.data as Array<{ subjectId: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.subjectId).toBe("discord:111");
   });
 });
 
@@ -270,11 +324,7 @@ describe("integration: populate, export, delete, verify", () => {
     expect(report.totalRecords).toBe(1);
 
     expect(
-      db
-        .select()
-        .from(consents)
-        .where(eq(consents.subjectId, "discord:999"))
-        .all(),
+      db.select().from(consents).where(eq(consents.subjectId, "discord:999")).all(),
     ).toHaveLength(0);
 
     const logs = db.select().from(deletionLog).all();

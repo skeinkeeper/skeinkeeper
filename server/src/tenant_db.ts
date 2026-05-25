@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import type { Db } from "./db.js";
+import { defaultPiiCrypto, type PiiCrypto } from "./column_crypto.js";
+import { decryptDialogueRow, decryptPcmapRow } from "./pii_columns.js";
 import {
   campaigns,
   consents,
@@ -44,6 +46,14 @@ export class TenantDb {
   constructor(
     private readonly db: Db,
     public readonly tenantId: string,
+    /**
+     * Per-column PII crypto (TDD 0030). Encrypts PII columns on write and
+     * decrypts on read; supplies the salted hash companion that equality lookups
+     * and erasure match on. Defaults to a disabled (plaintext-passthrough)
+     * instance; bootstrap injects the real one built from the per-install salt +
+     * passphrase KeySource.
+     */
+    public readonly piiCrypto: PiiCrypto = defaultPiiCrypto(),
   ) {}
 
   // ---- campaigns ----
@@ -82,9 +92,10 @@ export class TenantDb {
   };
 
   // ---- settings (operator-settable config; design doc 0024) ----
+  // `value` may hold operator PII (TDD 0030): AEAD on write, decrypt on read.
   readonly settings = {
-    get: (campaignId: string, key: string) =>
-      this.db
+    get: (campaignId: string, key: string) => {
+      const row = this.db
         .select()
         .from(settings)
         .where(
@@ -94,16 +105,20 @@ export class TenantDb {
             eq(settings.key, key),
           ),
         )
-        .get(),
-    set: (data: Omit<NewSetting, "tenantId" | "id">) =>
-      this.db
+        .get();
+      return row === undefined ? undefined : { ...row, value: this.piiCrypto.dec(row.value) };
+    },
+    set: (data: Omit<NewSetting, "tenantId" | "id">) => {
+      const value = this.piiCrypto.enc(data.value);
+      return this.db
         .insert(settings)
-        .values({ ...data, tenantId: this.tenantId })
+        .values({ ...data, value, tenantId: this.tenantId })
         .onConflictDoUpdate({
           target: [settings.tenantId, settings.campaignId, settings.key],
-          set: { value: data.value, updatedAt: data.updatedAt },
+          set: { value, updatedAt: data.updatedAt },
         })
-        .run(),
+        .run();
+    },
     delete: (campaignId: string, key: string) =>
       this.db
         .delete(settings)
@@ -120,7 +135,8 @@ export class TenantDb {
         .select()
         .from(settings)
         .where(and(eq(settings.tenantId, this.tenantId), eq(settings.campaignId, campaignId)))
-        .all(),
+        .all()
+        .map((row) => ({ ...row, value: this.piiCrypto.dec(row.value) })),
   };
 
   // ---- sessions ----
@@ -152,11 +168,24 @@ export class TenantDb {
   };
 
   // ---- dialogue (append-only transcript) ----
+  // `speaker`/`text`/`displayName` are PII (TDD 0030): AEAD on write, decrypt on
+  // read; `speakerHash` is the key-free companion for per-speaker erasure.
+  // `audience`/`conversationId` are routing tokens (already hashed by the caller)
+  // and stay plaintext for equality matching.
   readonly dialogue = {
     append: (entry: Omit<NewDialogueRow, "tenantId" | "id">) =>
       this.db
         .insert(dialogue)
-        .values({ ...entry, tenantId: this.tenantId })
+        .values({
+          ...entry,
+          tenantId: this.tenantId,
+          speaker: this.piiCrypto.enc(entry.speaker),
+          speakerHash: this.piiCrypto.hash(entry.speaker),
+          text: this.piiCrypto.enc(entry.text),
+          ...(entry.displayName != null
+            ? { displayName: this.piiCrypto.enc(entry.displayName) }
+            : {}),
+        })
         .run(),
     /** All turns across every conversation in a session (resume / replay /
      *  export). Ordered oldest-first. */
@@ -166,7 +195,8 @@ export class TenantDb {
         .from(dialogue)
         .where(and(eq(dialogue.tenantId, this.tenantId), eq(dialogue.sessionId, sessionId)))
         .orderBy(asc(dialogue.timestamp), asc(dialogue.id))
-        .all(),
+        .all()
+        .map((row) => decryptDialogueRow(this.piiCrypto, row)),
     /** Turns scoped to one conversation thread (the table loop, or a player's
      *  1:1 side-channel) — design doc 0026 §2. Ordered oldest-first. */
     listByConversation: (sessionId: string, conversationId: string) =>
@@ -181,30 +211,47 @@ export class TenantDb {
           ),
         )
         .orderBy(asc(dialogue.timestamp), asc(dialogue.id))
-        .all(),
+        .all()
+        .map((row) => decryptDialogueRow(this.piiCrypto, row)),
   };
 
   // ---- player↔character map (most recent row per player wins) ----
+  // `discordUserId`/`displayName` are PII (TDD 0030): AEAD on write, decrypt on
+  // read; lookup matches the key-free `discordUserIdHash` companion (with a
+  // plaintext fallback for legacy rows written before the companion existed).
   readonly playerCharacterMap = {
     record: (data: Omit<NewPlayerCharacterMapRow, "tenantId" | "id">) =>
       this.db
         .insert(playerCharacterMap)
-        .values({ ...data, tenantId: this.tenantId })
+        .values({
+          ...data,
+          tenantId: this.tenantId,
+          discordUserId: this.piiCrypto.enc(data.discordUserId),
+          discordUserIdHash: this.piiCrypto.hash(data.discordUserId),
+          ...(data.displayName != null
+            ? { displayName: this.piiCrypto.enc(data.displayName) }
+            : {}),
+        })
         .run(),
-    currentForPlayer: (campaignId: string, discordUserId: string) =>
-      this.db
+    currentForPlayer: (campaignId: string, discordUserId: string) => {
+      const row = this.db
         .select()
         .from(playerCharacterMap)
         .where(
           and(
             eq(playerCharacterMap.tenantId, this.tenantId),
             eq(playerCharacterMap.campaignId, campaignId),
-            eq(playerCharacterMap.discordUserId, discordUserId),
+            or(
+              eq(playerCharacterMap.discordUserIdHash, this.piiCrypto.hash(discordUserId)),
+              eq(playerCharacterMap.discordUserId, discordUserId),
+            ),
           ),
         )
         .orderBy(desc(playerCharacterMap.confirmedAt), desc(playerCharacterMap.id))
         .limit(1)
-        .get(),
+        .get();
+      return row === undefined ? undefined : decryptPcmapRow(this.piiCrypto, row);
+    },
     listByCampaign: (campaignId: string) =>
       this.db
         .select()
@@ -215,7 +262,8 @@ export class TenantDb {
             eq(playerCharacterMap.campaignId, campaignId),
           ),
         )
-        .all(),
+        .all()
+        .map((row) => decryptPcmapRow(this.piiCrypto, row)),
   };
 
   // ---- voice assignments (one row per subject; upsert on remap) ----
@@ -266,6 +314,8 @@ export class TenantDb {
   };
 
   // ---- consents (append-only event log; current state = most recent row) ----
+  // `subjectId` is PII (TDD 0030): AEAD on write; lookup matches the key-free
+  // `subjectIdHash` companion (plaintext fallback for legacy rows).
   readonly consents = {
     /** Record a consent event (granting or withdrawing). Append-only. */
     record: (data: {
@@ -278,7 +328,12 @@ export class TenantDb {
     }) =>
       this.db
         .insert(consents)
-        .values({ ...data, tenantId: this.tenantId })
+        .values({
+          ...data,
+          tenantId: this.tenantId,
+          subjectId: this.piiCrypto.enc(data.subjectId),
+          subjectIdHash: this.piiCrypto.hash(data.subjectId),
+        })
         .run(),
     /** The most recent action for a (subject, purpose), or undefined if no
      *  consent event has ever been recorded. */
@@ -289,7 +344,10 @@ export class TenantDb {
         .where(
           and(
             eq(consents.tenantId, this.tenantId),
-            eq(consents.subjectId, subjectId),
+            or(
+              eq(consents.subjectIdHash, this.piiCrypto.hash(subjectId)),
+              eq(consents.subjectId, subjectId),
+            ),
             eq(consents.purpose, purpose),
           ),
         )
@@ -304,18 +362,27 @@ export class TenantDb {
   };
 
   // ---- audit log (append-only) ----
+  // `payloadJson` may embed PII (TDD 0030): AEAD on write, decrypt on read.
+  // Deletion is tenant-scoped (by tenant_id), so it never needs the key.
   readonly auditLog = {
     append: (entry: Omit<NewAuditLogEntry, "tenantId" | "id">) =>
       this.db
         .insert(auditLog)
-        .values({ ...entry, tenantId: this.tenantId })
+        .values({
+          ...entry,
+          tenantId: this.tenantId,
+          ...(entry.payloadJson !== undefined
+            ? { payloadJson: this.piiCrypto.enc(entry.payloadJson) }
+            : {}),
+        })
         .run(),
     listForSession: (sessionId: string) =>
       this.db
         .select()
         .from(auditLog)
         .where(and(eq(auditLog.tenantId, this.tenantId), eq(auditLog.sessionId, sessionId)))
-        .all(),
+        .all()
+        .map((row) => ({ ...row, payloadJson: this.piiCrypto.dec(row.payloadJson) })),
   };
 
   /**

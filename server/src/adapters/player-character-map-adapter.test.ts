@@ -7,6 +7,11 @@ import { openDb, type Db } from "../db.js";
 import { TenantDb } from "../tenant_db.js";
 import { campaigns, playerCharacterMap, tenants } from "../schema/index.js";
 import { PlayerCharacterMapAdapter } from "./player-character-map-adapter.js";
+import { createPiiCrypto } from "../column_crypto.js";
+
+const PII_SALT = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const enabledCrypto = () =>
+  createPiiCrypto({ keySource: { getPassphrase: () => "pw" }, salt: PII_SALT });
 
 function setup(): { db: Db } {
   const db = openDb({ path: ":memory:", runMigrations: true });
@@ -115,5 +120,56 @@ describe("PlayerCharacterMapAdapter — export", () => {
       campaignId: "c1",
     });
     expect(payload.data).toHaveLength(2);
+  });
+});
+
+describe("PlayerCharacterMapAdapter — encrypted rows (TDD 0030)", () => {
+  it("erases an AEAD-encrypted mapping by its hash companion", async () => {
+    const { db } = setup();
+    const c = enabledCrypto();
+    db.insert(playerCharacterMap)
+      .values({
+        tenantId: "default",
+        campaignId: "c1",
+        discordUserId: c.enc("discord:alice"),
+        discordUserIdHash: c.hash("discord:alice"),
+        foundryActorId: "actor-alice",
+        source: "player",
+        confirmedAt: Date.now(),
+      })
+      .run();
+    const deleted = await new PlayerCharacterMapAdapter(db, c).delete({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:alice",
+    });
+    expect(deleted).toBe(1);
+    expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
+  });
+
+  it("decrypts the discord id + display name when exporting an encrypted row", async () => {
+    const { db } = setup();
+    const c = enabledCrypto();
+    db.insert(playerCharacterMap)
+      .values({
+        tenantId: "default",
+        campaignId: "c1",
+        discordUserId: c.enc("discord:alice"),
+        discordUserIdHash: c.hash("discord:alice"),
+        displayName: c.enc("Alice"),
+        foundryActorId: "actor-alice",
+        source: "player",
+        confirmedAt: Date.now(),
+      })
+      .run();
+    const payload = await new PlayerCharacterMapAdapter(db, c).export({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:alice",
+    });
+    const rows = payload.data as Array<{ discordUserId: string; displayName: string | null }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.discordUserId).toBe("discord:alice");
+    expect(rows[0]?.displayName).toBe("Alice");
   });
 });
