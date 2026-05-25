@@ -61,7 +61,12 @@ coverage/
 # strategy/scripts/install-public-repo-hooks.sh.
 strategy/
 **/competitive-analysis.md
+# A public, public-safe product requirements doc lives at docs/PRD.md (the
+# greenfield workflow's PRD). Allow exactly that path; keep ignoring a stray
+# PRD.md anywhere else and the private versioned PRDs (PRD-v0.x). The real
+# content guard is the forbidden-string pre-commit hook, not these filename rules.
 **/PRD.md
+!/docs/PRD.md
 **/PRD-*.md
 **/task-breakdown*.md
 plugins/*/pnpm-lock.yaml
