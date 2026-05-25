@@ -7,7 +7,7 @@ Accepted (2026-05-19). **Supersedes the warm-tier contents description in [ADR-0
 
 ADR-0002 (2026-05-17) defined the four-tier memory model. The warm tier was specified as: *"HP, slots, inventory, conditions, location, quest flags, faction reputation, time-of-day"* — stored in SQLite and mutated only via tool calls.
 
-[Design doc 0007 (Foundry-as-source-of-truth)](../design/0007-foundry-as-source-of-truth.md), accepted 2026-05-19, moved mechanical state from Skeinkeeper's SQLite to Foundry. Foundry now owns character sheets (HP, slots, inventory, conditions), NPCs, scenes (location), and dice mechanics. Skeinkeeper continues to own AI-DM-specific state.
+[TDD 0007 (Foundry-as-source-of-truth)](../tdd/0007-foundry-as-source-of-truth.md), accepted 2026-05-19, moved mechanical state from Skeinkeeper's SQLite to Foundry. Foundry now owns character sheets (HP, slots, inventory, conditions), NPCs, scenes (location), and dice mechanics. Skeinkeeper continues to own AI-DM-specific state.
 
 The four-tier model is still the right architecture — hot / warm / cold / episodic with distinct mechanisms — but several items previously named as "warm tier" content now live in Foundry rather than in Skeinkeeper's SQLite.
 
@@ -32,7 +32,7 @@ The four-tier model is still the right architecture — hot / warm / cold / epis
 - Erasure surface shrinks: Skeinkeeper-side erasure adapters cover only AI-DM state, not character sheets. Foundry-side erasure is the operator's responsibility on the Foundry instance and is surfaced in `docs/PRIVACY.md`.
 
 **Negative**
-- Per-turn warm-state assembly now requires I/O to Foundry (via MCP). Measured budget in design doc 0007: <100ms — acceptable in a multi-second LLM turn.
+- Per-turn warm-state assembly now requires I/O to Foundry (via MCP). Measured budget in TDD 0007: <100ms — acceptable in a multi-second LLM turn.
 - A network glitch or stopped Foundry process means warm-state assembly fails. The orchestrator must handle this gracefully (Phase 3 concern; mocked in unit tests today via `MockFoundryClient`).
 
 **Neutral**

@@ -17,12 +17,12 @@ Current milestone: pre-MVP alpha. The reference deployment is the founder's hybr
 Read these before generating non-trivial code. They are the source of truth.
 
 - **`/behavior/default.md`** — how the AI DM conducts itself at the table. Loaded as the AI's system prompt at runtime. The most important document for AI-DM quality.
-- **`/docs/adr/`** — architectural decisions. Read the index (`README.md`) and the relevant ADR before changing anything that touches an established decision.
+- **`/docs/adr/`** — architectural decisions. Read the index (`INDEX.md`) and the relevant ADR before changing anything that touches an established decision.
 - **`/docs/ARCHITECTURE.md`** — high-level overview of how the pieces fit together.
 - **`/docs/PRIVACY.md`** — what data is stored where, how deletion works, how operators communicate with players.
 - **`CONTRIBUTING.md`** — contributor onboarding, dev environment, PR process.
 
-If a request involves something not covered in these documents, ask whether to write a design doc or update an existing one before generating code.
+If a request involves something not covered in these documents, ask whether to write a TDD or update an existing one before generating code.
 
 ## Hard rules (architectural)
 
@@ -46,11 +46,11 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 
 9. **Don't reinvent abstractions an integrated dependency already provides.** Before designing a new plugin interface or schema layer, check whether a system we're integrating with already provides it. The clearest example: Foundry's per-system data models *are* the ruleset abstraction — we don't build a parallel one. If we find ourselves designing an interface that mirrors a system we already depend on, use theirs instead.
 
-10. **Evaluate alternatives before committing to a third-party dependency.** Every new dependency added in a design doc or ADR must list at least one evaluated alternative, with explicit notes on licensing, cost, and maintenance posture. Prefer fully-OSS, self-hostable options. Patreon-gated, subscription-gated, or single-vendor-hosted dependencies require a written justification, not silent inclusion.
+10. **Evaluate alternatives before committing to a third-party dependency.** Every new dependency added in a TDD or ADR must list at least one evaluated alternative, with explicit notes on licensing, cost, and maintenance posture. Prefer fully-OSS, self-hostable options. Patreon-gated, subscription-gated, or single-vendor-hosted dependencies require a written justification, not silent inclusion.
 
 ## Hard rules (process)
 
-11. **Design doc before code for any non-trivial feature.** "Non-trivial" = more than ~100 lines, or touches more than one module, or introduces a new external dependency, or changes a data model, or introduces new processing of personal data. The design doc lives in `/docs/design/` and is reviewed before implementation begins. For small bug fixes and refactors, skip this.
+11. **TDD before code for any non-trivial feature.** "Non-trivial" = more than ~100 lines, or touches more than one module, or introduces a new external dependency, or changes a data model, or introduces new processing of personal data. The TDD lives in `/docs/tdd/` and is reviewed before implementation begins. For small bug fixes and refactors, skip this.
 
 12. **Tests alongside features, not after.** Every PR includes:
    - Unit tests for new deterministic logic (dice, state mutations, parsing).
@@ -62,9 +62,9 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 
 14. **Plan mode for anything ambiguous.** If the request is open to interpretation, produce a plan and confirm before writing code. Better to ask once than to rewrite twice.
 
-15. **Docs update alongside the code that breaks them.** When a code change makes any of these stale — an ADR's substance, a design doc's claims, [`README.md`](./README.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), [`docs/PRIVACY.md`](./docs/PRIVACY.md), [`docs/INSTALL.md`](./docs/INSTALL.md), [`CONTRIBUTING.md`](./CONTRIBUTING.md), this file, [`behavior/default.md`](./behavior/default.md), or schemas/configs that doc examples reference (`.env.example`, `data/seed.example.yaml`) — the doc update is part of the same PR. Not a follow-up commit, not a TODO, not a "sweep later." Before treating a task as complete:
+15. **Docs update alongside the code that breaks them.** When a code change makes any of these stale — an ADR's substance, a TDD's claims, [`README.md`](./README.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), [`docs/PRIVACY.md`](./docs/PRIVACY.md), [`docs/INSTALL.md`](./docs/INSTALL.md), [`CONTRIBUTING.md`](./CONTRIBUTING.md), this file, [`behavior/default.md`](./behavior/default.md), or schemas/configs that doc examples reference (`.env.example`, `data/seed.example.yaml`) — the doc update is part of the same PR. Not a follow-up commit, not a TODO, not a "sweep later." Before treating a task as complete:
     - List every doc/example/comment that names a concept you changed (deleted tables, renamed types, dropped tools, swapped dependencies, revised flows). Use `grep` or a search agent — don't rely on memory.
-    - For ADRs/design docs in `Accepted` status, follow hard rule #15-adjacent: supersede with a new doc, don't rewrite substance in place (see [hard rule about ADR immutability](#hard-rules-process) and [CONTRIBUTING.md](./CONTRIBUTING.md)).
+    - For ADRs/TDDs in `Accepted` status, follow hard rule #15-adjacent: supersede with a new doc, don't rewrite substance in place (see [hard rule about ADR immutability](#hard-rules-process) and [CONTRIBUTING.md](./CONTRIBUTING.md)).
     - For evergreen user-facing docs (README, ARCHITECTURE, PRIVACY, INSTALL, CONTRIBUTING, behavior spec), edit in place.
     - Include the doc changes in the same commit when they're small (typo, link fix, one-line correction); split them into a second commit in the same PR when the doc work is substantial (a rewrite, a new ADR). The PR doesn't land until docs catch up.
     
@@ -127,7 +127,7 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 │   ├── ARCHITECTURE.md          # High-level overview.
 │   ├── PRIVACY.md               # User-facing privacy explanation.
 │   ├── /adr/                    # Architectural decision records.
-│   └── /design/                 # Feature design docs.
+│   └── /tdd/                     # Technical design docs (TDDs).
 ├── /orchestrator/               # Core LLM orchestration, memory, tool dispatch.
 │   └── /interfaces/             # Plugin interfaces.
 ├── /plugins/
@@ -176,14 +176,14 @@ docker compose up         # Runs the whole stack; web UI at localhost:3000.
 - **Asking the LLM to do math.** Math goes through a tool. Always.
 - **Rolling dice in the model.** Per ADR-0003.
 - **Generating example data with PII-shaped strings** even in tests. Use `fake-` prefixed values.
-- **Adding an operator control to only one surface.** Every operator action/setting must work from *both* the web console and Discord slash commands, and stay synced live across them (one `SessionManager` write path + an `AppEvent` on the bus). Per [ADR-0016](./docs/adr/0016-operator-control-parity-across-surfaces.md) / [design doc 0025](./docs/design/0025-operator-control-parity.md). Per-player actions like `/skeinkeeper consent` are exempt (not operator controls).
+- **Adding an operator control to only one surface.** Every operator action/setting must work from *both* the web console and Discord slash commands, and stay synced live across them (one `SessionManager` write path + an `AppEvent` on the bus). Per [ADR-0016](./docs/adr/0016-operator-control-parity-across-surfaces.md) / [TDD 0025](./docs/tdd/0025-operator-control-parity.md). Per-player actions like `/skeinkeeper consent` are exempt (not operator controls).
 
 ## When responding to user requests
 
 - **Read the relevant ADRs first** for any non-trivial request. Reference what we already decided.
-- **Default to a design doc for non-trivial work.** Produce the doc, get explicit approval, then implement.
+- **Default to a TDD for non-trivial work.** Produce the doc, get explicit approval, then implement.
 - **Default to plan mode for ambiguous requests.** Show the plan, get approval, then execute.
-- **One task per PR; one decision per ADR; one design per design doc.** Composition happens by reference, not by stuffing.
+- **One task per PR; one decision per ADR; one design per TDD.** Composition happens by reference, not by stuffing.
 - **Surface trade-offs honestly.** If the requested approach has downsides, name them. Don't hide problems to feel agreeable.
 - **Stop and ask if a request would violate a hard rule.** Don't try to find a clever way around the rules.
 

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing, check [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — non-trivial features go through a design doc before implementation, and some categories are explicitly out of scope for the alpha (new rulesets, new VTTs).
+        Before filing, check [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — non-trivial features go through a TDD (technical design doc) before implementation, and some categories are explicitly out of scope for the alpha (new rulesets, new VTTs).
 
         For new plugin proposals, use the **Plugin proposal** template instead.
 

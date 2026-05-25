@@ -7,7 +7,7 @@ Accepted (2026-05-20). **Refines [ADR-0014](./0014-episodic-memory-campaign-scop
 
 ADR-0014 settled that the campaign's episodic memory is shared content — a jointly-authored record of the group's story — and therefore **not** erasable per-player. That holds for everything said at the table.
 
-[Design doc 0026](../design/0026-player-dm-side-channels.md) introduces **1:1 private side-channels** between a single player and the DM. This creates a new kind of stored content that ADR-0014 didn't contemplate: **per-player private** conversation (and private-action deliberation) that is *not* shared with the table and *not* jointly-authored. We need to state, once, how visibility and erasure work across this new dimension without contradicting ADR-0014.
+[TDD 0026](../tdd/0026-player-dm-side-channels.md) introduces **1:1 private side-channels** between a single player and the DM. This creates a new kind of stored content that ADR-0014 didn't contemplate: **per-player private** conversation (and private-action deliberation) that is *not* shared with the table and *not* jointly-authored. We need to state, once, how visibility and erasure work across this new dimension without contradicting ADR-0014.
 
 ## Decision
 

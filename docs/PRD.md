@@ -292,7 +292,7 @@ Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry syst
 - **License:** Apache License 2.0. Permissive with explicit patent grant; appropriate for an LLM-adjacent project. See [ADR-0005](adr/0005-apache-2-license.md).
 - **Repository:** public GitHub from v0.5 onward (private during alpha for the founder's iteration speed).
 - **Repo structure:** monorepo (`/orchestrator`, `/plugins/*`, `/app`, `/server`, `/telemetry`, `/eval`, `/docs`).
-- **Docs in repo:** this PRD, the Behavior Spec, the ADRs, the eval harness fixtures, the design docs.
+- **Docs in repo:** this PRD, the Behavior Spec, the ADRs, the eval harness fixtures, the TDDs.
 - **CONTRIBUTING.md** with plugin authoring guide as the primary contributor path.
 - **DCO** for commit sign-off; no formal CLA at v1.
 - **Issue templates** distinguishing bug, feature, VTT-request, and LLM-provider-request.
@@ -314,4 +314,4 @@ Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry syst
 
 ---
 
-_Companion documents: the [behavior spec](../behavior/default.md), the [ADRs](adr/), and the [design docs](design/)._
+_Companion documents: the [behavior spec](../behavior/default.md), the [ADRs](adr/), and the [TDDs](tdd/)._
