@@ -2,7 +2,7 @@
 Status: implemented
 PRD refs: 4.6, 4.1
 PRD-rev: 10391ba
-ADR constraints: 0010, 0015
+ADR constraints: 0010, 0023
 Author: maintainers
 Date: 2026-05-20
 Related TDDs: [0015 (always-listening loop)](./0015-always-listening-voice-loop.md), [0016 (identity mapping)](./0016-player-character-identity-mapping.md), [0020 (operator app)](./0020-operator-app.md)

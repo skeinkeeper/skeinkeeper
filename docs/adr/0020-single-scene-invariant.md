@@ -3,7 +3,7 @@
 Status: accepted
 Date: 2026-05-24
 Scope: session-model
-Relates to: ADR-0003, ADR-0015, ADR-0017
+Relates to: ADR-0003, ADR-0017, ADR-0023
 
 > This ADR formalizes the load-bearing constraint introduced in §1 of
 > [TDD 0026 (1:1 Player↔DM Side-Channels)](../tdd/0026-player-dm-side-channels.md).

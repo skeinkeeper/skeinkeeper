@@ -2,7 +2,7 @@
 Status: implemented
 PRD refs: 4.1, 5.5
 PRD-rev: 10391ba
-ADR constraints: 0003, 0008, 0009, 0010, 0014, 0015, 0016, 0017, 0020
+ADR constraints: 0003, 0008, 0009, 0010, 0014, 0016, 0017, 0020, 0023
 Author: maintainers
 Date: 2026-05-20
 Related TDDs: [0011 (turn loop)](./0011-orchestrator-turn-loop.md), [0012 (voice IO)](./0012-voice-io.md), [0015 (always-listening loop)](./0015-always-listening-voice-loop.md), [0016 (identity mapping)](./0016-player-character-identity-mapping.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0020 (operator app)](./0020-operator-app.md), [0023 (onboarding + operator channel)](./0023-session-onboarding-presence-operator-channel.md)

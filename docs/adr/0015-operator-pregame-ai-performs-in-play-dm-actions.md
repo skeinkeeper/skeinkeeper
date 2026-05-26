@@ -1,7 +1,8 @@
 # ADR-0015: Operator Configures Pre-Game; Skeinkeeper Performs All In-Play DM Actions
 
 ## Status
-Accepted (2026-05-20).
+Superseded by [ADR-0023](./0023-operator-as-host-model.md) (2026-05-26).
+Originally accepted 2026-05-20.
 
 ## Context
 

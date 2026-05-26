@@ -2,7 +2,7 @@
 Status: implemented
 PRD refs: 4.2
 PRD-rev: 10391ba
-ADR constraints: 0011, 0015, 0017
+ADR constraints: 0011, 0017, 0023
 Author: maintainers
 Date: 2026-05-20
 Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0026 (1:1 player↔DM side-channels)](./0026-player-dm-side-channels.md)
