@@ -66,7 +66,7 @@ The target user is **a technically comfortable DM-or-DM-curious friend who can r
 - TTS streamed to the same Discord voice channel.
 - **Per-NPC voice profiles** — each named NPC has a persistent voice identity, configured in the local web UI.
 - Mirrored text transcript in Discord text channel and in the operator's web UI.
-- **Whisper** — AI can DM a single player privately (Discord DM + Foundry whisper) for secret information.
+- **Private 1:1 side-channels** — bidirectional Discord DM threads between a player and the AI DM, for private Q&A and private in-scene actions (with the Foundry whisper for in-VTT secret info). See §4.7.
 
 **TTS/STT providers (pluggable via internal interface):**
 
@@ -135,6 +135,7 @@ A web application served from the local Skeinkeeper process on `localhost:3000` 
 - **Session management:** list past sessions with auto-generated summaries; full transcript searchable. "Live session view" during active sessions — streaming transcript, current scene, pending AI tool call, pause button.
 - **Memory inspection:** view embedded chunks, retrieval logs, hot context for the most recent turn. For operators who want to understand why the AI said what it said.
 - **Voice mapping:** assign TTS voice IDs to named NPCs; preview clips.
+- **Side-channel controls:** toggle **player-vs-player (PvP)** resolution for private actions (default off); review side-channel transcripts. See §4.7.
 
 ### 4.5 Local Authentication & Secrets
 
@@ -152,6 +153,26 @@ Players don't need Skeinkeeper accounts. The operator:
 3. They show up to play.
 
 Player-facing surfaces are Discord (voice + text) and Foundry (visual). They never see the web UI.
+
+### 4.7 Player↔DM Side-Channels
+
+A player can DM the AI DM directly for a **private 1:1 side-channel**, separate from the shared table voice. Two modes share one visibility/erasure model:
+
+**Private Q&A** — the player asks a side question (lore lookup, character-sheet question, "what do I know about…"); the DM answers in the same DM thread. Nothing leaves the player's private context.
+
+**Private in-scene actions — private initiation, public resolution.** A player can declare a discreet action privately ("I slip away from the others and pick the lock"). The deliberation and resolution are private; the **resolved action's narration is delivered at the table** ("Mid-sentence, Dana's blade buries itself in the cultist's throat…"). The table learns the *action*, never the *planning*.
+
+**Audience model.** Every utterance/turn carries an explicit audience: `table` (everyone), `player:<id>` (one player + the operator), or `gm` (the AI/operator only — secret DCs, hidden room contents, NPC true motives). A `player:<id>` context cannot see other players' private content or any `gm` content — a structural anti-leak guarantee, not a prompt instruction.
+
+**PvP toggle (operator-controlled).** Resolving a private action against another **player's** character is gated by a **PvP** toggle, default **OFF**. With PvP off, the AI refuses and redirects the player to settle it with the group. The PvP setting is **read once, at initiation** — an in-flight private PvP action completes under the value that applied when it began; toggling mid-resolution affects only subsequent actions.
+
+**Single-scene invariant.** The system does not split the party across scenes. Private deliberation can happen in parallel; the *table state* (active scene, NPCs in play) is always shared. See [ADR-0020](adr/0020-single-scene-invariant.md).
+
+**Operator visibility.** Side-channel content is private from *other players*, **not from the operator**: the operator can review, export, and erase side-channel transcripts like any other session content, and the audit log surfaces side-channel activity.
+
+**Privacy semantics.** A player's side-channel content is **player-scoped and individually erasable**; the campaign's shared memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) / [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)). The consent flow discloses this up front. See §5.5.
+
+See [TDD 0026](tdd/0026-player-dm-side-channels.md), [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md), [ADR-0020](adr/0020-single-scene-invariant.md).
 
 ## 5. Non-Functional Requirements
 
@@ -209,6 +230,7 @@ Reference cost expectations at default settings (Claude + ElevenLabs + Deepgram,
 - **Audit log of every state mutation, tool call, and AI decision.** Operator can export their own data at any time.
 - **No telemetry by default** — see §5.6.
 - **Tenant-scoping in the data model** so each campaign group's data is isolated by construction (see [ADR-0008](adr/0008-tenant-scoping.md)).
+- **Per-audience visibility and erasure** — every stored utterance/memory carries an explicit audience (`table` / `player:<id>` / `gm`; see §4.7). A player's private side-channel content is player-scoped and individually erasable; shared campaign memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) and [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)).
 
 **Voice data:**
 
