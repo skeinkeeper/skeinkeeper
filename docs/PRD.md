@@ -1,7 +1,7 @@
 # Skeinkeeper — Open-Source AI Dungeon Master
 
 **Product Requirements Document**
-**Status:** Draft · 2026-05-24
+**Status:** Draft · 2026-05-26
 
 > **Skeinkeeper** — keeper of the threads of fate. An open-source, self-hosted AI Dungeon Master that runs tabletop RPG campaigns for your friend group over Discord and Foundry VTT.
 >
@@ -40,7 +40,7 @@ The target user is **a technically comfortable DM-or-DM-curious friend who can r
 
 ## 3. Users & Personas
 
-- **The Operator** — the person who installs and runs Skeinkeeper. Technical comfort: medium-to-high. Comfortable with Docker, command line, environment variables, and configuring API keys for LLM/voice providers. Typically also the DM-equivalent for their friend group; they configure the campaign, invite friends, run sessions. One operator per Skeinkeeper instance.
+- **The Operator** — the person who installs and runs Skeinkeeper, and the **host** at the table — not the DM. Technical comfort: medium-to-high. Comfortable with Docker, command line, environment variables, and configuring API keys for LLM/voice providers. Their per-session role is host-level: launch Foundry with the campaign content loaded, start a Discord voice channel, invite friends, launch Skeinkeeper. The AI handles in-play DM duties **and** the setup work that a human DM would do between sitting down and starting the game — assessing materials, picking the starting scene, mapping characters to players, deciding which monster stat block to use (see §4.8). The operator answers escalations when intake surfaces a critical gap or genuine ambiguity, and can override any AI decision via the web UI's live-session view (§4.3). One operator per Skeinkeeper instance.
 - **The Players** — the operator's friends. Interact only with Discord (voice + text) and Foundry (visual layer). Never touch the configuration UI. Don't need accounts; they're known to the system by Discord ID.
 - **The AI DM** — a system actor. Has authority to mutate campaign state via tool calls, narrate, voice NPCs, and operate the VTT.
 
@@ -173,6 +173,51 @@ A player can DM the AI DM directly for a **private 1:1 side-channel**, separate 
 **Privacy semantics.** A player's side-channel content is **player-scoped and individually erasable**; the campaign's shared memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) / [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)). The consent flow discloses this up front. See §5.5.
 
 See [TDD 0026](tdd/0026-player-dm-side-channels.md), [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md), [ADR-0020](adr/0020-single-scene-invariant.md).
+
+### 4.8 Session Intake & Autonomous Pre-Game Setup
+
+The AI DM is handed the campaign **cold** — like a guest DM walking into a host's table. The operator's per-session work ends at host-level tasks. Everything that a human DM would do *between sitting down and starting the game* — assessing materials, picking the starting scene, mapping characters to players, choosing which stat block to use for a given creature — is the AI's job.
+
+**Host pre-flight (what the operator must do before Start):**
+
+- Foundry is running with the intended campaign content (system + module + compendium packs) loaded.
+- The Foundry MCP bridge is connected.
+- A Discord voice channel exists; Skeinkeeper's bot has been invited.
+- Skeinkeeper is running with credentials configured (per §4.5).
+- Players have an invite to the Discord channel.
+
+**Not** required pre-Start: a chosen active scene, named or assigned character actors, pre-spawned monsters, pre-arranged journals, an explicit "this is the campaign I'm running" config. The AI handles all of that during intake.
+
+**Session intake (the AI's "I just walked in" routine).** On Start, the AI reads:
+
+- **The Foundry world** — active system, installed modules, available compendium packs, pre-existing journals and scenes, party-actor candidates, current ownership map, in-progress combats and quests.
+- **Skeinkeeper warm state** — prior sessions for this tenant (recap fodder), quest flags, NPC deltas, consents (see §5.1).
+- **The intersection** — which actors are plausibly the player party vs. unclaimed; which scenes correspond to which campaign beats; which compendium content is required by the players' character sheets vs. what's actually loaded.
+
+It then produces a structured **intake report** and surfaces it to the operator via the `notify_operator` Discord DM channel. The report distinguishes:
+
+- **Critical gaps** (block Start) — required content wholly missing; no compatible Foundry system installed; no character actors plausibly constituting the player party; a player's character requires content (a race, a class) that isn't loaded.
+- **Ambiguities** (require operator preference between equally-valid options) — e.g., multiple unrelated campaign modules loaded (*"You put both Lost Mine of Phandelver and Ravenloft: The Horrors Within on the table — which one did you want me to run?"*); the same creature present in multiple packs (*"There's a Goblin in the LMoP module and one in the Monster Manual — preference on which I use?"*); a player's race/class is defined in more than one loaded source.
+- **Recommendations** (AI proposes; operator may override) — proposed starting scene; proposed Discord-user → Foundry-actor ownership map; proposed source pack for ambiguous lookups going forward.
+
+**Autonomous pre-game setup (no operator confirmation required for routine setup).** Within the AI's authority:
+
+1. **Initial-scene activation** — if exactly one scene unambiguously corresponds to the campaign's expected starting beat, the AI activates it and notifies the operator after the fact. Ambiguous → propose and wait.
+2. **Discord-user → actor ownership assignment** — during the onboarding ritual, when the AI maps a Discord user to a Foundry actor, it also assigns Foundry ownership of that actor to that user.
+3. **Source-material indexing** — the AI builds a retrievable index over loaded campaign content (journals, monsters, items, scenes) keyed by location, quest, and keyword, so it can pull the right entry during play. Re-indexing on subsequent Starts is incremental.
+4. **Pre-loading expected content** — the AI imports needed monster/NPC actors from compendium into the world (without placing tokens on any scene) so they're ready when an encounter triggers. Lazy import at trigger time is acceptable when faster.
+
+**Live state perception during play.** The AI subscribes to Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access — and to Discord voice presence. Perception is a platform capability; **when and how** the AI reacts to a given perception is the behavior spec's job (per §4.3 and the [behavior spec](../behavior/default.md)).
+
+**Triggered actions.** The AI can place tokens with `hidden` visibility, reveal them when narratively appropriate, share journal entries with a specified audience (`table` / `player:<id>`, per §4.7), and distribute loot to actor inventories. These are platform capabilities; trigger *policy* lives in the behavior spec.
+
+**Concurrency model.** Intake work runs in parallel with the player-facing rituals — one of the benefits of an automated DM. The AI must complete a *minimum intake* (Foundry system identification, party-actor candidate enumeration, critical-gap detection) before announcing readiness or beginning the onboarding ritual. Beyond that minimum, **source-material indexing and content pre-loading run concurrently with onboarding** (TDD 0023): players are greeted, mapped to characters, and welcomed into the fiction while the AI ingests the campaign in the background. Players never wait through visible prep.
+
+**Spoiler-aware escalations.** The operator may also be a player at the table — the AI cannot assume the operator stands outside the fiction. Escalations are framed to elevate a *choice* without surfacing the *context* of the choice when context would spoil. Concrete: *"Both LMoP and Ravenloft are loaded — which one tonight?"* is spoiler-safe; *"I'm preparing the road-ambush goblins — which Goblin stat block?"* leaks an upcoming encounter. When DM-only context is unavoidable, the AI flags it explicitly (*"This will affect tonight's session — DM-only info follows:"*) so the operator can decide whether to look. The audience model from §4.7 governs the rest of the AI's communications; this principle extends it to the operator escalation channel.
+
+**Operator-as-host principle.** Zero operator config; escalate on ambiguity, gap, or judgment. The AI's default is to proceed with what it inferred and tell the operator after the fact. It interrupts the operator only when a gap is genuinely blocking, a choice is genuinely ambiguous, or a judgment call has multiple equally-valid options and the operator's preference is needed. Silence is success.
+
+See [ADR-0015](adr/0015-operator-pregame-ai-performs-in-play-dm-actions.md), [ADR-0016](adr/0016-operator-control-parity-across-surfaces.md), [ADR-0018](adr/0018-foundry-source-of-truth.md), and [TDD 0023](tdd/0023-session-onboarding-presence-operator-channel.md).
 
 ## 5. Non-Functional Requirements
 
@@ -333,6 +378,12 @@ Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry syst
 **9.4 LLM provider sourcing.** Build on Claude as primary (Anthropic); allow operator-configured alternates via the plugin interface. Recommendation: ship Claude only at alpha; add OpenAI provider at v0.5.
 
 **9.5 Multi-AI-DM collaboration.** Some advanced groups use multiple AIs (narrator + combat + voice). Out of scope for v1; the `LLMProvider` interface permits it later.
+
+**9.6 Intake escalation UX.** When the AI surfaces multiple ambiguities or gaps at once, what's the right Discord-DM format? A single structured DM with embedded reply controls (slash-command response per item), or a back-and-forth thread per item? Recommendation: single structured DM with one slash-command response path at v0.5; iterate after live UX observation.
+
+**9.7 Hard-gap policy.** When critical content is missing and the operator can't resolve it on the spot (e.g., a player has a Fairy race but neither *Witchlight* nor *Multiverse* is loaded), what's the AI's fallback? Improvise from SRD-adjacent content, refuse to Start, or proceed with the player's character but flag the resource gap throughout the session? Recommendation: proceed with operator acknowledgement; the AI improvises reasonably during play and logs the gap, rather than blocking the session.
+
+**9.8 Spoiler-safe escalation framing.** How does the AI decide whether escalation *context* (which encounter is being prepared, which monster is being selected, which journal is about to be revealed) is spoiler-laden for the operator-as-player case? Heuristics could include: anything tied to an unrevealed scene, anything keyed to an in-progress quest, anything the players' characters haven't yet observed. Recommendation: conservative default at v0.5 (escalate the choice without context whenever possible; explicit DM-only flag when context is required); refine via live observation and an operator-configurable "I'm also a player" toggle if needed.
 
 ---
 
