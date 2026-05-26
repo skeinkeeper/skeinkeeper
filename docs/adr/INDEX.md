@@ -36,7 +36,7 @@ one significant architectural choice — the **context** that forced it, the **d
 | [0012](./0012-drop-ruleset-plugin-interface.md) | Drop the `Ruleset` plugin interface | accepted | plugin-architecture |
 | [0013](./0013-warm-tier-after-foundry-source-of-truth.md) | Warm-tier state after Foundry-as-source-of-truth | accepted | memory |
 | [0014](./0014-episodic-memory-campaign-scoped-erasure.md) | Episodic memory is campaign-scoped (erasure not per-player) | accepted (refined by [0017](./0017-per-audience-memory-visibility-erasure.md)) | memory/privacy |
-| [0015](./0015-operator-pregame-ai-performs-in-play-dm-actions.md) | Operator configures pre-game; Skeinkeeper performs all in-play DM actions | accepted | operator-model |
+| [0015](./0015-operator-pregame-ai-performs-in-play-dm-actions.md) | Operator configures pre-game; Skeinkeeper performs all in-play DM actions | superseded by [0023](./0023-operator-as-host-model.md) | operator-model |
 | [0016](./0016-operator-control-parity-across-surfaces.md) | Operator controls have parity across console and Discord, via one write path | accepted | operator-controls |
 | [0017](./0017-per-audience-memory-visibility-erasure.md) | Per-audience memory visibility & erasure | accepted | memory/privacy |
 | [0018](./0018-foundry-source-of-truth.md) | Foundry is the authoritative source of truth for mechanical state | accepted | state-ownership |
@@ -44,3 +44,5 @@ one significant architectural choice — the **context** that forced it, the **d
 | [0020](./0020-single-scene-invariant.md) | Single shared scene invariant (no party-splitting) | accepted | session-model |
 | [0021](./0021-cascaded-voice-not-s2s.md) | Cascaded voice architecture, not speech-to-speech | accepted | voice-architecture |
 | [0022](./0022-pii-encryption-node-crypto.md) | Per-column PII encryption via Node-crypto AEAD, keyed from the sealed-secret passphrase | accepted (supersedes [0019](./0019-per-column-pii-encryption.md)) | privacy |
+| [0023](./0023-operator-as-host-model.md) | Operator-as-host model (host pre-flight only; AI does all DM work including pre-game setup) | accepted (supersedes [0015](./0015-operator-pregame-ai-performs-in-play-dm-actions.md)) | operator-model |
+| [0024](./0024-silence-is-success-operator-escalation.md) | Silence is success — operator escalation discipline (autonomous-by-default; degrade silently; escalate on critical gap / ambiguity / judgment call only) | accepted | operator-controls |

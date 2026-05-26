@@ -217,7 +217,7 @@ It then produces a structured **intake report** and surfaces it to the operator 
 
 **Operator-as-host principle.** Zero operator config; escalate on ambiguity, gap, or judgment. The AI's default is to proceed with what it inferred and tell the operator after the fact. It interrupts the operator only when a gap is genuinely blocking, a choice is genuinely ambiguous, or a judgment call has multiple equally-valid options and the operator's preference is needed. Silence is success.
 
-See [ADR-0015](adr/0015-operator-pregame-ai-performs-in-play-dm-actions.md), [ADR-0016](adr/0016-operator-control-parity-across-surfaces.md), [ADR-0018](adr/0018-foundry-source-of-truth.md), and [TDD 0023](tdd/0023-session-onboarding-presence-operator-channel.md).
+See [ADR-0023](adr/0023-operator-as-host-model.md), [ADR-0024](adr/0024-silence-is-success-operator-escalation.md), [ADR-0016](adr/0016-operator-control-parity-across-surfaces.md), [ADR-0018](adr/0018-foundry-source-of-truth.md), and [TDD 0023](tdd/0023-session-onboarding-presence-operator-channel.md).
 
 ## 5. Non-Functional Requirements
 

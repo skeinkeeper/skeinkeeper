@@ -2,7 +2,7 @@
 Status: implemented
 PRD refs: 4.2, 4.3
 PRD-rev: 10391ba
-ADR constraints: 0011, 0015
+ADR constraints: 0011, 0023
 Author: maintainers
 Date: 2026-05-20
 Related TDDs: [0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md), [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md)
