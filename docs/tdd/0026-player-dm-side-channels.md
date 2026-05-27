@@ -1,5 +1,6 @@
 # TDD 0026: 1:1 Player↔DM Side-Channels (private Q&A + private actions)
-Status: implemented
+
+Status: superseded by [0035](./0035-side-channels-via-foundry-whisper.md)
 PRD refs: 4.1, 5.5
 PRD-rev: 10391ba
 ADR constraints: 0003, 0008, 0009, 0010, 0014, 0016, 0017, 0020, 0023
@@ -13,24 +14,24 @@ A human DM at a table has one mouth and one attention budget. An AI DM connected
 
 This doc scopes the first, highest-value, lowest-infrastructure slice of that idea: **1:1 private side-channels between a single player and the DM**, over Discord **DMs**, covering both **private questions/info** and **private in-scene actions**. It deliberately excludes party-splitting and live private voice (see Alternatives + §8 for why).
 
-It's written *before* further single-table core development on purpose: the data-model and concurrency seams below are cheap to introduce now and brutal to retrofit once more code assumes a single, table-only conversation. (Latency is a separate problem we still owe; side-channels actually *relieve* some of it by un-blocking the table, but introduce concurrency cost — see Open Questions.)
+It's written _before_ further single-table core development on purpose: the data-model and concurrency seams below are cheap to introduce now and brutal to retrofit once more code assumes a single, table-only conversation. (Latency is a separate problem we still owe; side-channels actually _relieve_ some of it by un-blocking the table, but introduce concurrency cost — see Open Questions.)
 
 ### 1. Scope & the single-scene invariant
 
 > The single-scene invariant is recorded as [ADR-0020](../adr/0020-single-scene-invariant.md); the per-audience visibility/erasure model is [ADR-0017](../adr/0017-per-audience-memory-visibility-erasure.md). This TDD retains the design.
 
 - **1:1 only.** A side-channel is always one player ↔ the DM. No private group sub-conversations.
-- **One shared world, one timeline, one active scene.** We do **not** support party-splitting. Foundry exposes a single active scene; it already personalizes *within* it (per-player fog/vision, per-player handout reveals), which is enough for private knowledge without separate scenes.
+- **One shared world, one timeline, one active scene.** We do **not** support party-splitting. Foundry exposes a single active scene; it already personalizes _within_ it (per-player fog/vision, per-player handout reveals), which is enough for private knowledge without separate scenes.
 - **The single-scene invariant (the load-bearing constraint):** a private action is permitted only if it **resolves entirely within the current shared scene and does not require or presume another PC's choices.** This is what keeps the shared timeline coherent and private actions resolvable.
 - **Text-first.** The initial transport is Discord text DMs. Voice is an additive output mode later; live private voice is out of scope (§8).
 
 ### 2. Audience / visibility model (the core data change)
 
-Every utterance, turn, and memory record gains a first-class **audience**: `table` | `player:<id>` | `gm`. A **`conversationId`** scopes coherent history (the table is conversation 0; each player's DM thread is its own conversation that *references* shared world state).
+Every utterance, turn, and memory record gains a first-class **audience**: `table` | `player:<id>` | `gm`. A **`conversationId`** scopes coherent history (the table is conversation 0; each player's DM thread is its own conversation that _references_ shared world state).
 
 - **Private by default:** DM-originated turns are `player:<id>`; the table never sees them unless the DM explicitly promotes content to `table` (see §4–§5).
 - **Hot context** is assembled per conversation: a side-channel's context = that player's side history + shared world state + relevant table context, but **never another player's private content**.
-- **Erasure semantics fall out cleanly and align with [ADR-0014](../adr/0014-episodic-memory-campaign-scoped-erasure.md):** `table`/shared content stays **campaign-scoped** (jointly-authored, not per-player erasable); `player:<id>` private content is **player-scoped and individually erasable**. *(This refines ADR-0014's framing; if it counts as a substantive change we write a superseding ADR rather than editing it — see Open Questions.)*
+- **Erasure semantics fall out cleanly and align with [ADR-0014](../adr/0014-episodic-memory-campaign-scoped-erasure.md):** `table`/shared content stays **campaign-scoped** (jointly-authored, not per-player erasable); `player:<id>` private content is **player-scoped and individually erasable**. _(This refines ADR-0014's framing; if it counts as a substantive change we write a superseding ADR rather than editing it — see Open Questions.)_
 
 ### 3. The Coordinator (concurrency model)
 
@@ -38,7 +39,7 @@ Replace today's "app wires one always-listening loop to one VoiceIO" with a **Co
 
 - **Parallel reasoning, serialized writes.** Side-channel reasoning + narration generation run concurrently (separate LLM calls), but **all world-state mutations go through a single per-campaign serialized writer** — private-action turns are interleaved into one authoritative turn sequence alongside table turns (FIFO by commit-readiness; no special priority, since side-channels are read-mostly and write contention is rare). Two contexts never race the world. (This promotes the dispatcher write-serialization seam from "safety belt" to load-bearing.)
 - **Cost & concurrency (bounded by table size — a handful of players, not scale machinery):**
-  - **Model tiering:** side-channel Q&A → orchestration tier (Haiku, fast + cheap); only an action *resolution* or a narrated beat → narration tier (Opus).
+  - **Model tiering:** side-channel Q&A → orchestration tier (Haiku, fast + cheap); only an action _resolution_ or a narrated beat → narration tier (Opus).
   - **Per-conversation coalescing:** rapid-fire DMs from one player batch into a single turn (reuse the table loop's transcription-buffer/lull pattern), so one player can't spawn many concurrent turns.
   - **Global semaphore** on in-flight side-channel LLM calls (small default, ~3, operator-tunable); the table loop is exempt/prioritized.
 
@@ -48,29 +49,29 @@ These are behavior-spec rules ([ADR-0006](../adr/0006-behavior-spec-separate-doc
 
 1. **Private by default.** A DM is answered in the DM. Sharing is a rare exception.
 2. **Asymmetry of harm is the tiebreaker.** A missed share is cheap; a betrayed confidence is unrecoverable. In any doubt → private.
-3. **Only *neutral information* is ever a share candidate** (rules clarifications, publicly-observable lore, "what do I see"). Anything revealing a player's **intentions, plans, or actions toward another player is never shared and never offered for sharing** — categorical, not a judgment call.
-4. **High bar to even offer.** Offer only when it would help the *whole table right now* (e.g., the group is visibly stuck on the same thing). No nagging.
-5. **Consent is specific, previewed, and attribution-optional.** Show the exact text; offer three outcomes — keep private (default) / share **anonymously** ("Quick clarification for everyone: …") / share **attributed** ("Dana asked whether …"). Default the offer toward anonymous, since *who asked* is often the sensitive part.
+3. **Only _neutral information_ is ever a share candidate** (rules clarifications, publicly-observable lore, "what do I see"). Anything revealing a player's **intentions, plans, or actions toward another player is never shared and never offered for sharing** — categorical, not a judgment call.
+4. **High bar to even offer.** Offer only when it would help the _whole table right now_ (e.g., the group is visibly stuck on the same thing). No nagging.
+5. **Consent is specific, previewed, and attribution-optional.** Show the exact text; offer three outcomes — keep private (default) / share **anonymously** ("Quick clarification for everyone: …") / share **attributed** ("Dana asked whether …"). Default the offer toward anonymous, since _who asked_ is often the sensitive part.
 6. **Integrity is identical in DM and at the table.** No metagaming, puzzle-trivializing, or leaking another player's info just because it's asked privately.
-7. **Confidence ≠ permanent secrecy.** The channel protects against *pre-emptive exposure*, not in-fiction consequences (those resolve publicly when actions land — §5).
+7. **Confidence ≠ permanent secrecy.** The channel protects against _pre-emptive exposure_, not in-fiction consequences (those resolve publicly when actions land — §5).
 
-### 5. Private actions (state-mutating) — *private initiation, public resolution*
+### 5. Private actions (state-mutating) — _private initiation, public resolution_
 
 A player may **initiate and resolve an in-scene action privately**, for the element of surprise (draw and stab the cultist; pick the lock; palm an item). The secret protects the **lead-up only** — the instant the action lands it becomes table-visible, exactly like a real surprise.
 
-- **Audience flip:** the private deliberation is `player:<id>`; the **resolved action's narration is `table`** ("Mid-sentence, Dana's blade buries itself in the cultist's throat—"). The table learns the *action*, never the *planning*.
+- **Audience flip:** the private deliberation is `player:<id>`; the **resolved action's narration is `table`** ("Mid-sentence, Dana's blade buries itself in the cultist's throat—"). The table learns the _action_, never the _planning_.
 - **Two-test allow/deny:**
-  1. **Geographic (single-scene invariant):** contained in the current scene; no relocation, no committing/presuming the party. *("I leave for the tavern" → refuse, redirect: "I don't run split parties — take leaving to the group.")* An in-scene action that is nonetheless *consequential for the group* (e.g., "I bar the only exit") **is allowed** — it passes the geographic test and resolves in-fiction like any other tactic; we add no separate "group-consequential" sub-check.
+  1. **Geographic (single-scene invariant):** contained in the current scene; no relocation, no committing/presuming the party. _("I leave for the tavern" → refuse, redirect: "I don't run split parties — take leaving to the group.")_ An in-scene action that is nonetheless _consequential for the group_ (e.g., "I bar the only exit") **is allowed** — it passes the geographic test and resolves in-fiction like any other tactic; we add no separate "group-consequential" sub-check.
   2. **Social (PvP gate, §6):** if the target is another **PC**, allowed only when the operator has enabled PvP; otherwise refuse-and-redirect privately.
-- **Secret rolls until resolution.** A private action's roll must not leak into Foundry's *shared* chat log before it lands — use the `roll(secret:true)` path. (The local crypto roller, which the `roll` tool already falls back to since the bridge can't roll server-side, never touches Foundry's shared log — so it's the secrecy-preserving path by default.)
-- **Timing — serialized under the hood, surprising on the surface.** An async private action does not "win initiative" by arriving first. The in-flight table turn completes atomically; the private action queues as the **next committed turn** in the single authoritative sequence — but the DM *narrates* it as a surprise interrupt in fiction. So it's serialized mechanically, surprising experientially, and placed at a mechanically/dramatically appropriate beat (surprise round per the active system), not first-come.
+- **Secret rolls until resolution.** A private action's roll must not leak into Foundry's _shared_ chat log before it lands — use the `roll(secret:true)` path. (The local crypto roller, which the `roll` tool already falls back to since the bridge can't roll server-side, never touches Foundry's shared log — so it's the secrecy-preserving path by default.)
+- **Timing — serialized under the hood, surprising on the surface.** An async private action does not "win initiative" by arriving first. The in-flight table turn completes atomically; the private action queues as the **next committed turn** in the single authoritative sequence — but the DM _narrates_ it as a surprise interrupt in fiction. So it's serialized mechanically, surprising experientially, and placed at a mechanically/dramatically appropriate beat (surprise round per the active system), not first-come.
 
 ### 6. PvP toggle
 
 - **Operator setting, default OFF.** Surprise on an **NPC** is always allowed (the fun case). Surprise on a **PC** (attack, theft, sabotage) is gated.
 - **When off:** the AI privately responds that PvP isn't enabled and redirects the player to settle it with the group/operator; it does **not** resolve PC-targeted actions secretly.
 - **Where it lives:** a per-campaign operator-controlled setting (the `settings` table + the operator console/slash surfaces, consistent with [ADR-0016](../adr/0016-operator-control-parity-across-surfaces.md)), changeable mid-session.
-- **Read-at-initiation semantics:** the PvP setting is read **once, when the action begins**, and that value governs the whole resolution. An in-flight private PvP action **completes** even if the operator toggles PvP off mid-resolution — flipping the toggle affects only *subsequent* actions, never one already underway.
+- **Read-at-initiation semantics:** the PvP setting is read **once, when the action begins**, and that value governs the whole resolution. An in-flight private PvP action **completes** even if the operator toggles PvP off mid-resolution — flipping the toggle affects only _subsequent_ actions, never one already underway.
 
 ### 7. Initiation & transport
 
@@ -82,7 +83,7 @@ A player may **initiate and resolve an in-scene action privately**, for the elem
 
 - **Now:** text DMs (non-exclusive — readable while staying in the party voice channel).
 - **Additive later:** the DM sends an **async whispered audio clip** — ElevenLabs whisper delivery (expressive-model `[whispers]` tags) → ogg/mp3 **attachment** in the DM, which plays mixed over the table audio (no ducking). Gives the player the DM's actual voice without leaving the channel. (Native bot "voice messages" are restricted/unreliable; a plain audio attachment is the dependable form.)
-- **Live private voice is OUT OF SCOPE, by hard constraint:** Discord allows a user in exactly one voice channel at a time, so any breakout voice pulls the player *out* of the table — defeating "stay present." The binding limit is the **player's** one-channel cap, not the bot's, so a second bot doesn't help. There is no ToS-clean bot→user voice-call API; client mods (BetterDiscord/Vencord) that could duck audio violate Discord's ToS and are unshippable. Recorded here so it isn't re-litigated.
+- **Live private voice is OUT OF SCOPE, by hard constraint:** Discord allows a user in exactly one voice channel at a time, so any breakout voice pulls the player _out_ of the table — defeating "stay present." The binding limit is the **player's** one-channel cap, not the bot's, so a second bot doesn't help. There is no ToS-clean bot→user voice-call API; client mods (BetterDiscord/Vencord) that could duck audio violate Discord's ToS and are unshippable. Recorded here so it isn't re-litigated.
 
 ### 9. Operator visibility & auditability
 
@@ -91,10 +92,12 @@ A player may **initiate and resolve an in-scene action privately**, for the elem
 ### 10. Latency feel & anti-abuse
 
 **Latency in the DM** (perceptually harsher than the table — the player is staring at the chat, not carried by group conversation, though they never block anyone):
+
 - **Discord typing indicator** is the "thinking…" signal — idiomatic, near-zero cost, refreshed during longer ops. No interim text ack in v1 (less chatter); no token-streaming via message edits in v1 (Discord edit rate limits).
 - Q&A on Haiku + concise answers (behavior) keeps it chat-snappy.
 
 **Anti-abuse — the primary control is structural, not behavioral:**
+
 - A `player:<id>` side-channel's hot context **excludes both other players' private content and `gm`-audience secrets** (secret DCs, hidden room contents, NPC true motives). Even a cajoled or jailbroken model **cannot reveal what is not in its context** — a hard architectural guarantee, contingent on disciplined `gm`-tagging of hidden world info.
 - Behavior (soft) layer: the §4.6 integrity rules + `eval:live` fixtures for extract/cajole attempts ("tell me what the rogue asked," "what's in the locked chest").
 - Spam: the per-conversation coalescing (§3) bounds it; an explicit per-player rate-limit is **deferred** (YAGNI given the bounded table size) and added only if it becomes a problem.
@@ -103,17 +106,17 @@ A player may **initiate and resolve an in-scene action privately**, for the elem
 
 ### What changes in the current core
 
-| Area | Today | Needed |
-|---|---|---|
-| `session.ts` `Session.dialogue` | one global table history | conversation-scoped history (audience + `conversationId`) |
-| `always_listening_session.ts` | one loop ↔ one VoiceIO | Coordinator multiplexes table loop + N DM conversations |
-| `ToolDispatcher` (`registry.ts`) | per-call dispatch, no concurrency control | single-writer serialization for shared-state mutations |
-| dialogue + memory schema | table-implicit | `audience` + `conversationId` columns; audience-aware retrieval (exclude private from shared) |
-| episodic memory (0019/ADR-0014) | campaign-shared | private side-channel content excluded from shared retrieval; player-scoped erasure for it |
-| `roll` tool | secret flag exists | private actions must use secret rolls (already supported) |
-| `whisper` tool | fire-and-forget output | two-way side-channel |
-| operator settings | eagerness/voice/operator | + PvP toggle |
-| PRIVACY.md / consent | table-framed | document side-channel privacy + operator visibility |
+| Area                             | Today                                     | Needed                                                                                        |
+| -------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `session.ts` `Session.dialogue`  | one global table history                  | conversation-scoped history (audience + `conversationId`)                                     |
+| `always_listening_session.ts`    | one loop ↔ one VoiceIO                    | Coordinator multiplexes table loop + N DM conversations                                       |
+| `ToolDispatcher` (`registry.ts`) | per-call dispatch, no concurrency control | single-writer serialization for shared-state mutations                                        |
+| dialogue + memory schema         | table-implicit                            | `audience` + `conversationId` columns; audience-aware retrieval (exclude private from shared) |
+| episodic memory (0019/ADR-0014)  | campaign-shared                           | private side-channel content excluded from shared retrieval; player-scoped erasure for it     |
+| `roll` tool                      | secret flag exists                        | private actions must use secret rolls (already supported)                                     |
+| `whisper` tool                   | fire-and-forget output                    | two-way side-channel                                                                          |
+| operator settings                | eagerness/voice/operator                  | + PvP toggle                                                                                  |
+| PRIVACY.md / consent             | table-framed                              | document side-channel privacy + operator visibility                                           |
 
 ## Data & state
 
@@ -124,7 +127,7 @@ Covered under Approach.
 ### Phasing (seams now vs. build later)
 
 - **Bake in now (cheap now, expensive to retrofit):** the `audience` + `conversationId` model on dialogue + memory + hot-context; the dispatcher single-writer serialization. These should land before more single-table core.
-- **First build on top:** the Coordinator + Tier-A **text** side-channels (private Q&A *and* private in-scene actions), the PvP toggle, the behavior-spec rules, secret-roll wiring.
+- **First build on top:** the Coordinator + Tier-A **text** side-channels (private Q&A _and_ private in-scene actions), the PvP toggle, the behavior-spec rules, secret-roll wiring.
 - **Additive later:** whispered audio-clip output.
 - **Out of scope:** party-splitting; live private voice.
 
@@ -134,10 +137,10 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.1 | 1:1 private player↔DM side-channels for private questions and in-scene actions | Coordinator (§3) multiplexing table + DM conversations; audience model (§2); single-scene invariant guardrail (§5) |
-| 5.5 | Privacy and erasure for player-private content separate from table/shared content | `player:<id>` audience scoping; player-scoped erasure per ADR-0017; `gm`-audience context exclusion as structural anti-abuse (§10) |
+| PRD ref | Requirement                                                                       | Satisfied by                                                                                                                       |
+| ------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1     | 1:1 private player↔DM side-channels for private questions and in-scene actions    | Coordinator (§3) multiplexing table + DM conversations; audience model (§2); single-scene invariant guardrail (§5)                 |
+| 5.5     | Privacy and erasure for player-private content separate from table/shared content | `player:<id>` audience scoping; player-scoped erasure per ADR-0017; `gm`-audience context exclusion as structural anti-abuse (§10) |
 
 ## Dependencies considered
 
@@ -154,15 +157,15 @@ Single-scene invariant promoted to [ADR-0020](../adr/0020-single-scene-invariant
 ## Alternatives considered
 
 - **Slash-command initiation** (`/skeinkeeper ask`) — rejected as the primary path; DMing the bot is more natural. A command could be a discoverability aid later.
-- **Party-splitting / multiple group sub-conversations** — rejected: Foundry has one shared active scene; without per-player *scene* divergence there's no payoff, and it would shatter the single-timeline invariant.
+- **Party-splitting / multiple group sub-conversations** — rejected: Foundry has one shared active scene; without per-player _scene_ divergence there's no payoff, and it would shatter the single-timeline invariant.
 - **Live private voice (breakout channel / second bot)** — rejected: the player's one-voice-channel cap (§8).
 - **Client-mod "voice whisper" with ducking** — rejected: ToS-violating, fragile, unshippable.
-- **Broadcasting private questions by default / "<player> asked X"** — rejected: betrays confidence; *who asked* is often the sensitive part (§4.5).
+- **Broadcasting private questions by default / "<player> asked X"** — rejected: betrays confidence; _who asked_ is often the sensitive part (§4.5).
 - **Per-player fully-parallel timelines** — rejected: violates the one-world invariant; we serialize writes instead.
 
 ## Privacy implications
 
-Audience-scoped storage + erasure (table = campaign-scoped per ADR-0014; private = player-scoped erasable). Operator can review side-channels; other players cannot. Player DM content is processed under the existing consent/privacy posture; PRIVACY.md updated. No new remote data flow. **Decided:** the audience-scoped erasure refinement is captured as a **refining ADR — [ADR-0017](../adr/0017-per-audience-memory-visibility-erasure.md), `Refines: ADR-0014`** — not a superseding one, because 0014's decision (shared episodic memory is campaign-scoped, not per-player erasable) still stands fully; 0017 only *adds* the per-audience dimension for private side-channel content.
+Audience-scoped storage + erasure (table = campaign-scoped per ADR-0014; private = player-scoped erasable). Operator can review side-channels; other players cannot. Player DM content is processed under the existing consent/privacy posture; PRIVACY.md updated. No new remote data flow. **Decided:** the audience-scoped erasure refinement is captured as a **refining ADR — [ADR-0017](../adr/0017-per-audience-memory-visibility-erasure.md), `Refines: ADR-0014`** — not a superseding one, because 0014's decision (shared episodic memory is campaign-scoped, not per-player erasable) still stands fully; 0017 only _adds_ the per-audience dimension for private side-channel content.
 
 ## Eval implications
 

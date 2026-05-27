@@ -1,5 +1,6 @@
 # TDD 0025: Operator Control Parity (Console ↔ Slash) + Live State Sync
-Status: implemented
+
+Status: superseded by [0040](./0040-operator-control-parity-foundry-chat-commands.md)
 PRD refs: 4.4, 4.3
 PRD-rev: 10391ba
 ADR constraints: 0016
@@ -10,7 +11,7 @@ Related TDDs: [0020 (operator app)](./0020-operator-app.md), [0023 (onboarding +
 ## Approach
 
 The operator has two control surfaces: the **web console** (design doc 0020)
-and **Discord slash commands**. Design doc 0024 brought operator *designation* to
+and **Discord slash commands**. Design doc 0024 brought operator _designation_ to
 both. The operator shouldn't have to remember which surface can do what, and a
 change on one surface shouldn't leave the other stale until a manual refresh.
 
@@ -19,12 +20,12 @@ change on one surface shouldn't leave the other stale until a manual refresh.
 **Every operator action/setting is available on both surfaces, and any change is
 reflected live on the other.** Concretely:
 
-| Action | Console | Slash command |
-|---|---|---|
-| Stop session | Stop button | `/skeinkeeper session action:stop` |
-| Set eagerness | radio | `/skeinkeeper eagerness level:…` |
-| List DM voices | persona dropdown | `/skeinkeeper voice action:list` |
-| Set DM voice | persona dropdown + Apply | `/skeinkeeper voice action:set persona:…` |
+| Action             | Console                           | Slash command                               |
+| ------------------ | --------------------------------- | ------------------------------------------- |
+| Stop session       | Stop button                       | `/skeinkeeper session action:stop`          |
+| Set eagerness      | radio                             | `/skeinkeeper eagerness level:…`            |
+| List DM voices     | persona dropdown                  | `/skeinkeeper voice action:list`            |
+| Set DM voice       | persona dropdown + Apply          | `/skeinkeeper voice action:set persona:…`   |
 | Designate operator | Operator panel (pick / @username) | `/skeinkeeper operator action:claim` (0024) |
 
 Players' `/skeinkeeper consent …` is **not** an operator control (it's a
@@ -83,10 +84,10 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.4 | Every operator action available on both console and Discord slash commands | Parity table (§1) enumerates all controls; `SessionManager` single-method write path guarantees no drift |
-| 4.3 | A change on one surface is reflected live on the other without a manual refresh | SSE `AppEvent` bus (`eagerness`, `dmVoice`, `operator`, `roster`); `GET /api/state` for initial paint |
+| PRD ref | Requirement                                                                     | Satisfied by                                                                                             |
+| ------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 4.4     | Every operator action available on both console and Discord slash commands      | Parity table (§1) enumerates all controls; `SessionManager` single-method write path guarantees no drift |
+| 4.3     | A change on one surface is reflected live on the other without a manual refresh | SSE `AppEvent` bus (`eagerness`, `dmVoice`, `operator`, `roster`); `GET /api/state` for initial paint    |
 
 ## Dependencies considered
 

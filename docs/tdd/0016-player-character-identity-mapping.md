@@ -1,5 +1,6 @@
 # TDD 0016: Player↔Character Identity Mapping
-Status: implemented
+
+Status: superseded by [0036](./0036-onboarding-and-foundry-user-preflight.md)
 PRD refs: 4.1, 4.6
 PRD-rev: 10391ba
 ADR constraints: 0008, 0010, 0011
@@ -9,9 +10,9 @@ Related TDDs: [0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-tr
 
 ## Approach
 
-Voice arrives keyed on a **Discord user ID** (an `Utterance.speaker`). Mechanical state lives in **Foundry**, keyed on a **Foundry actor ID**. Nothing links them today, so the AI knows "Discord user 12345 said 'I attack the goblin'" but not *which character sheet* to attack with. The turn loop (doc 0011) and the always-listening decider (doc 0015) both need this attribution: to apply an action to the right actor, and to reason about "the player standing on the trap tile."
+Voice arrives keyed on a **Discord user ID** (an `Utterance.speaker`). Mechanical state lives in **Foundry**, keyed on a **Foundry actor ID**. Nothing links them today, so the AI knows "Discord user 12345 said 'I attack the goblin'" but not _which character sheet_ to attack with. The turn loop (doc 0011) and the always-listening decider (doc 0015) both need this attribution: to apply an action to the right actor, and to reason about "the player standing on the trap tile."
 
-Foundry knows which *Foundry user* owns which actor (`list-actor-ownership`), but Foundry users are not Discord users — there's no automatic Discord→Foundry→actor chain.
+Foundry knows which _Foundry user_ owns which actor (`list-actor-ownership`), but Foundry users are not Discord users — there's no automatic Discord→Foundry→actor chain.
 
 **Player-initiated mapping through the DM at session start, with operator override.** The mapping is created by the natural opening ritual of a session rather than a config screen.
 
@@ -37,6 +38,7 @@ A new built-in, **operator-gated by default is wrong here** — the AI needs to 
 ### Operator override
 
 The operator can correct any mapping — the AI mis-heard "Aragorn" as "Aragon," or two players have similar character names — via:
+
 - The **web UI** (Phase 5): a simple table of Discord user ↔ character with edit controls.
 - A **Discord command**: `/skeinkeeper map @player <character>`.
 
@@ -45,6 +47,7 @@ Operator-set rows carry `source: "operator"` and win over player-set rows.
 ### How it's consumed
 
 `runTurn` and the always-listening decider look up `currentForPlayer(discordUserId)` to attribute an utterance to a character. This lets the AI:
+
 - Apply "I attack" to the right actor's sheet.
 - Reason spatially ("Aragorn's player said they move into the corner" → check the trap near Aragorn's token).
 - Voice continuity and narration ("Aragorn, you feel the floor shift…").
@@ -85,11 +88,11 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.1 | Real-time speech-to-text per speaker with diarization (AI knows which player said what) | `Utterance.speaker` (Discord user ID) looked up in `player_character_map` → attributed to named character for turn context |
-| 4.6 | Players added to campaign by Discord ID; player-facing surfaces are Discord and Foundry only | `discordUserId` is the key; players interact via voice intro ritual — no web UI required |
-| 4.6 | Operator adds players to campaign by Discord ID via web UI | operator override path via web UI table + `/skeinkeeper map` Discord command; `source: "operator"` rows win |
+| PRD ref | Requirement                                                                                  | Satisfied by                                                                                                               |
+| ------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 4.1     | Real-time speech-to-text per speaker with diarization (AI knows which player said what)      | `Utterance.speaker` (Discord user ID) looked up in `player_character_map` → attributed to named character for turn context |
+| 4.6     | Players added to campaign by Discord ID; player-facing surfaces are Discord and Foundry only | `discordUserId` is the key; players interact via voice intro ritual — no web UI required                                   |
+| 4.6     | Operator adds players to campaign by Discord ID via web UI                                   | operator override path via web UI table + `/skeinkeeper map` Discord command; `source: "operator"` rows win                |
 
 ## Dependencies considered
 
@@ -105,7 +108,7 @@ None — no cross-cutting durable decisions here beyond what ADR-0008 (tenant sc
 
 ## Alternatives considered
 
-- **Operator pre-configures every mapping in a setup screen.** Works, but it's tedious and un-fun, and it front-loads config before the table can start. The intro ritual is zero-setup and in-fiction. Operator config remains as the *override*, not the primary path.
+- **Operator pre-configures every mapping in a setup screen.** Works, but it's tedious and un-fun, and it front-loads config before the table can start. The intro ritual is zero-setup and in-fiction. Operator config remains as the _override_, not the primary path.
 - **Map via Foundry user ownership + a Discord↔Foundry-user link.** Requires players to also be logged into Foundry as distinct users and a separate Discord↔Foundry-user table — more moving parts, and many tables have one shared Foundry GM screen. Rejected as the primary mechanism.
 - **Auto-guess from voice alone (speaker recognition → character).** Unreliable and creepy (voiceprints — explicitly out of scope per PRIVACY.md). Rejected.
 

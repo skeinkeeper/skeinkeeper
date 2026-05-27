@@ -1,5 +1,6 @@
 # TDD 0003: Erasure and Export
-Status: implemented
+
+Status: superseded by [0038](./0038-per-audience-erasure-cascade-to-foundry.md)
 PRD refs: 5.5
 PRD-rev: 10391ba
 ADR constraints: 0010
@@ -19,7 +20,7 @@ The acceptance for Phase 0.7 calls for:
 4. CLI commands the operator can invoke (`player:delete`, `player:export`, `campaign:delete`, `campaign:export`).
 5. A hard-rule entry in `CONTRIBUTING.md`: new persistent storage requires a registered deletion adapter before merge.
 
-This design covers all of that. Encryption-at-rest for PII columns (per design 0002) is *not* implemented here — the consents adapter writes/reads in cleartext for now; encryption ships when the OS-keyring integration is built out.
+This design covers all of that. Encryption-at-rest for PII columns (per design 0002) is _not_ implemented here — the consents adapter writes/reads in cleartext for now; encryption ships when the OS-keyring integration is built out.
 
 ## Components & interfaces
 
@@ -29,18 +30,18 @@ Erasure and export both fan out over the same three scopes; modeling them as a d
 
 ```ts
 export type ErasureScope =
-  | { kind: "player"; tenantId: string; subjectId: string }     // a Discord user
-  | { kind: "campaign"; tenantId: string; campaignId: string }  // one campaign's data
-  | { kind: "tenant"; tenantId: string };                        // full wipe
+  | { kind: "player"; tenantId: string; subjectId: string } // a Discord user
+  | { kind: "campaign"; tenantId: string; campaignId: string } // one campaign's data
+  | { kind: "tenant"; tenantId: string }; // full wipe
 ```
 
 ### Deletion adapters
 
 ```ts
 export interface DeletionAdapter {
-  readonly name: string;                              // e.g., "consents"
+  readonly name: string; // e.g., "consents"
   readonly supportedScopes: ReadonlyArray<ErasureScope["kind"]>;
-  delete(scope: ErasureScope): Promise<number>;       // returns records deleted
+  delete(scope: ErasureScope): Promise<number>; // returns records deleted
 }
 ```
 
@@ -145,12 +146,12 @@ None — mechanical infrastructure with unit and integration tests.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.5 | Operator self-service data deletion and export per subject/campaign/tenant scope | `ErasureService` + `ExportService` with registered `DeletionAdapter`/`ExportAdapter` per store; `ErasureScope` discriminated union covers all three scopes |
-| 5.5 | Audit trail for every erasure | `deletion_log` row written per adapter per erasure, using salted hash of subject ID |
-| 5.5 | CLI for operator-invoked deletion and export | `player:delete`, `player:export`, `campaign:delete`, `campaign:export`, `tenant:delete` commands in `server/src/cli.ts` |
-| 5.5 | New storage must register a deletion adapter before merge | Contributor hard rule added to `CONTRIBUTING.md`; `ErasureService.register()` is the mandated mechanism |
+| PRD ref | Requirement                                                                      | Satisfied by                                                                                                                                               |
+| ------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.5     | Operator self-service data deletion and export per subject/campaign/tenant scope | `ErasureService` + `ExportService` with registered `DeletionAdapter`/`ExportAdapter` per store; `ErasureScope` discriminated union covers all three scopes |
+| 5.5     | Audit trail for every erasure                                                    | `deletion_log` row written per adapter per erasure, using salted hash of subject ID                                                                        |
+| 5.5     | CLI for operator-invoked deletion and export                                     | `player:delete`, `player:export`, `campaign:delete`, `campaign:export`, `tenant:delete` commands in `server/src/cli.ts`                                    |
+| 5.5     | New storage must register a deletion adapter before merge                        | Contributor hard rule added to `CONTRIBUTING.md`; `ErasureService.register()` is the mandated mechanism                                                    |
 
 ## Dependencies considered
 
