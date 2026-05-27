@@ -2,20 +2,33 @@
 
 Status: draft
 PRD refs: 4.8, 5.1
-PRD-rev: 9f8518a
+PRD-rev: 59a0fda
 ADR constraints: 0002, 0003, 0008, 0010, 0011, 0017, 0018, 0023, 0024
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0023 (onboarding + operator channel)](./0023-session-onboarding-presence-operator-channel.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md)
+Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md)
 
 ## Approach
 
 §4.8 names four autonomous actions the AI takes once intake (TDD 0031) gives it the green
-light: **(1)** initial-scene activation when unambiguous, **(2)** Discord-user → Foundry-actor
-ownership assignment during onboarding, **(3)** source-material indexing over loaded campaign
+light: **(1)** initial-scene activation when unambiguous, **(2)** Discord-user ↔ Foundry-actor
+ownership confirmation during onboarding, **(3)** source-material indexing over loaded campaign
 content, and **(4)** content pre-loading from compendia into the world. All four share the
 _silence-is-success_ default: act autonomously; report only on ambiguity, failure, or a
 genuine judgment call (which routes back through TDD 0031's escalation channel).
+
+**Surface-model note (PRD-rev `59a0fda`).** Under the §4 surface model, the AI no longer
+runs the bridge's `assign-actor-ownership` write itself. Ownership is now a **pre-flight
+invariant** that the operator establishes in Foundry before Start (the 3-way identity map
+of [TDD 0036](./0036-onboarding-and-foundry-user-preflight.md): Discord user ↔ Foundry
+user ↔ character actor); the AI's role at session-start is to _verify_ that map and
+escalate gaps, not to write ownership. Action (2) is therefore rescoped from a write to
+a _verification + binding_ step that defers to TDD 0036's pre-flight verifier; the
+`record_player_character` extension in TDD 0036 owns the Discord↔Foundry-user binding.
+The autonomous _write_ actions (1), (3), and (4) are unchanged in scope but now route
+their after-the-fact operator notifications through TDD 0034's SurfaceRouter (Foundry
+GM chat surface) rather than a Discord DM — see TDD 0031's "Delivery via `notify_operator`"
+section.
 
 Three of the four are small write surfaces over the existing `FoundryClient` (TDD 0014).
 The fourth — source-material indexing — extends TDD 0021's compendium-ingestion pattern
@@ -60,7 +73,7 @@ The orchestrator dispatches based on its return:
   `RECO_PROPOSED_STARTING_SCENE` informational recommendation into the intake report so
   the operator sees "I activated _Goblin Ambush_" in the "For your info" section. The
   operator's mid-session correction path is the **live-session scene-switch control**
-  (a separate operator control on the SessionManager write path, per ADR-0016 / TDD 0025) — _not_ a finding resolution. This separation is intentional: a recommendation
+  (a separate operator control on the SessionManager write path, per ADR-0016 / TDD 0040 which supersedes TDD 0025) — _not_ a finding resolution. This separation is intentional: a recommendation
   is informational; mid-session correction is a control action.
 - **`'ambiguous'`** → emit `AMBIG_STARTING_SCENE` with the candidate list. **Do not call
   `activateScene`.** Scene activation is deferred to the resolution-handler path: when
@@ -94,58 +107,27 @@ Activation: `switch-scene` against the bridge. After-the-fact notification: a si
 appended to the intake report's "I did the following" footer (rendered by TDD 0031's
 formatter when extended intake completes; this TDD provides the line content).
 
-### 2. Ownership assignment during onboarding
+### 2. Ownership verification during onboarding (delegated to TDD 0036)
 
-TDD 0023's `record_player_character` tool currently writes `player_character_map`
-(Discord-user → Foundry-actor). This TDD extends the same tool's handler to also call the
-bridge's `assign-actor-ownership` with the _Foundry user ID_ that corresponds to the
-Discord user, when one can be determined.
+**Rescoped under PRD-rev `59a0fda`.** Under the surface model, the operator is responsible
+for establishing the **3-way identity map** in Foundry before Start (Discord user ↔
+Foundry user ↔ character actor — TDD 0036 §"3-way identity"). Skeinkeeper does not
+mutate Foundry ownership; it _verifies_ the map at session-start pre-flight and at each
+player's voice-join, and escalates gaps to the operator over the Foundry GM chat
+surface (TDD 0036's `verifyIdentityPreflight()`).
 
-```ts
-// orchestrator/autosetup/ownership.ts
-export async function assignActorOwnership(
-  foundry: FoundryClient,
-  args: { actorId: string; foundryUserId: string },
-): Promise<OwnershipResult>;
+This TDD owns no ownership-write code path at v0.5. The previous draft's
+`assignActorOwnership` / `OwnershipResult` / `resolveFoundryUserForDiscordUser` interfaces
+are removed; the Discord-user ↔ Foundry-user binding is captured by the
+`record_player_character` extension in TDD 0036 (which adds the `foundry_user_id` column
+to `player_character_map` and is populated from the pre-flight verifier's findings or
+from the operator's intake-resolution choices). The autosetup module previously planned
+at `orchestrator/autosetup/ownership.ts` does not ship; the responsibility lives entirely
+in `orchestrator/intake/identity-preflight.ts` (TDD 0036).
 
-export type OwnershipResult =
-  | { kind: "assigned" }
-  | { kind: "no-matching-foundry-user"; discordUserId: string } // degrade, escalate
-  | { kind: "bridge-failure"; reason: string }; // degrade, escalate
-
-export function resolveFoundryUserForDiscordUser(
-  intake: ExtendedIntakeResult,
-  discordUserId: string,
-  campaignConfig: CampaignConfig,
-): { foundryUserId: string } | null;
-```
-
-The v0.5 resolution rule for `resolveFoundryUserForDiscordUser`:
-
-1. **Operator-supplied map first.** A new optional `campaignConfig.discordToFoundryUser:
-Record<DiscordUserId, FoundryUserId>` (operator-configured via the existing web-console
-   config form, mirrored by a slash-command per ADR-0016). If the Discord user has an
-   explicit entry, use it.
-2. **Display-name correlation second.** Best-effort match of the Discord user's
-   display name against the Foundry user list (case-insensitive, exact match). The
-   bridge does not currently expose a `list-users` tool (see Open questions / TDD 0027
-   batch), so the v0.5 reality is constrained: `intake.currentOwnershipMap` is typed
-   `Record<ActorId, FoundryUserId>` and the values are opaque IDs without display names
-   attached. The display-name correlation step therefore _only fires_ when
-   `get-world-info` returns `{ id, name }` pairs for users — which must be verified
-   against the live bridge during integration. If `get-world-info` doesn't carry user
-   names, step 2 is effectively a no-op at v0.5 (the implementer should leave the code
-   path in place but document that it's a no-op until upstream or the bridge surface
-   widens), and resolution effectively reduces to "step 1 or null." When the bridge lands
-   a first-class user enumeration, this step lights up.
-3. **Null third.** No explicit map entry, no display-name match → return `null`.
-
-When the result is `null`, ownership-assignment **degrades silently**: the
-`player_character_map` write still succeeds, the player can still play (the AI controls
-the actor regardless of Foundry ownership per ADR-0023 corollary 2 (carried forward from ADR-0015)), and the missing
-ownership is surfaced as a `RECO_FOUNDRY_OWNERSHIP_UNRESOLVED` recommendation in the next
-intake-extended pass rather than as a per-player critical interruption. The operator can
-fill in the explicit map at any time; the next Start applies it.
+The orchestrator's session-start wiring (sequencing step 6 below) reduces to "invoke TDD
+0036's `verifyIdentityPreflight()` and let it raise findings"; no `assignActorOwnership`
+dispatch happens here.
 
 ### 3. Source-material indexing
 
@@ -177,12 +159,12 @@ export async function readWorldActorItems(
   0021). Returns `{id, name, text, pages?, folder?, _modifiedAt?}` parsed from the bridge.
 - **Scenes** via `list-scenes` (bridge tool). The bridge's scene metadata includes name +
   scene `folder` (often used by operators as a location/region label) + active state.
-- **Creatures** via `list-creatures-by-criteria` (per TDD 0027 ref).
+- **Creatures** via `list-creatures-by-criteria` (per TDD 0037, which supersedes TDD 0027).
 - **Actor items** via `get-character-entity` per actor. World-level item discovery is
   constrained — the bridge has no `list-items` tool — so v0.5 indexes only items in the
   party actors' inventories. Compendium items remain covered by TDD 0021. The gap (no
-  world-level item walk) is named in "PRD conflicts surfaced" and added to TDD 0027's
-  upstream batch.
+  world-level item walk) is named in "PRD conflicts surfaced" and added to TDD 0037's
+  Band B upstream batch (carried forward from TDD 0027).
 
 All four parse the bridge response and return typed entries; parsing is unit-tested with
 `FakeMcpToolCaller` per TDD 0021's pattern. No live MCP traffic in unit tests.
@@ -270,14 +252,14 @@ Strategy:
   excludes stale entries.
 
 When the bridge doesn't return `last_modified` for a source, the refresh falls back to "if
-foundry_id is present, leave alone; if absent, delete" — coarser but correct. The bridge
-_does_ return `_modifiedAt` for journals per TDD 0021's parse path; scenes/items are
+foundry*id is present, leave alone; if absent, delete" — coarser but correct. The bridge
+\_does* return `_modifiedAt` for journals per TDD 0021's parse path; scenes/items are
 TBD-verified at implementation time.
 
 #### 3e. Concurrency
 
 Indexing kicks off after **minimum intake completes** (TDD 0031's gate) and runs in
-parallel with TDD 0023's onboarding ritual. The orchestrator must not _block on_
+parallel with TDD 0036's onboarding ritual. The orchestrator must not _block on_
 indexing for play to proceed — players are greeted, mapped, and welcomed while the AI
 ingests in the background. Retrieval against the index is best-effort during the
 indexing run: a query may hit pre-indexing data (compendium only); a `coldIndexReady`
@@ -345,9 +327,9 @@ This TDD reads `sessionConfig.intake.chosenStartingSceneId` and
 ### `coldIndexReady` (session-transient)
 
 Carried on a new `SessionRunState` object (`orchestrator/session/run-state.ts`) — distinct
-from TDD 0031's `SessionConfig` (durable, per-campaign) and TDD 0025's `SessionManager`
-(operator-control write path): `SessionRunState` holds _per-session_ transient flags that
-neither TDD 0031 nor TDD 0025 owns. Field for this TDD:
+from TDD 0031's `SessionConfig` (durable, per-campaign) and TDD 0040's `SessionManager`
+(operator-control write path, supersedes TDD 0025's): `SessionRunState` holds _per-session_
+transient flags that neither TDD 0031 nor TDD 0040 owns. Field for this TDD:
 
 ```ts
 export interface SessionRunState {
@@ -357,7 +339,7 @@ export interface SessionRunState {
 }
 ```
 
-`SessionRunState` is constructed at session start, owned by the Coordinator (TDD 0026 §3),
+`SessionRunState` is constructed at session start, owned by the Coordinator (TDD 0035 §3, which supersedes TDD 0026),
 and reaches tool handlers through the existing tool-dispatch context (`ToolHandlerContext`
 per TDD 0006). Wiring requires a one-field **additive** amendment to `ToolHandlerContext`:
 
@@ -399,7 +381,8 @@ ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-own
 3. `extractKeys` metadata extractors, per-source unit tests.
 4. `refreshIndex` incremental run; per-source success/failure isolation.
 5. `chooseInitialScene` + `activateScene` integration with TDD 0031's intake-finding flow.
-6. `assignActorOwnership` extension to TDD 0023's `record_player_character` handler.
+6. ~~`assignActorOwnership` extension~~ — rescoped to TDD 0036's `verifyIdentityPreflight()`
+   invocation at session-start; this TDD has no ownership-write code path at v0.5.
 7. `preloadExpectedContent` (small; idempotent existence checks).
 8. Orchestrator wiring: dispatch (1)–(4) on `runExtendedIntake` completion; flip
    `coldIndexReady` when (3) finishes; deliver the "I did the following" footer through
@@ -410,10 +393,12 @@ ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-own
 - **`switch-scene` fails.** Escalate via `notify_operator` ("I tried to activate
   _Goblin Ambush_ and the bridge returned: …"). Operator switches manually in Foundry; the
   next `get-current-scene` returns the chosen scene and play proceeds. No retry loop.
-- **`assign-actor-ownership` fails** (no matching Foundry user, or bridge error). Degrade
-  silently — the `player_character_map` write still succeeds; AI control is unaffected per
-  ADR-0015. Surfaced as a `RECO_FOUNDRY_OWNERSHIP_UNRESOLVED` recommendation on the next
-  extended-intake pass; not a per-player critical interruption.
+- **Ownership-verification gap** (operator's 3-way identity map missing or partial). Owned
+  by TDD 0036's pre-flight verifier; this TDD does not write Foundry ownership at v0.5.
+  Gap findings (e.g., `no-foundry-user`, `foundry-user-not-owning-actor`) are raised by
+  TDD 0036 and surfaced on the Foundry GM chat surface; this TDD's autosetup actions do
+  not depend on ownership state (the AI controls actors via tool-calls regardless of
+  Foundry ownership, per ADR-0023 corollary 2 carried forward from ADR-0015).
 - **Indexing source X fails** (bridge error, parse failure). Per-source isolation — the
   other three continue. `RefreshReport.errors` records the failure; telemetry counts it;
   next Start retries. `coldIndexReady` still flips to `true` (the index is _usable_, just
@@ -428,7 +413,7 @@ ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-own
 - **Operator changes loaded modules between Starts.** Refresh's add/delete branches cover
   it; deleted modules' content tombstones, new modules' content ingests.
 - **Two Starts overlapping for the same campaign** (operator restarted Skeinkeeper
-  mid-session, or two orchestrators raced). `SessionManager` (TDD 0025) serializes
+  mid-session, or two orchestrators raced). `SessionManager` (TDD 0040, supersedes TDD 0025) serializes
   _operator-control writes_, but session-start is not itself an operator-control mutation
   — it spawns a Coordinator and dispatches autosetup. Two near-simultaneous Starts can
   therefore reach `refreshIndex` concurrently. This TDD adds a new campaign-scoped
@@ -443,15 +428,15 @@ ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-own
 
 ## Requirement traceability
 
-| PRD ref                              | Requirement                                                                                                                                                                                                         | Satisfied by                                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 4.8 (initial-scene activation)       | "if exactly one scene unambiguously corresponds to the campaign's expected starting beat, the AI activates it and notifies the operator after the fact. Ambiguous → propose and wait."                              | `chooseInitialScene` rubric + `activateScene`; ambiguous → `IntakeFinding` via TDD 0031                           |
-| 4.8 (Discord-user → actor ownership) | "during the onboarding ritual, when the AI maps a Discord user to a Foundry actor, it also assigns Foundry ownership of that actor to that user"                                                                    | `assignActorOwnership` extension to TDD 0023's `record_player_character` handler                                  |
-| 4.8 (source-material indexing)       | "the AI builds a retrievable index over loaded campaign content (journals, monsters, items, scenes) keyed by location, quest, and keyword … Re-indexing on subsequent Starts is incremental."                       | World-content readers + `extractKeys` + `MemoryRecord.metadata` extensions + `byMetadata` filter + `refreshIndex` |
-| 4.8 (pre-loading expected content)   | "the AI imports needed monster/NPC actors from compendium into the world (without placing tokens on any scene) so they're ready when an encounter triggers. Lazy import at trigger time is acceptable when faster." | `preloadExpectedContent`; lazy fallback in TDD 0033                                                               |
-| 4.8 (concurrency model)              | "source-material indexing and content pre-loading run concurrently with onboarding"                                                                                                                                 | Step 8 of the sequencing plan; `coldIndexReady` flag; per-source isolation                                        |
-| 4.8 (Operator-as-host principle)     | "default is to proceed with what it inferred and tell the operator after the fact; silence is success"                                                                                                              | Degraded-silent paths for ownership + pre-load; after-the-fact footer in the intake report                        |
-| 5.1 (memory architecture)            | "Cold tier populated with campaign-relevant content; embeddings stay on-box"                                                                                                                                        | `ingestColdEntries` reuse; local embedder default per TDD 0021; no model dependency for indexing                  |
+| PRD ref                             | Requirement                                                                                                                                                                                                         | Satisfied by                                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 4.8 (initial-scene activation)      | "if exactly one scene unambiguously corresponds to the campaign's expected starting beat, the AI activates it and notifies the operator after the fact. Ambiguous → propose and wait."                              | `chooseInitialScene` rubric + `activateScene`; ambiguous → `IntakeFinding` via TDD 0031                           |
+| 4.8 (Discord-user ↔ actor identity) | "the AI verifies the operator's 3-way identity map (Discord ↔ Foundry user ↔ actor) at pre-flight; ownership is operator-set in Foundry, not AI-written" (PRD-rev `59a0fda` surface model)                          | TDD 0036's `verifyIdentityPreflight()` (invoked here at sequencing step 6); this TDD writes no ownership at v0.5  |
+| 4.8 (source-material indexing)      | "the AI builds a retrievable index over loaded campaign content (journals, monsters, items, scenes) keyed by location, quest, and keyword … Re-indexing on subsequent Starts is incremental."                       | World-content readers + `extractKeys` + `MemoryRecord.metadata` extensions + `byMetadata` filter + `refreshIndex` |
+| 4.8 (pre-loading expected content)  | "the AI imports needed monster/NPC actors from compendium into the world (without placing tokens on any scene) so they're ready when an encounter triggers. Lazy import at trigger time is acceptable when faster." | `preloadExpectedContent`; lazy fallback in TDD 0033                                                               |
+| 4.8 (concurrency model)             | "source-material indexing and content pre-loading run concurrently with onboarding"                                                                                                                                 | Step 8 of the sequencing plan; `coldIndexReady` flag; per-source isolation                                        |
+| 4.8 (Operator-as-host principle)    | "default is to proceed with what it inferred and tell the operator after the fact; silence is success"                                                                                                              | Degraded-silent paths for ownership + pre-load; after-the-fact footer in the intake report                        |
+| 5.1 (memory architecture)           | "Cold tier populated with campaign-relevant content; embeddings stay on-box"                                                                                                                                        | `ingestColdEntries` reuse; local embedder default per TDD 0021; no model dependency for indexing                  |
 
 ## Dependencies considered
 
@@ -461,7 +446,8 @@ None new. The design reuses:
 - `ingestColdEntries` + `MemoryRecord` (TDD 0021 / 0019).
 - `LanceMemoryStore` (TDD 0019).
 - Local embedder default (TDD 0019).
-- TDD 0023's `record_player_character` handler (extended in §2).
+- TDD 0036's `verifyIdentityPreflight()` (invoked at session-start; this TDD does not
+  extend `record_player_character` — the extension lives in TDD 0036).
 
 A model-driven metadata extractor was evaluated for §3b and rejected (cost, latency,
 non-determinism vs. a heuristic that the operator can fix via override). A separate
@@ -477,25 +463,24 @@ second tier would split retrieval surface for no benefit.
    same design PR.
 2. **World-level item discovery gap.** The bridge has no `list-items` or `search-items`
    tool. The §4.8 ask "items" is interpreted as actor-inventory items + compendium items at
-   v0.5. Resolution: name the gap, scope §3a accordingly, add an upstream proposal item to
-   TDD 0027's batch ("`list-items` / `search-items` over world-level items").
+   v0.5. Resolution: name the gap, scope §3a accordingly; the upstream batch is carried
+   forward into [TDD 0037](./0037-bridge-dependencies-surface-model-critical-batch.md) as
+   a Band B item (deferred, not v0.5-blocking).
 3. **`last_modified` field availability across sources.** TDD 0021's journal parse uses
    `_modifiedAt`; scenes/items aren't yet verified. Resolution: the incremental refresh
    degrades to "presence-only" when `last_modified` is absent (TDD §3d documents this
    fallback); implementer confirms against live bridge during integration.
-4. **Foundry-user identity for ownership assignment.** The bridge exposes
-   `assign-actor-ownership` but the matching Discord-user → Foundry-user identity is
-   operator-supplied + correlation-driven; full automation requires an operator-side
-   handle map. Resolution: degrade silently when no match (per §2); surface a
-   recommendation; the operator can either provide the map or accept that ownership stays
-   on the GM-user (functionally fine per ADR-0023 corollary 2 (carried forward from ADR-0015)).
-5. **No `list-users` bridge tool.** Step 2 of `resolveFoundryUserForDiscordUser` would
-   like to enumerate Foundry users by display name. The bridge currently exposes only
-   the _owners_ of actors (via `assign-actor-ownership` / `currentOwnershipMap`) and
-   whatever `get-world-info` surfaces; there is no first-class user enumeration.
-   Resolution: v0.5 derives the user set from those existing surfaces; an upstream
-   proposal item ("`list-users` returning `{id, name, role}` for non-AI users") is added
-   to TDD 0027's pending batch.
+4. **Foundry-user identity for ownership** — rescoped under PRD-rev `59a0fda`. Ownership
+   is established by the operator in Foundry pre-Start, not written by the AI. The
+   3-way identity map is verified at pre-flight by TDD 0036, which raises gap findings
+   (e.g., `no-foundry-user`, `foundry-user-not-owning-actor`) over the Foundry GM chat
+   surface. This TDD inherits the operator-as-host posture (silence-is-success per
+   ADR-0024) but no longer carries the ownership-write degradation path.
+5. **`list-users` bridge tool.** Now a Band A v0.5-blocking dependency in
+   [TDD 0037](./0037-bridge-dependencies-surface-model-critical-batch.md) (which
+   supersedes TDD 0027); needed by TDD 0036's pre-flight verifier and by TDD 0034's
+   audience-targeting `post-chat-message` resolution. v0.5 cannot ship without it
+   landing upstream or in the fork.
 
 ## Decisions to promote (ADR candidates)
 
@@ -508,17 +493,17 @@ operationalization of [ADR-0024](../adr/0024-silence-is-success-operator-escalat
 
 New events in `/telemetry/src/events.ts` (and `/docs/telemetry-events.md`):
 
-| Event                          | Payload                                                                                       | Description                                     |
-| ------------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `autosetup.scene.activated`    | `{ campaignId, sessionId, reason: 'already-active' \| 'single-starter' \| 'prior-resolved' }` | Initial scene activated autonomously            |
-| `autosetup.scene.deferred`     | `{ campaignId, sessionId, candidateCount }`                                                   | Activation deferred pending operator resolution |
-| `autosetup.ownership.assigned` | `{ campaignId, actorId }`                                                                     | Foundry ownership assigned                      |
-| `autosetup.ownership.degraded` | `{ campaignId, actorId, reason: 'no-matching-foundry-user' \| 'bridge-failure' }`             | Ownership assignment degraded silently          |
-| `autosetup.preload.created`    | `{ campaignId, source: 'compendium', count }`                                                 | Pre-load created actors/items in world          |
-| `autosetup.preload.deferred`   | `{ campaignId, count }`                                                                       | Pre-load deferred to lazy-at-trigger            |
-| `index.run.started`            | `{ campaignId, sessionId }`                                                                   | Indexing run began                              |
-| `index.run.completed`          | `{ campaignId, sessionId, durationMs, perSourceCounts }`                                      | Indexing run finished                           |
-| `index.run.source-failed`      | `{ campaignId, source, reason }`                                                              | One source failed; others continued             |
+| Event                              | Payload                                                                                       | Description                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `autosetup.scene.activated`        | `{ campaignId, sessionId, reason: 'already-active' \| 'single-starter' \| 'prior-resolved' }` | Initial scene activated autonomously                                         |
+| `autosetup.scene.deferred`         | `{ campaignId, sessionId, candidateCount }`                                                   | Activation deferred pending operator resolution                              |
+| ~~`autosetup.ownership.assigned`~~ | _removed under PRD-rev `59a0fda`_                                                             | Ownership writes are operator-side, not AI; TDD 0036 owns verifier telemetry |
+| ~~`autosetup.ownership.degraded`~~ | _removed under PRD-rev `59a0fda`_                                                             | See TDD 0036 for pre-flight verification telemetry                           |
+| `autosetup.preload.created`        | `{ campaignId, source: 'compendium', count }`                                                 | Pre-load created actors/items in world                                       |
+| `autosetup.preload.deferred`       | `{ campaignId, count }`                                                                       | Pre-load deferred to lazy-at-trigger                                         |
+| `index.run.started`                | `{ campaignId, sessionId }`                                                                   | Indexing run began                                                           |
+| `index.run.completed`              | `{ campaignId, sessionId, durationMs, perSourceCounts }`                                      | Indexing run finished                                                        |
+| `index.run.source-failed`          | `{ campaignId, source, reason }`                                                              | One source failed; others continued                                          |
 
 All payloads PII-free per ADR-0010. Counts + codes + reasons only; no journal text,
 no actor names, no Foundry IDs in telemetry. `actorId` is opaque (an internal id, not
@@ -547,9 +532,8 @@ Scenario fixtures required before this ships:
 2. **Ambiguous initial scene.** Two equally-plausible scenes → `chooseInitialScene` returns
    `{ ambiguous, candidates: [...] }`; surfaced via TDD 0031 finding; operator-resolved →
    `sessionConfig.intake.chosenStartingSceneId` set → next Start picks reason `'prior-resolved'`.
-3. **Ownership-assignment degrade.** Discord-user has no Foundry-user match →
-   `assignActorOwnership` returns `no-matching-foundry-user`; `player_character_map` still
-   writes; `autosetup.ownership.degraded` telemetry emitted; recommendation surfaced.
+3. ~~Ownership-assignment degrade~~ — moved to TDD 0036's eval set (pre-flight
+   verifier scenarios). This TDD writes no ownership at v0.5.
 4. **Incremental indexing.** First Start: full index. Second Start: one journal modified
    → re-embed; one journal deleted → tombstone; two new journals → ingest; report shows
    `{ added: 2, updated: 1, deleted: 1 }` for the journal source.

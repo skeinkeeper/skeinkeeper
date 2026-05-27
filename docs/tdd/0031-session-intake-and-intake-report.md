@@ -2,11 +2,11 @@
 
 Status: draft
 PRD refs: 4.8, 3, 9.6, 9.7, 9.8
-PRD-rev: 9f8518a
+PRD-rev: 59a0fda
 ADR constraints: 0008, 0010, 0016, 0018, 0023, 0024
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0023 (onboarding + operator channel)](./0023-session-onboarding-presence-operator-channel.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0026 (side-channels)](./0026-player-dm-side-channels.md)
+Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
 
 ## Approach
 
@@ -14,8 +14,12 @@ Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0023 (on
 sitting down and starting the game — assessing materials, picking the starting scene,
 mapping characters to players, choosing stat blocks — moves onto the AI. This TDD covers the
 _analysis_ half of that move: a structured intake pass that runs on session Start, classifies
-what it finds, and surfaces the operator-actionable subset over the existing
-`notify_operator` channel (TDD 0023). The _write_ half — scene activation, ownership
+what it finds, and surfaces the operator-actionable subset over the
+`notify_operator` channel — which under PRD-rev `59a0fda` (§4 surface model) routes
+to the operator's **Foundry GM chat surface** via the SurfaceRouter ([TDD 0034](./0034-surface-routing-and-io-abstraction.md)),
+rather than a Discord DM. The wiring is the same `notify_operator` built-in tool
+(re-homed by [TDD 0036](./0036-onboarding-and-foundry-user-preflight.md) §"notify*operator");
+this TDD is one of its callers. The \_write* half — scene activation, ownership
 assignment, content pre-loading, source-material indexing — is [TDD 0032](./0032-autonomous-pre-game-setup-actions.md).
 
 The pass is structured for two reasons. First, intake produces findings the rest of the
@@ -28,7 +32,8 @@ into the two halves.
 Intake therefore lives in `orchestrator/intake/`, runs against the existing `FoundryClient`
 (TDD 0014) and `MemoryStore` (TDD 0019), and exposes a structured `IntakeResult` consumed
 by the orchestrator's session-start path. The orchestrator delivers the report via
-`notify_operator` (TDD 0023) and persists the audit trail.
+`notify_operator` (re-homed to the Foundry GM chat surface by TDD 0036 / TDD 0034)
+and persists the audit trail.
 
 This TDD is designed against [ADR-0023](../adr/0023-operator-as-host-model.md)
 (operator-as-host model, supersedes [ADR-0015](../adr/0015-operator-pregame-ai-performs-in-play-dm-actions.md))
@@ -81,7 +86,7 @@ export interface ExtendedIntakeResult {
   compendiumPacks: PackSummary[];
   existingScenes: SceneSummary[];
   currentOwnershipMap: Record<ActorId, FoundryUserId>;
-  warmStateSummary: WarmStateSummary; // prior sessions, quest flags, consents (TDD 0023, 0019)
+  warmStateSummary: WarmStateSummary; // prior sessions, quest flags, consents (TDD 0036, 0019)
   findings: IntakeFinding[]; // ambiguities + recommendations (criticals already raised)
 }
 
@@ -135,9 +140,9 @@ Three pure functions, one per kind, each unit-tested against fixtures:
   session config), multiple scenes equally plausible as the starting beat, player race/class
   defined in more than one loaded source.
 - `classifyRecommendations(extended, ctx) → IntakeFinding[]` — proposed starting scene
-  (used by TDD 0032's `chooseInitialScene`), proposed Discord→actor ownership map (used by
-  TDD 0023's onboarding mapper + TDD 0032's ownership-write), proposed primary source pack
-  for a recurring creature.
+  (used by TDD 0032's `chooseInitialScene`), proposed Discord↔actor identity map (used by
+  TDD 0036's onboarding mapper + the 3-way identity pre-flight verifier), proposed
+  primary source pack for a recurring creature.
 
 The rubric uses no LLM. It composes Foundry MCP reads (`get-world-info`, `list-characters`,
 `list-scenes`, `list-compendium-packs`, `list-creatures-by-criteria`, `search-compendium`,
@@ -174,20 +179,25 @@ The table is the rubric's full surface area for §9.8. An operator-configurable 
 player" toggle is the planned refinement but out of scope for v0.5 (per PRD §9.8); the
 heuristic is the v0.5 answer.
 
-### Delivery via `notify_operator`
+### Delivery via `notify_operator` (Foundry GM chat)
 
-`formatIntakeReportForDm(report) → IntakeDmPayload` renders the single structured DM
-recommended by PRD §9.6:
+`formatIntakeReportForOperator(report) → IntakeOperatorPayload` renders the single
+structured operator message recommended by PRD §9.6, dispatched through
+`notify_operator` — which under the PRD-rev `59a0fda` surface model routes to the
+**operator's Foundry GM chat surface** (via TDD 0034's SurfaceRouter →
+`FoundryGmChatSurface`, with `meta.escalation: true`), not a Discord DM:
 
-- One DM message per intake run (not one per finding) — header + grouped sections
+- One operator message per intake run (not one per finding) — header + grouped sections
   (`Critical`, `I need a decision`, `For your info`).
 - Each finding renders as a bullet with `summary` and, if present, the resolution
   options as a numbered choice list.
-- `detail` is delivered inside a `> ` quote block under the bullet, prefixed by
+- `detail` is delivered inside an indented block under the bullet, prefixed by
   `*DM-only — affects tonight's session:*` when `dmOnly` is true.
-- Resolution is collected via `/skeinkeeper intake resolve <session-finding-id> <option-id>`
-  (the slash-command response path PRD §9.6 recommends for v0.5). The slash-command lives
-  alongside the existing `/skeinkeeper operator …` family per TDD 0024.
+- Resolution is collected via the **Foundry chat command**
+  `/skeinkeeper intake resolve <session-finding-id> <option-id>` (the
+  operator-command verb taxonomy per [TDD 0040](./0040-operator-control-parity-foundry-chat-commands.md);
+  parsed by the bridge driver's chat-command listener per TDD 0034). The verb
+  lives alongside the existing `/skeinkeeper operator …` family per TDD 0024.
 
 A finding with no resolution options (e.g., a pure recommendation accepted by default) is
 rendered as informational only — operators don't need to acknowledge it.
@@ -201,15 +211,16 @@ The orchestrator's session-start path:
 2. Critical findings → deliver report fragment (criticals only) → block until resolved or
    `proceed-anyway` chosen. `proceed-anyway` is only offered for the hard-gap case per
    §9.7 (operator acknowledges; AI improvises during play and logs the gap).
-3. `runExtendedIntake` — kicked off in parallel with TDD 0023's onboarding ritual. The
+3. `runExtendedIntake` — kicked off in parallel with TDD 0036's onboarding ritual. The
    onboarding ritual does not wait on extended intake.
-4. Extended intake findings → delivered as a second DM (or appended if onboarding hasn't
-   yet sent its first turn) when extended completes.
+4. Extended intake findings → delivered as a second operator message (or appended if
+   onboarding hasn't yet sent its first turn) when extended completes.
 5. Resolutions update `SessionConfig` (in-memory + persisted) so subsequent extended-intake
    runs (incremental re-Start) honor them silently.
 
-`announceReady` is the existing TDD 0023 ritual-start signal. The minimum-intake gate is the
-new precondition.
+`announceReady` is the existing ritual-start signal (originally defined in TDD 0023; now
+carried forward by TDD 0036 which supersedes 0023). The minimum-intake gate is the new
+precondition.
 
 ## Data & state
 
@@ -231,8 +242,8 @@ session_intake_finding(
 )
 ```
 
-PII-free by design. The audit log (TDD 0023's existing audit surface) cross-references
-findings by id.
+PII-free by design. The audit log (originally TDD 0023's audit surface; carried forward
+by TDD 0036) cross-references findings by id.
 
 ### `SessionConfig` additions
 
@@ -263,8 +274,9 @@ Foundry.
 3. `classifyCriticalGaps`, `classifyAmbiguities`, `classifyRecommendations` — pure, fixture-tested.
 4. `buildFindingSummary` + spoiler heuristic table.
 5. `runMinimumIntake` + `runExtendedIntake`.
-6. `formatIntakeReportForDm` + the `/skeinkeeper intake resolve` slash-command + TDD 0023
-   `notify_operator` wiring.
+6. `formatIntakeReportForOperator` + the `/skeinkeeper intake resolve` Foundry-chat-command
+   handler (per TDD 0040) + `notify_operator` wiring through TDD 0034's `FoundryGmChatSurface`
+   (per TDD 0036).
 7. `session_intake_finding` table + migration; `SessionConfig.intake` persistence.
 8. Orchestrator session-start integration: minimum-intake gate before `announceReady`;
    extended-intake concurrent with onboarding ritual.
@@ -303,38 +315,43 @@ Foundry.
 - **Re-Start within the same session** (operator hit start twice, or the orchestrator
   crash-recovered). Minimum intake re-runs (deterministic, cheap); extended intake's
   incremental path (TDD 0032's indexing diff) avoids redundant work.
-- **`notify_operator` channel unavailable** (operator's Discord DMs disabled). TDD 0023
-  already handles this: the orchestrator surfaces the same content on the web console's
-  live-session view (ADR-0016 parity). The minimum-intake gate still blocks on critical
-  findings; the operator clears them from the console.
-- **Operator answers a slash-command resolution that no longer applies** (extended intake
+- **`notify_operator` channel unavailable** (Foundry not connected, GM chat surface
+  unreachable). Under the surface model in PRD-rev `59a0fda`, Foundry-down is a session
+  failure mode owned by [TDD 0039](./0039-foundry-down-session-lifecycle.md); on detection
+  the session enters `paused-foundry-down` and the operator is notified out-of-band per
+  TDD 0039 (the second exception to Discord-DM-consent-only). The web console's
+  live-session view also surfaces the same content (ADR-0016 parity, per TDD 0040). The
+  minimum-intake gate still blocks on critical findings; the operator clears them once
+  Foundry is reachable, or via the console.
+- **Operator answers a chat-command resolution that no longer applies** (extended intake
   was re-run and the ambiguity is gone). The handler is idempotent — already-resolved or
   no-longer-present findings reply with "already resolved / no longer applicable"; nothing
   mutates.
 
 ## Requirement traceability
 
-| PRD ref                           | Requirement                                                                                                                                                                                                                                                     | Satisfied by                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 4.8 (intake routine)              | "On Start, the AI reads: the Foundry world, Skeinkeeper warm state, the intersection"                                                                                                                                                                           | `runMinimumIntake` + `runExtendedIntake`; Foundry read adapters; `WarmStateSummary`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 4.8 (intake report)               | "produces a structured intake report and surfaces it to the operator via `notify_operator`"                                                                                                                                                                     | `IntakeResult` types; `formatIntakeReportForDm`; `notify_operator` delivery                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 4.8 (critical gaps)               | "block Start: required content wholly missing; no compatible system; no party-actor candidates; required race/class missing"                                                                                                                                    | `classifyCriticalGaps` codes `UNKNOWN_FOUNDRY_SYSTEM`, `NO_PARTY_ACTORS`, `MISSING_RACE_CONTENT`, `MISSING_CLASS_CONTENT`; minimum-intake gate blocks `announceReady`                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 4.8 (ambiguities)                 | "require operator preference between equally-valid options"                                                                                                                                                                                                     | `classifyAmbiguities` codes + `ResolutionOptions` choice set                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 4.8 (recommendations)             | "AI proposes; operator may override"                                                                                                                                                                                                                            | `classifyRecommendations`; informational rendering; `SessionConfig.intake.resolvedFindings` for overrides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 4.8 (concurrency model)           | "minimum intake before announcing readiness; source-material indexing and content pre-loading run concurrently with onboarding"                                                                                                                                 | Minimum-intake gate on `announceReady`; extended intake kicked off in parallel (this TDD); TDD 0032 owns the concurrent indexing/preload                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| 4.8 (spoiler-aware escalations)   | "framed to elevate a _choice_ without surfacing the _context_ of the choice when context would spoil"                                                                                                                                                           | `buildFindingSummary` + spoiler heuristic table; `dmOnly` flag + delivery marker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 4.8 (operator-as-host principle)  | "default is to proceed with what it inferred and tell the operator after the fact; silence is success"                                                                                                                                                          | Minimum/extended split; informational rendering for recommendations; `proceed-anyway` for §9.7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 3 (operator persona reframe)      | "AI handles in-play DM duties **and** the setup work that a human DM would do between sitting down and starting the game — assessing materials, picking the starting scene, mapping characters to players, deciding which monster stat block to use (see §4.8)" | Intake is the _assess materials_ half; TDD 0032 covers the _write_ actions (picking scene, mapping, stat-block prep)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 9.6 (intake escalation UX)        | "single structured DM with embedded reply controls (slash-command response per item)"                                                                                                                                                                           | `formatIntakeReportForDm` single-DM layout; `/skeinkeeper intake resolve` handler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| 9.7 (hard-gap policy)             | "proceed with operator acknowledgement; AI improvises reasonably during play and logs the gap"                                                                                                                                                                  | `MISSING_RACE_CONTENT` / `MISSING_CLASS_CONTENT` with `proceed-anyway` resolution; audit log + `intake.finding.surfaced` telemetry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 9.8 (spoiler-safe framing)        | "conservative default at v0.5; explicit DM-only flag when context is required"                                                                                                                                                                                  | Spoiler heuristic table; `dmOnly` delivery marker; "I'm also a player" toggle deferred per PRD                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| §3 (operator override via web UI) | "can override any AI decision via the web UI's live-session view"                                                                                                                                                                                               | `/skeinkeeper intake resolve` is mirrored by a web-UI control per ADR-0016 (one write path → `SessionManager`; this TDD exposes the method and surfaces it on both). **Implementer note:** landing this TDD requires extending TDD 0025's control-table with a new "Intake finding resolution" row covering both the slash-command and the web-console control; without that, ADR-0016 is violated. Live-session mid-session correction (e.g., switching active scene after an `RECO_PROPOSED_STARTING_SCENE` was activated) is a separate, already-existing operator control on the same `SessionManager` write path. |
+| PRD ref                           | Requirement                                                                                                                                                                                                                                                     | Satisfied by                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4.8 (intake routine)              | "On Start, the AI reads: the Foundry world, Skeinkeeper warm state, the intersection"                                                                                                                                                                           | `runMinimumIntake` + `runExtendedIntake`; Foundry read adapters; `WarmStateSummary`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 4.8 (intake report)               | "produces a structured intake report and surfaces it to the operator via `notify_operator`"                                                                                                                                                                     | `IntakeResult` types; `formatIntakeReportForOperator`; `notify_operator` delivery via TDD 0034's `FoundryGmChatSurface` (per the PRD-rev `59a0fda` surface model)                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 4.8 (critical gaps)               | "block Start: required content wholly missing; no compatible system; no party-actor candidates; required race/class missing"                                                                                                                                    | `classifyCriticalGaps` codes `UNKNOWN_FOUNDRY_SYSTEM`, `NO_PARTY_ACTORS`, `MISSING_RACE_CONTENT`, `MISSING_CLASS_CONTENT`; minimum-intake gate blocks `announceReady`                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 4.8 (ambiguities)                 | "require operator preference between equally-valid options"                                                                                                                                                                                                     | `classifyAmbiguities` codes + `ResolutionOptions` choice set                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 4.8 (recommendations)             | "AI proposes; operator may override"                                                                                                                                                                                                                            | `classifyRecommendations`; informational rendering; `SessionConfig.intake.resolvedFindings` for overrides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 4.8 (concurrency model)           | "minimum intake before announcing readiness; source-material indexing and content pre-loading run concurrently with onboarding"                                                                                                                                 | Minimum-intake gate on `announceReady`; extended intake kicked off in parallel (this TDD); TDD 0032 owns the concurrent indexing/preload                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 4.8 (spoiler-aware escalations)   | "framed to elevate a _choice_ without surfacing the _context_ of the choice when context would spoil"                                                                                                                                                           | `buildFindingSummary` + spoiler heuristic table; `dmOnly` flag + delivery marker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 4.8 (operator-as-host principle)  | "default is to proceed with what it inferred and tell the operator after the fact; silence is success"                                                                                                                                                          | Minimum/extended split; informational rendering for recommendations; `proceed-anyway` for §9.7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 3 (operator persona reframe)      | "AI handles in-play DM duties **and** the setup work that a human DM would do between sitting down and starting the game — assessing materials, picking the starting scene, mapping characters to players, deciding which monster stat block to use (see §4.8)" | Intake is the _assess materials_ half; TDD 0032 covers the _write_ actions (picking scene, mapping, stat-block prep)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 9.6 (intake escalation UX)        | "single structured operator message with embedded reply controls (chat-command response per item)"                                                                                                                                                              | `formatIntakeReportForOperator` single-message layout to Foundry GM chat; `/skeinkeeper intake resolve` Foundry chat-command handler (per TDD 0040)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 9.7 (hard-gap policy)             | "proceed with operator acknowledgement; AI improvises reasonably during play and logs the gap"                                                                                                                                                                  | `MISSING_RACE_CONTENT` / `MISSING_CLASS_CONTENT` with `proceed-anyway` resolution; audit log + `intake.finding.surfaced` telemetry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 9.8 (spoiler-safe framing)        | "conservative default at v0.5; explicit DM-only flag when context is required"                                                                                                                                                                                  | Spoiler heuristic table; `dmOnly` delivery marker; "I'm also a player" toggle deferred per PRD                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| §3 (operator override via web UI) | "can override any AI decision via the web UI's live-session view"                                                                                                                                                                                               | `/skeinkeeper intake resolve` is mirrored by a web-UI control per ADR-0016 (one write path → `SessionManager`; this TDD exposes the method and surfaces it on both). **Implementer note:** landing this TDD requires extending TDD 0040's control-parity table with a new "Intake finding resolution" row covering both the Foundry chat-command and the web-console control; without that, ADR-0016 is violated. Live-session mid-session correction (e.g., switching active scene after an `RECO_PROPOSED_STARTING_SCENE` was activated) is a separate, already-existing operator control on the same `SessionManager` write path. |
 
 ## Dependencies considered
 
 None. The design reuses `FoundryClient` (TDD 0014), `MemoryStore` (TDD 0019), the
-`notify_operator` Discord DM channel (TDD 0023), `SessionConfig` persistence, and the
-operator-controls write path (TDD 0025).
+re-homed `notify_operator` channel (TDD 0036, dispatching through TDD 0034's
+SurfaceRouter to the Foundry GM chat surface), `SessionConfig` persistence, and the
+operator-controls write path (TDD 0040, which supersedes TDD 0025).
 
 No new third-party libraries are introduced. The spoiler classifier is a static heuristic
 table, not a model dependency. A language-model-driven spoiler classifier was considered
@@ -350,18 +367,21 @@ more than coverage; LLM-driven classification would also make replay non-determi
    pass that produced this TDD also promoted [ADR-0023](../adr/0023-operator-as-host-model.md)
    (operator-as-host), which supersedes ADR-0015 with the new boundary. ADR-0015 is now
    superseded; this TDD designs against ADR-0023 directly.
-2. **§9.6 (escalation UX) — adopted.** The PRD's recommendation (single structured DM +
-   per-item slash-command response) becomes the design. Promoted below.
+2. **§9.6 (escalation UX) — adopted.** The PRD's recommendation (single structured operator
+   message + per-item chat-command response) becomes the design, with the surface re-homed
+   from Discord DM to Foundry GM chat per the PRD-rev `59a0fda` surface model. Promoted below.
 3. **§9.7 (hard-gap policy) — adopted.** Proceed-with-operator-acknowledgement chosen over
    refuse-to-Start or SRD-improvise-silently. The AI logs the gap throughout the session
    (audit log + telemetry) so post-session the operator can see what was improvised.
 4. **§9.8 (spoiler-safe framing) — adopted.** Heuristic table is the v0.5 answer; the
    "operator is also a player" toggle deferred per the PRD.
-5. **TDD 0023 preconditions** (the "Start preconditions" line: "the campaign's character
+5. **Onboarding preconditions** (the "Start preconditions" line: "the campaign's character
    actors exist + are named") narrows under §4.8 + this TDD: actors must still _exist_ in
    Foundry, but mapping them to Discord users and assigning Foundry ownership is intake's
-   job, not the operator's. The TDD 0023 precondition wording will need a one-line revision
-   when this TDD ships; flagged for the implementer in step 8 of the sequencing plan.
+   job, not the operator's. The precondition wording lives in
+   [TDD 0036](./0036-onboarding-and-foundry-user-preflight.md) (which supersedes TDD 0023)
+   and will be reconciled there at implementation; flagged for the implementer in step 8 of
+   the sequencing plan.
 
 ## Decisions to promote (ADR candidates)
 
@@ -411,12 +431,13 @@ Scenario fixtures required before this ships:
    pre-active, party actors pre-mapped → minimum + extended intake produce zero
    operator-visible findings → `announceReady` fires immediately.
 2. **Multiple modules ambiguity.** LMoP + Ravenloft both loaded → `MULTIPLE_CAMPAIGN_MODULES`
-   ambiguity → DM payload renders the choice; slash-command resolution writes to
-   `SessionConfig.intake`.
+   ambiguity → operator-message payload renders the choice; Foundry chat-command resolution
+   writes to `SessionConfig.intake`.
 3. **Missing-race critical.** A mapped player's character has a Fairy race; _Witchlight_
    not loaded → `MISSING_RACE_CONTENT` critical with `proceed-anyway` resolution.
 4. **Ambiguous starting scene with spoiler context.** Two equally-plausible starting scenes
-   → `AMBIG_STARTING_SCENE` with `dmOnly: true`; DM payload includes the DM-only marker.
+   → `AMBIG_STARTING_SCENE` with `dmOnly: true`; operator-message payload includes the
+   `*DM-only — affects tonight's session:*` marker.
 5. **Re-Start with prior decisions.** Same campaign, second session → `SessionConfig.intake`
    honors prior chosen module/pack/scene; zero operator-visible findings on the second run.
 6. **Concurrency contract.** Onboarding ritual begins after minimum intake completes;

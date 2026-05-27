@@ -1,5 +1,6 @@
 # TDD 0011: Orchestrator Turn Loop (Phase 2a)
-Status: implemented
+
+Status: implemented (superseded narrowly by [0039](./0039-foundry-down-session-lifecycle.md) for the Foundry-down failure-mode model; `runTurn` design and the rest carry forward)
 PRD refs: 4.3, 5.3
 PRD-rev: 10391ba
 ADR constraints: 0002, 0003, 0008, 0013
@@ -207,12 +208,12 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.3 | AI DM engine — orchestrates rolls, narration, tool calls, warm-state reads | `runTurn` wires behavior spec + hot context + LLMProvider + ToolDispatcher into the single turn loop |
-| 4.3 | Tool calls are the only way the world changes (ADR-0003) | all state mutations go through `session.dispatcher.dispatch`; `caller: "llm"` flag gating enforced per call |
-| 4.3 | Audit everything — operator can answer "why did the AI do that?" | `runTurn` writes `turn_started` / `turn_completed` audit rows; dispatcher already writes per-tool rows |
-| 5.3 | Performance — voice round-trip target; streamed TTS; tool-call latency ≤ 500ms | turn loop is async; warm-state refresh per iteration is the primary latency driver; `runTurnStreaming` variant deferred to Phase 2b when latency matters |
+| PRD ref | Requirement                                                                    | Satisfied by                                                                                                                                             |
+| ------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.3     | AI DM engine — orchestrates rolls, narration, tool calls, warm-state reads     | `runTurn` wires behavior spec + hot context + LLMProvider + ToolDispatcher into the single turn loop                                                     |
+| 4.3     | Tool calls are the only way the world changes (ADR-0003)                       | all state mutations go through `session.dispatcher.dispatch`; `caller: "llm"` flag gating enforced per call                                              |
+| 4.3     | Audit everything — operator can answer "why did the AI do that?"               | `runTurn` writes `turn_started` / `turn_completed` audit rows; dispatcher already writes per-tool rows                                                   |
+| 5.3     | Performance — voice round-trip target; streamed TTS; tool-call latency ≤ 500ms | turn loop is async; warm-state refresh per iteration is the primary latency driver; `runTurnStreaming` variant deferred to Phase 2b when latency matters |
 
 ## Dependencies considered
 
@@ -230,7 +231,7 @@ None — the durable architectural decisions are already captured: tool-call-onl
 
 - **Make `runTurn` a generator that yields `TurnEvent`s** (text deltas, tool calls, etc.) instead of returning a flat `Promise<TurnOutput>`. Tempting for the voice IO use case. Rejected for Phase 2a: the eval harness doesn't need streaming; a flat result is simpler to test. The streaming variant lands in 2b alongside the voice IO that actually needs it.
 - **Bypass the LLMProvider abstraction and call `client.messages.stream` directly.** Rejected — the whole point of [ADR-0004](../adr/0004-plugin-interface-pattern.md) is provider-swappability.
-- **Recompute hot context only at turn start, not per iteration.** Cheaper (fewer prompt-cache misses) but mid-turn tool mutations don't reflect in the model's worldview until the next turn. Decided: refresh per iteration. Tool calls *are* the reason to loop; ignoring their effects defeats the purpose.
+- **Recompute hot context only at turn start, not per iteration.** Cheaper (fewer prompt-cache misses) but mid-turn tool mutations don't reflect in the model's worldview until the next turn. Decided: refresh per iteration. Tool calls _are_ the reason to loop; ignoring their effects defeats the purpose.
 - **Limit total wall time per turn instead of iteration count.** Less predictable cap; harder to test. Iteration count is simpler. Phase 2b adds a soft wall-time cap when latency starts to matter for the voice UX.
 
 ## Telemetry implications
@@ -239,7 +240,7 @@ No new events. `session.started`, `session.ended`, `tool.called`, `llm.completed
 
 ## Privacy implications
 
-No new data paths. The behavior spec content goes to the LLM provider (same as Phase 1.6). Player input text goes to the LLM (same as any prompt-shaped data, per `docs/PRIVACY.md`). The audit log gains turn-level entries which contain a player-text *hash*, not the full text — small but worth calling out. The full text lives in `Session.dialogue` and (Phase 2c) in a persistent dialogue table; both are tenant-scoped and erasable.
+No new data paths. The behavior spec content goes to the LLM provider (same as Phase 1.6). Player input text goes to the LLM (same as any prompt-shaped data, per `docs/PRIVACY.md`). The audit log gains turn-level entries which contain a player-text _hash_, not the full text — small but worth calling out. The full text lives in `Session.dialogue` and (Phase 2c) in a persistent dialogue table; both are tenant-scoped and erasable.
 
 ## Eval implications
 
@@ -250,4 +251,4 @@ No new data paths. The behavior spec content goes to the LLM provider (same as P
 
 - **Should the orchestrator hash-and-store player text in the audit log, or store the raw text?** This doc says hash, because the full text already lives in `Session.dialogue` (and eventually in a persistent dialogue store). But there's a redundancy argument: storing the raw text in the audit log means a single source can answer "what was said in this turn" without needing the dialogue store too. Defer; consistent with "audit log is structured events" per `CLAUDE.md`.
 - **Mid-turn LLM failure recovery.** If a turn fails after dispatching two tool calls (state already mutated) and a third tool call is pending, what's the right `stopReason`? Today: `llm_error`, the operator sees the partial state, can override. Better long-term: the operator UI's session inspector (Phase 5) makes this kind of partial-state visible and overridable.
-- **Token-budget tracking per turn vs per session.** `LLMRequest.taskBudgetTokens` is per-completion; a per-*session* budget that bounds total cost across many turns is a separate concept. Out of scope for 2a.
+- **Token-budget tracking per turn vs per session.** `LLMRequest.taskBudgetTokens` is per-completion; a per-_session_ budget that bounds total cost across many turns is a separate concept. Out of scope for 2a.
