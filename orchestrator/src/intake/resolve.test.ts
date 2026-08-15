@@ -4,7 +4,11 @@
 import { describe, expect, it } from "vitest";
 import { MockFoundryClient } from "../foundry/mock.js";
 import type { FoundryScene } from "../foundry/client.js";
-import { applyIntakeResolution, createIntakeResolutionState } from "./resolve.js";
+import {
+  announceReadyAllowed,
+  applyIntakeResolution,
+  createIntakeResolutionState,
+} from "./resolve.js";
 import type { IntakeFinding } from "./types.js";
 
 const start: FoundryScene = { id: "s-start", name: "Session Start", active: false, tokens: [] };
@@ -73,5 +77,45 @@ describe("applyIntakeResolution", () => {
     const result = await applyIntakeResolution(state, 11, "not-a-module");
     expect(result.status).toBe("no-longer-applicable");
     expect(state.intake.chosenCampaignModuleId).toBeUndefined();
+  });
+
+  it("rebuilding state from persisted intake keeps prior resolutions (extended-merge)", async () => {
+    const critical: IntakeFinding = {
+      id: 7,
+      code: "MISSING_RACE_CONTENT",
+      kind: "critical-gap",
+      summary: "Fairy content missing",
+      dmOnly: false,
+      resolution: {
+        prompt: "Proceed without the source?",
+        options: [{ id: "proceed-anyway", label: "Proceed anyway" }],
+        applyOnResolve: "proceed-anyway",
+      },
+    };
+    const extra: IntakeFinding = {
+      id: 8,
+      code: "MULTIPLE_CAMPAIGN_MODULES",
+      kind: "ambiguity",
+      summary: "Pick a module",
+      dmOnly: false,
+      resolution: {
+        prompt: "Which module?",
+        options: [
+          { id: "lmop", label: "LMoP" },
+          { id: "ravenloft", label: "Ravenloft" },
+        ],
+        applyOnResolve: "module-choice",
+      },
+    };
+    const live = createIntakeResolutionState([critical]);
+    expect((await applyIntakeResolution(live, 7, "proceed-anyway")).status).toBe("resolved");
+
+    // onExtendedDone rebuilds via createIntakeResolutionState(merged, intake)
+    const rebuilt = createIntakeResolutionState([critical, extra], live.intake);
+    expect(announceReadyAllowed(rebuilt)).toBe(true);
+    expect((await applyIntakeResolution(rebuilt, 7, "proceed-anyway")).status).toBe(
+      "already-resolved",
+    );
+    expect(rebuilt.intake.resolvedFindings.MISSING_RACE_CONTENT).toBe("proceed-anyway");
   });
 });
