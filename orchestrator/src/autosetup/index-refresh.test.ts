@@ -110,6 +110,35 @@ describe("refreshIndex", () => {
     expect(report.perSource["world-creature"]).toEqual({ added: 0, updated: 0, deleted: 0 });
   });
 
+  it("isolates a sync/ingest failure so later sources still write", async () => {
+    const inner = new InMemoryMemoryStore();
+    const store: InMemoryMemoryStore = Object.assign(inner, {
+      async upsert(records: Parameters<InMemoryMemoryStore["upsert"]>[0]) {
+        if (records.some((r) => r.metadata.source === "world-journal" && r.metadata.tombstoned !== true)) {
+          throw new Error("ingest journal boom");
+        }
+        return InMemoryMemoryStore.prototype.upsert.call(inner, records);
+      },
+    });
+    const events: string[] = [];
+    const report = await refreshIndex(
+      reader({
+        journals: [{ id: "j1", name: "Phandalin", text: "town" }],
+        scenes: [{ id: "s1", name: "Start", active: false }],
+      }),
+      store,
+      embed,
+      {
+        campaignId: "c1",
+        onTelemetry: (name) => events.push(name),
+      },
+    );
+    expect(report.errors).toEqual([{ source: "world-journal", error: "ingest journal boom" }]);
+    expect(report.perSource["world-scene"]?.added).toBe(1);
+    expect(events).toContain("index.run.source_failed");
+    expect(events).toContain("index.run.completed");
+  });
+
   it("awaits an in-flight run for the same campaign instead of writing twice", async () => {
     const store = new InMemoryMemoryStore();
     let release!: () => void;

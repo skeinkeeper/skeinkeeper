@@ -7,6 +7,8 @@ import { InMemoryMemoryStore } from "../memory/store.js";
 import { MockFoundryClient } from "../foundry/mock.js";
 import type { FoundryActor, FoundryScene } from "../foundry/client.js";
 import { announceReadyAllowed } from "./resolve.js";
+import { FakeEmbeddingProvider } from "../interfaces/embedding.js";
+import type { WorldContentReader } from "../autosetup/world-types.js";
 import { runSessionStartIntake } from "./session_start.js";
 import type { IntakeContext } from "./types.js";
 
@@ -130,5 +132,37 @@ describe("runSessionStartIntake", () => {
     release();
     await ext;
     expect(order).toEqual(["ready", "onboarding-started", "extended"]);
+  });
+
+  it("passes listPartyActors ids into the world-item reader", async () => {
+    const seen: string[][] = [];
+    const world: WorldContentReader = {
+      readJournals: async () => [],
+      readScenes: async () => [],
+      readCreatures: async () => [],
+      readActorItems: async (ids) => {
+        seen.push([...ids]);
+        return [];
+      },
+    };
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      actors: [hero],
+      partyActorIds: ["a1"],
+      scenes: [startScene],
+      activeSceneId: "s-start",
+      modules: [{ id: "lmop", title: "Lost Mine of Phandelver", kind: "campaign", active: true }],
+      users: [{ id: "u1", name: "GM", ownedActorIds: ["a1"] }],
+    });
+    const result = await runSessionStartIntake({
+      ctx,
+      foundry,
+      memory: new InMemoryMemoryStore(),
+      tenantDb: setupDb(),
+      embed: new FakeEmbeddingProvider(),
+      worldContent: world,
+    });
+    await result.extended;
+    expect(seen[0]).toEqual(["a1"]);
   });
 });
