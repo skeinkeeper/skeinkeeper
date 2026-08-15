@@ -53,6 +53,48 @@ export interface FoundrySceneRef {
   readonly active: boolean;
 }
 
+/** World metadata used by session intake (TDD 0031). */
+export interface FoundryModuleRef {
+  readonly id: string;
+  readonly title: string;
+  readonly kind?: "campaign" | "system" | "utility";
+  readonly active?: boolean;
+}
+
+export interface FoundryWorldInfo {
+  readonly connected: boolean;
+  readonly system: { id: string; name: string } | null;
+  readonly modules: ReadonlyArray<FoundryModuleRef>;
+}
+
+export interface FoundryUser {
+  readonly id: string;
+  readonly name: string;
+  readonly role?: string;
+  readonly isActive?: boolean;
+  readonly ownedActorIds?: ReadonlyArray<string>;
+}
+
+export interface FoundryPackRef {
+  readonly id: string;
+  readonly label: string;
+  readonly type?: string;
+}
+
+export interface FoundryCreatureRef {
+  readonly id: string;
+  readonly name: string;
+  readonly packId: string;
+  readonly type?: string;
+}
+
+export interface FoundrySearchHit {
+  readonly id: string;
+  readonly name: string;
+  readonly packId?: string;
+  readonly type?: string;
+}
+
 export interface FoundryClient {
   /** Identifier of the active Foundry system for the connected world,
    *  e.g., "dnd5e", "fate-core", "dungeon-world". */
@@ -65,10 +107,32 @@ export interface FoundryClient {
   getActiveScene(): Promise<FoundryScene | null>;
   /** All scenes in the world, so the AI knows what it can switch to. */
   listScenes(): Promise<ReadonlyArray<FoundrySceneRef>>;
+  /** Active system + installed modules (TDD 0031 intake). */
+  getWorldInfo(): Promise<FoundryWorldInfo>;
+  /**
+   * Foundry users + owned actors. The first-party add-on (TDD 0041) is
+   * the real source; today's MCP bridge has no list-users tool, so the
+   * MCP client returns an empty list and intake degrades to a
+   * recommendation (ADR-0024).
+   */
+  listUsers(): Promise<ReadonlyArray<FoundryUser>>;
+  listCompendiumPacks(): Promise<ReadonlyArray<FoundryPackRef>>;
+  listCreaturesByCriteria(criteria: {
+    name?: string;
+    type?: string;
+  }): Promise<ReadonlyArray<FoundryCreatureRef>>;
+  searchCompendium(
+    query: string,
+    opts?: { packType?: string },
+  ): Promise<ReadonlyArray<FoundrySearchHit>>;
+  searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>>;
 
   // ---- writes (tool handlers route through these) ----
   applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void>;
-  rollDice(formula: string, opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> }): Promise<RollResult>;
+  rollDice(
+    formula: string,
+    opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> },
+  ): Promise<RollResult>;
   /** Activate a scene by id or name — an in-play DM action (ADR-0015). */
   setActiveScene(sceneIdOrName: string): Promise<void>;
 }

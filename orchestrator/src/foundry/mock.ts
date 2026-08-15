@@ -4,17 +4,32 @@
 import type {
   FoundryActor,
   FoundryClient,
+  FoundryCreatureRef,
+  FoundryModuleRef,
+  FoundryPackRef,
   FoundryScene,
   FoundrySceneRef,
+  FoundrySearchHit,
+  FoundryUser,
+  FoundryWorldInfo,
   RollResult,
 } from "./client.js";
 
 export interface MockFoundryClientOptions {
   system: string;
+  systemName?: string;
+  /** When false, getWorldInfo reports a disconnected world (TDD 0031). */
+  connected?: boolean;
   actors?: ReadonlyArray<FoundryActor>;
   scenes?: ReadonlyArray<FoundryScene>;
   partyActorIds?: ReadonlyArray<string>;
   activeSceneId?: string;
+  modules?: ReadonlyArray<FoundryModuleRef>;
+  users?: ReadonlyArray<FoundryUser>;
+  packs?: ReadonlyArray<FoundryPackRef>;
+  creatures?: ReadonlyArray<FoundryCreatureRef>;
+  compendiumHits?: ReadonlyArray<FoundrySearchHit>;
+  journalHits?: ReadonlyArray<FoundrySearchHit>;
 }
 
 /**
@@ -24,12 +39,21 @@ export interface MockFoundryClientOptions {
  */
 export class MockFoundryClient implements FoundryClient {
   readonly system: string;
+  readonly connected: boolean;
+  private readonly systemName: string;
   private readonly actorsById = new Map<string, FoundryActor>();
   private readonly scenesById = new Map<string, FoundryScene>();
   private partyActorIds: ReadonlyArray<string>;
   private activeSceneId: string | undefined;
+  private modules: ReadonlyArray<FoundryModuleRef>;
+  private users: ReadonlyArray<FoundryUser>;
+  private packs: ReadonlyArray<FoundryPackRef>;
+  private creatures: ReadonlyArray<FoundryCreatureRef>;
+  private compendiumHits: ReadonlyArray<FoundrySearchHit>;
+  private journalHits: ReadonlyArray<FoundrySearchHit>;
   readonly updates: Array<{ actorId: string; update: Record<string, unknown> }> = [];
-  readonly rolls: Array<{ formula: string; speaker?: string; whisperTo?: ReadonlyArray<string> }> = [];
+  readonly rolls: Array<{ formula: string; speaker?: string; whisperTo?: ReadonlyArray<string> }> =
+    [];
   /** Override the deterministic roll result; set by tests. */
   rollResultFor: (formula: string) => RollResult = (formula) => ({
     total: 10,
@@ -39,10 +63,42 @@ export class MockFoundryClient implements FoundryClient {
 
   constructor(opts: MockFoundryClientOptions) {
     this.system = opts.system;
+    this.systemName = opts.systemName ?? opts.system;
+    this.connected = opts.connected ?? true;
     for (const a of opts.actors ?? []) this.actorsById.set(a.id, a);
     for (const s of opts.scenes ?? []) this.scenesById.set(s.id, s);
     this.partyActorIds = opts.partyActorIds ?? [];
     if (opts.activeSceneId !== undefined) this.activeSceneId = opts.activeSceneId;
+    this.modules = opts.modules ?? [];
+    this.users = opts.users ?? [];
+    this.packs = opts.packs ?? [];
+    this.creatures = opts.creatures ?? [];
+    this.compendiumHits = opts.compendiumHits ?? [];
+    this.journalHits = opts.journalHits ?? [];
+  }
+
+  seedModules(modules: ReadonlyArray<FoundryModuleRef>): void {
+    this.modules = modules;
+  }
+
+  seedUsers(users: ReadonlyArray<FoundryUser>): void {
+    this.users = users;
+  }
+
+  seedPacks(packs: ReadonlyArray<FoundryPackRef>): void {
+    this.packs = packs;
+  }
+
+  seedCreatures(creatures: ReadonlyArray<FoundryCreatureRef>): void {
+    this.creatures = creatures;
+  }
+
+  seedCompendiumHits(hits: ReadonlyArray<FoundrySearchHit>): void {
+    this.compendiumHits = hits;
+  }
+
+  seedJournalHits(hits: ReadonlyArray<FoundrySearchHit>): void {
+    this.journalHits = hits;
   }
 
   setActor(actor: FoundryActor): void {
@@ -91,6 +147,55 @@ export class MockFoundryClient implements FoundryClient {
       name: s.name,
       active: s.id === this.activeSceneId,
     }));
+  }
+
+  async getWorldInfo(): Promise<FoundryWorldInfo> {
+    const systemId = this.system.trim();
+    return {
+      connected: this.connected,
+      system: systemId.length > 0 ? { id: systemId, name: this.systemName || systemId } : null,
+      modules: this.modules,
+    };
+  }
+
+  async listUsers(): Promise<ReadonlyArray<FoundryUser>> {
+    return this.users;
+  }
+
+  async listCompendiumPacks(): Promise<ReadonlyArray<FoundryPackRef>> {
+    return this.packs;
+  }
+
+  async listCreaturesByCriteria(criteria: {
+    name?: string;
+    type?: string;
+  }): Promise<ReadonlyArray<FoundryCreatureRef>> {
+    return this.creatures.filter((c) => {
+      if (criteria.name !== undefined && c.name.toLowerCase() !== criteria.name.toLowerCase()) {
+        return false;
+      }
+      if (criteria.type !== undefined && c.type !== criteria.type) return false;
+      return true;
+    });
+  }
+
+  async searchCompendium(
+    query: string,
+    opts?: { packType?: string },
+  ): Promise<ReadonlyArray<FoundrySearchHit>> {
+    const q = query.toLowerCase();
+    return this.compendiumHits.filter((h) => {
+      if (!h.name.toLowerCase().includes(q) && !h.id.toLowerCase().includes(q)) return false;
+      if (opts?.packType !== undefined && h.type !== opts.packType) return false;
+      return true;
+    });
+  }
+
+  async searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>> {
+    const q = query.toLowerCase();
+    return this.journalHits.filter(
+      (h) => h.name.toLowerCase().includes(q) || h.id.toLowerCase().includes(q),
+    );
   }
 
   /** Activate a scene by id or (case-insensitive) name (ADR-0015). */

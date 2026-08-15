@@ -32,8 +32,26 @@ export {
   type FoundryScene,
   type FoundrySceneToken,
   type FoundrySceneRef,
+  type FoundryWorldInfo,
+  type FoundryModuleRef,
+  type FoundryUser,
+  type FoundryPackRef,
+  type FoundryCreatureRef,
+  type FoundrySearchHit,
   type RollResult as FoundryRollResult,
 } from "./foundry/client.js";
+export * from "./intake/types.js";
+export {
+  isStarterSceneName,
+  isKnownFoundrySystem,
+  classifyModuleKind,
+  readWorldInfo,
+  readPartyActorSummaries,
+  readSceneSummaries,
+  readModuleSummaries,
+  readPackSummaries,
+  readOwnershipMap,
+} from "./intake/foundry_reads.js";
 export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
 export { renderActorState } from "./foundry/render.js";
 export { resolveCharacterName, type NameResolution } from "./identity.js";

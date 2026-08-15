@@ -4,9 +4,14 @@
 import type {
   FoundryActor,
   FoundryClient,
+  FoundryCreatureRef,
+  FoundryPackRef,
   FoundryScene,
   FoundrySceneRef,
   FoundrySceneToken,
+  FoundrySearchHit,
+  FoundryUser,
+  FoundryWorldInfo,
   FoundryRollResult,
 } from "@skeinkeeper/orchestrator";
 import type { McpToolCaller } from "./mcp_tool_caller.js";
@@ -67,6 +72,89 @@ export class McpFoundryClient implements FoundryClient {
   async listScenes(): Promise<ReadonlyArray<FoundrySceneRef>> {
     const res = await this.caller.callTool("list-scenes", {});
     return parseSceneRefs(res);
+  }
+
+  async getWorldInfo(): Promise<FoundryWorldInfo> {
+    try {
+      const info = asRecord(await this.caller.callTool("get-world-info", {}));
+      const systemId = str(info?.["system"]) ?? str(info?.["systemId"]) ?? this.system;
+      const systemName = str(info?.["systemTitle"]) ?? str(info?.["systemName"]) ?? systemId;
+      const modules = parseModules(info);
+      const trimmed = systemId.trim();
+      return {
+        connected: true,
+        system:
+          trimmed.length > 0 && trimmed !== "unknown" ? { id: trimmed, name: systemName } : null,
+        modules,
+      };
+    } catch {
+      return { connected: false, system: null, modules: [] };
+    }
+  }
+
+  /**
+   * The current MCP bridge has no list-users tool (TDD 0041 / TDD 0037).
+   * Return empty so intake degrades to RECO_FOUNDRY_OWNERSHIP_UNRESOLVED
+   * rather than inventing a transport (ADR-0024).
+   */
+  async listUsers(): Promise<ReadonlyArray<FoundryUser>> {
+    return [];
+  }
+
+  async listCompendiumPacks(): Promise<ReadonlyArray<FoundryPackRef>> {
+    const res = await this.caller.callTool("list-compendium-packs", {});
+    const arr = toArray(res, ["packs", "compendiums", "data", "results"]);
+    const packs: FoundryPackRef[] = [];
+    for (const item of arr) {
+      const rec = asRecord(item);
+      if (!rec) continue;
+      const id = str(rec["id"]) ?? str(rec["packId"]) ?? str(rec["name"]);
+      const label = str(rec["label"]) ?? str(rec["title"]) ?? str(rec["name"]) ?? id;
+      if (id === undefined || label === undefined) continue;
+      const type = str(rec["type"]) ?? str(rec["packageType"]);
+      packs.push(type !== undefined ? { id, label, type } : { id, label });
+    }
+    return packs;
+  }
+
+  async listCreaturesByCriteria(criteria: {
+    name?: string;
+    type?: string;
+  }): Promise<ReadonlyArray<FoundryCreatureRef>> {
+    const res = await this.caller.callTool("list-creatures-by-criteria", {
+      ...(criteria.name !== undefined ? { name: criteria.name } : {}),
+      ...(criteria.type !== undefined ? { type: criteria.type } : {}),
+    });
+    const arr = toArray(res, ["creatures", "results", "data"]);
+    const out: FoundryCreatureRef[] = [];
+    for (const item of arr) {
+      const rec = asRecord(item);
+      if (!rec) continue;
+      const id = str(rec["id"]) ?? str(rec["_id"]);
+      const name = str(rec["name"]);
+      if (id === undefined || name === undefined) continue;
+      const pack = asRecord(rec["pack"]);
+      const packId = str(rec["packId"]) ?? str(pack?.["id"]) ?? str(rec["pack"]) ?? "";
+      const type = str(rec["type"]);
+      out.push(type !== undefined ? { id, name, packId, type } : { id, name, packId });
+    }
+    return out;
+  }
+
+  async searchCompendium(
+    query: string,
+    opts?: { packType?: string },
+  ): Promise<ReadonlyArray<FoundrySearchHit>> {
+    const res = await this.caller.callTool("search-compendium", {
+      query,
+      ...(opts?.packType !== undefined ? { packType: opts.packType } : {}),
+    });
+    return parseSearchHits(res);
+  }
+
+  async searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>> {
+    const res = await this.caller.callTool("search-journals", { query });
+    return parseSearchHits(res);
   }
 
   // ---- writes ----
@@ -183,4 +271,56 @@ export function parseSceneRefs(res: unknown): FoundrySceneRef[] {
 
 function unwrapActorRecord(res: unknown): Record<string, unknown> | null {
   return asRecord(unwrap(res, ["character", "actor", "data"]));
+}
+
+function parseModules(info: Record<string, unknown> | null): FoundryWorldInfo["modules"] {
+  if (!info) return [];
+  const fromArray = toArray(info, ["modules", "activeModules"]);
+  if (fromArray.length > 0) {
+    const out: FoundryWorldInfo["modules"] = [];
+    for (const item of fromArray) {
+      if (typeof item === "string") {
+        out.push({ id: item, title: item });
+        continue;
+      }
+      const rec = asRecord(item);
+      if (!rec) continue;
+      const id = str(rec["id"]) ?? str(rec["name"]);
+      const title = str(rec["title"]) ?? str(rec["label"]) ?? id;
+      if (id === undefined || title === undefined) continue;
+      const active = rec["active"] === undefined ? undefined : rec["active"] !== false;
+      out.push(active !== undefined ? { id, title, active } : { id, title });
+    }
+    return out;
+  }
+  const modulesRec = asRecord(info["modules"]);
+  if (!modulesRec) return [];
+  return Object.entries(modulesRec).map(([id, raw]) => {
+    const rec = asRecord(raw);
+    const title = str(rec?.["title"]) ?? str(rec?.["label"]) ?? id;
+    const active = rec?.["active"] === undefined ? undefined : rec["active"] !== false;
+    return active !== undefined ? { id, title, active } : { id, title };
+  });
+}
+
+function parseSearchHits(res: unknown): FoundrySearchHit[] {
+  const arr = toArray(res, ["results", "journals", "entries", "data"]);
+  const out: FoundrySearchHit[] = [];
+  for (const item of arr) {
+    const rec = asRecord(item);
+    if (!rec) continue;
+    const id = str(rec["id"]) ?? str(rec["_id"]);
+    const name = str(rec["name"]);
+    if (id === undefined || name === undefined) continue;
+    const pack = asRecord(rec["pack"]);
+    const packId = str(rec["packId"]) ?? str(pack?.["id"]);
+    const type = str(rec["type"]);
+    out.push({
+      id,
+      name,
+      ...(packId !== undefined ? { packId } : {}),
+      ...(type !== undefined ? { type } : {}),
+    });
+  }
+  return out;
 }
