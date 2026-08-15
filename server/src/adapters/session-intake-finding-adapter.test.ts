@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../db.js";
 import { TenantDb } from "../tenant_db.js";
 import { tenants } from "../schema/index.js";
@@ -22,8 +22,15 @@ function seedCampaign(db: Db, tenantId: string, id: string): TenantDb {
 }
 
 describe("SessionIntakeFindingAdapter", () => {
+  const openHandles: Array<{ close: () => void }> = [];
+  afterEach(() => {
+    for (const h of openHandles) h.close();
+    openHandles.length = 0;
+  });
+
   it("deletes findings for a campaign and a tenant", async () => {
     const db = openDb({ path: ":memory:", runMigrations: true });
+    openHandles.push(db);
     db.insert(tenants).values({ id: "default", name: "T", createdAt: Date.now() }).run();
     db.insert(tenants).values({ id: "other", name: "O", createdAt: Date.now() }).run();
     const def = seedCampaign(db, "default", "c1");

@@ -6,7 +6,7 @@
  * scenarios — intake is a rubric, not an LLM judgment.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import { InMemoryMemoryStore } from "../memory/store.js";
 import { MockFoundryClient } from "../foundry/mock.js";
@@ -46,8 +46,15 @@ const introScene: FoundryScene = {
   tokens: [],
 };
 
+const openHandles: Array<{ close: () => void }> = [];
+afterEach(() => {
+  for (const h of openHandles) h.close();
+  openHandles.length = 0;
+});
+
 function setupDb(): TenantDb {
   const db = openDb({ path: ":memory:", runMigrations: true });
+  openHandles.push(db);
   db.insert(schema.tenants).values({ id: "default", name: "T", createdAt: Date.now() }).run();
   const t = new TenantDb(db, "default");
   t.campaigns.create({
