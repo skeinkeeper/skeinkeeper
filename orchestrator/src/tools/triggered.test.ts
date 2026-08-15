@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import { MockFoundryClient } from "../foundry/mock.js";
 import { ToolDispatcher } from "../registry.js";
-import { hideTokenDef, revealTokenDef } from "./triggered.js";
+import { distributeLootDef, hideTokenDef, revealTokenDef } from "./triggered.js";
 import { ToolRegistry } from "../registry.js";
 
 function setup() {
@@ -33,6 +33,7 @@ function setup() {
   const registry = new ToolRegistry();
   registry.register(revealTokenDef);
   registry.register(hideTokenDef);
+  registry.register(distributeLootDef);
   const analytics = { track: vi.fn(), flush: vi.fn().mockResolvedValue(undefined) };
   return {
     tenantDb,
@@ -132,5 +133,141 @@ describe("reveal_token / hide_token", () => {
       .filter((c) => c[0] === "action.reveal_token" || c[0] === "action.hide_token")
       .map((c) => JSON.stringify(c[1]));
     expect(payloads.some((p) => p.includes("tok-gob"))).toBe(false);
+  });
+});
+
+function partyFoundry() {
+  return new MockFoundryClient({
+    system: "dnd5e",
+    actors: [
+      { id: "hero-1", name: "Hero", type: "character", system: "dnd5e", sheet: {} },
+      { id: "hero-2", name: "Scout", type: "character", system: "dnd5e", sheet: {} },
+      { id: "npc-gob", name: "Goblin", type: "npc", system: "dnd5e", sheet: {} },
+    ],
+    partyActorIds: ["hero-1", "hero-2"],
+  });
+}
+
+describe("distribute_loot", () => {
+  it("adds items to party actors and returns per-item status", async () => {
+    const { tenantDb, dispatcher, analytics } = setup();
+    const foundry = partyFoundry();
+    const result = await dispatcher.dispatch(
+      {
+        name: "distribute_loot",
+        input: {
+          distributions: [
+            {
+              actorId: "hero-1",
+              items: [
+                { itemId: "potion", quantity: 2 },
+                { compendiumId: "dnd5e.items.gold", quantity: 10 },
+              ],
+            },
+            { actorId: "hero-2", items: [{ itemId: "rations", quantity: 1 }] },
+          ],
+        },
+      },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        analytics,
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const out = result.output as { partialFailure: boolean; items: Array<{ ok: boolean }> };
+      expect(out.partialFailure).toBe(false);
+      expect(out.items).toHaveLength(3);
+      expect(out.items.every((i) => i.ok)).toBe(true);
+    }
+    expect(foundry.addedItems).toHaveLength(3);
+    expect(analytics.track).toHaveBeenCalledWith(
+      "action.distribute_loot",
+      expect.objectContaining({
+        campaignId: "c1",
+        recipientCount: 2,
+        itemCount: 3,
+        partialFailure: false,
+      }),
+    );
+  });
+
+  it("rejects a non-party recipient without calling the bridge", async () => {
+    const { tenantDb, dispatcher, analytics } = setup();
+    const foundry = partyFoundry();
+    const result = await dispatcher.dispatch(
+      {
+        name: "distribute_loot",
+        input: {
+          distributions: [
+            { actorId: "hero-1", items: [{ itemId: "potion", quantity: 1 }] },
+            { actorId: "npc-gob", items: [{ itemId: "sword", quantity: 1 }] },
+          ],
+        },
+      },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        analytics,
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const out = result.output as {
+        partialFailure: boolean;
+        items: Array<{ actorId: string; ok: boolean; error?: string }>;
+      };
+      expect(out.partialFailure).toBe(true);
+      expect(out.items.find((i) => i.actorId === "npc-gob")?.ok).toBe(false);
+      expect(out.items.find((i) => i.actorId === "npc-gob")?.error).toMatch(/not-party-actor/);
+    }
+    expect(foundry.addedItems).toEqual([]);
+    expect(analytics.track).toHaveBeenCalledWith(
+      "action.distribute_loot",
+      expect.objectContaining({ partialFailure: true, itemCount: 2 }),
+    );
+  });
+
+  it("continues after one item failure and does not roll back", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = partyFoundry();
+    foundry.addActorItems = async (args) => {
+      if (args.items[0]?.itemId === "cursed") throw new Error("bridge refused");
+      return MockFoundryClient.prototype.addActorItems.call(foundry, args);
+    };
+    const result = await dispatcher.dispatch(
+      {
+        name: "distribute_loot",
+        input: {
+          distributions: [
+            {
+              actorId: "hero-1",
+              items: [
+                { itemId: "potion", quantity: 1 },
+                { itemId: "cursed", quantity: 1 },
+                { itemId: "rations", quantity: 1 },
+              ],
+            },
+          ],
+        },
+      },
+      { tenantDb, sessionId: "s", turnId: "t", caller: "llm", foundry, campaignId: "c1" },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const out = result.output as { partialFailure: boolean; items: Array<{ ok: boolean }> };
+      expect(out.partialFailure).toBe(true);
+      expect(out.items.map((i) => i.ok)).toEqual([true, false, true]);
+    }
+    expect(foundry.addedItems.map((a) => a.items[0]?.itemId)).toEqual(["potion", "rations"]);
   });
 });
