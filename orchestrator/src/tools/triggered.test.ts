@@ -5,7 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import { MockFoundryClient } from "../foundry/mock.js";
 import { ToolDispatcher } from "../registry.js";
-import { distributeLootDef, hideTokenDef, revealTokenDef } from "./triggered.js";
+import {
+  distributeLootDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  revealTokenDef,
+} from "./triggered.js";
 import { ToolRegistry } from "../registry.js";
 
 function setup() {
@@ -34,6 +39,7 @@ function setup() {
   registry.register(revealTokenDef);
   registry.register(hideTokenDef);
   registry.register(distributeLootDef);
+  registry.register(placeHiddenTokenDef);
   const analytics = { track: vi.fn(), flush: vi.fn().mockResolvedValue(undefined) };
   return {
     tenantDb,
@@ -269,5 +275,125 @@ describe("distribute_loot", () => {
       expect(out.items.map((i) => i.ok)).toEqual([true, false, true]);
     }
     expect(foundry.addedItems.map((a) => a.items[0]?.itemId)).toEqual(["potion", "rations"]);
+  });
+});
+
+describe("place_hidden_token", () => {
+  it("places via createToken hidden:true when the actor is already in-world", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      actors: [{ id: "gob-1", name: "Goblin", type: "npc", system: "dnd5e", sheet: {} }],
+      scenes: [{ id: "scene-cave", name: "Cave", active: true, tokens: [] }],
+      activeSceneId: "scene-cave",
+    });
+    const result = await dispatcher.dispatch(
+      {
+        name: "place_hidden_token",
+        input: {
+          actorRef: { actorId: "gob-1" },
+          sceneId: "scene-cave",
+          coords: { x: 400, y: 300 },
+          disposition: "hostile",
+        },
+      },
+      { tenantDb, sessionId: "s", turnId: "t", caller: "llm", foundry, campaignId: "c1" },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.output as { tokenId: string }).tokenId.length).toBeGreaterThan(0);
+    const created = foundry.createdTokens[0];
+    expect(created?.hidden).toBe(true);
+    expect(created?.x).toBe(400);
+    expect(created?.y).toBe(300);
+    const tok = await foundry.getTokenDetails((result.output as { tokenId: string }).tokenId);
+    expect(tok?.hidden).toBe(true);
+  });
+
+  it("two-step fallback: move-token + update-token hidden when spawn ignores coords", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      scenes: [{ id: "scene-cave", name: "Cave", active: true, tokens: [] }],
+      activeSceneId: "scene-cave",
+      compendiumHits: [{ id: "goblin", name: "Goblin", packId: "dnd5e.monsters", type: "npc" }],
+    });
+    foundry.createTokenIgnoresCoords = true;
+    const result = await dispatcher.dispatch(
+      {
+        name: "place_hidden_token",
+        input: {
+          actorRef: { compendiumId: "dnd5e.monsters.goblin" },
+          sceneId: "scene-cave",
+          coords: { x: 400, y: 300 },
+        },
+      },
+      { tenantDb, sessionId: "s", turnId: "t", caller: "llm", foundry, campaignId: "c1" },
+    );
+    expect(result.ok).toBe(true);
+    const tokenId = (result.output as { tokenId: string }).tokenId;
+    expect(foundry.movedTokens.some((m) => m.tokenId === tokenId && m.x === 400 && m.y === 300)).toBe(
+      true,
+    );
+    expect((await foundry.getTokenDetails(tokenId))?.hidden).toBe(true);
+  });
+
+  it("raises bridge-coverage-gap and notifies the operator when no token spawns", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      scenes: [{ id: "scene-cave", name: "Cave", active: true, tokens: [] }],
+      activeSceneId: "scene-cave",
+      compendiumHits: [{ id: "ghost", name: "Ghost", packId: "dnd5e.monsters", type: "npc" }],
+    });
+    foundry.spawnTokenOnCreate = false;
+    const notices: string[] = [];
+    const result = await dispatcher.dispatch(
+      {
+        name: "place_hidden_token",
+        input: {
+          actorRef: { compendiumId: "dnd5e.monsters.ghost" },
+          sceneId: "scene-cave",
+          coords: { x: 10, y: 10 },
+        },
+      },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        notifyOperator: async (m) => {
+          notices.push(m);
+        },
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/bridge-coverage-gap/);
+    expect(notices.length).toBe(1);
+    expect(notices[0]).toMatch(/bridge-coverage-gap/);
+  });
+
+  it("raises scene-changed-mid-action when the active scene is not the requested one", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      actors: [{ id: "gob-1", name: "Goblin", type: "npc", system: "dnd5e", sheet: {} }],
+      scenes: [
+        { id: "scene-cave", name: "Cave", active: false, tokens: [] },
+        { id: "scene-inn", name: "Inn", active: true, tokens: [] },
+      ],
+      activeSceneId: "scene-inn",
+    });
+    const result = await dispatcher.dispatch(
+      {
+        name: "place_hidden_token",
+        input: { actorRef: { actorId: "gob-1" }, sceneId: "scene-cave" },
+      },
+      { tenantDb, sessionId: "s", turnId: "t", caller: "llm", foundry, campaignId: "c1" },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/scene-changed-mid-action/);
+    expect(foundry.createdTokens).toEqual([]);
   });
 });
