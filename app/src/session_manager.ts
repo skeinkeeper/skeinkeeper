@@ -28,8 +28,11 @@ import {
   PVP_SETTING_KEY,
   ToolDispatcher,
   archiveSession,
+  announceReadyAllowed,
+  applyIntakeResolution,
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
+  createIntakeResolutionState,
   endSession,
   findDefaultBehaviorSpec,
   loadBehaviorSpec,
@@ -39,6 +42,9 @@ import {
   startSession,
   VOICE_CONSENT_TEXT,
   type Eagerness,
+  type IntakeFinding,
+  type IntakeResolutionState,
+  type IntakeResolveResult,
   type MemoryStore,
   type PresenceMember,
   type Session,
@@ -81,7 +87,24 @@ export type AppEvent =
   | { kind: "eagerness"; eagerness: Eagerness }
   | { kind: "dmVoice"; voiceId: string; personaId?: string }
   /** PvP toggle changed from any surface (design doc 0026 §6). */
-  | { kind: "pvp"; enabled: boolean };
+  | { kind: "pvp"; enabled: boolean }
+  /** Intake report / resolution changed (TDD 0031). */
+  | { kind: "intake"; ready: boolean; findings: IntakeView["findings"] };
+
+export interface IntakeViewFinding {
+  id: number;
+  code: string;
+  kind: string;
+  summary: string;
+  detail?: string;
+  dmOnly: boolean;
+  options: ReadonlyArray<{ id: string; label: string }>;
+}
+
+export interface IntakeView {
+  ready: boolean;
+  findings: ReadonlyArray<IntakeViewFinding>;
+}
 
 export interface SessionManagerDeps {
   config: AppConfig;
@@ -153,6 +176,8 @@ export class SessionManager {
     getNpcVoice: (key: string) => string | undefined;
     assignNpcVoice: (key: string) => Promise<string>;
   } | null = null;
+  /** In-memory intake findings + resolutions for the live session (TDD 0031). */
+  private intakeState: IntakeResolutionState = createIntakeResolutionState([]);
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -196,6 +221,38 @@ export class SessionManager {
     });
     this.deps.onEvent?.({ kind: "pvp", enabled });
   }
+
+  getIntakeView(): IntakeView {
+    return toIntakeView(this.intakeState);
+  }
+
+  /**
+   * Single write path for intake finding resolution (TDD 0031).
+   * TDD 0040 will add the Foundry chat-command
+   * `/skeinkeeper intake resolve <session-finding-id> <option-id>` against
+   * this same method. Discord text is consent-only under the surface model.
+   */
+  async resolveIntakeFinding(findingId: number, optionId: string): Promise<IntakeResolveResult> {
+    const result = await applyIntakeResolution(this.intakeState, findingId, optionId, {
+      ...(this.session !== null ? { foundry: this.session.config.foundry } : {}),
+    });
+    if (this.session !== null) this.session.config.intake = this.intakeState.intake;
+    this.emitIntakeEvent();
+    return result;
+  }
+
+  /** Replace the live intake findings after a minimum/extended run. */
+  installIntakeFindings(findings: ReadonlyArray<IntakeFinding>): void {
+    const prior = this.intakeState.intake;
+    this.intakeState = createIntakeResolutionState(findings, prior);
+    this.emitIntakeEvent();
+  }
+
+  private emitIntakeEvent(): void {
+    const view = this.getIntakeView();
+    this.deps.onEvent?.({ kind: "intake", ready: view.ready, findings: view.findings });
+  }
+
   get dmVoiceId(): string {
     return this.controls.dmVoiceId;
   }
@@ -984,4 +1041,21 @@ export class SessionManager {
         return;
     }
   }
+}
+
+function toIntakeView(state: IntakeResolutionState): IntakeView {
+  return {
+    ready: announceReadyAllowed(state),
+    findings: state.findings
+      .filter((f): f is IntakeFinding & { id: number } => f.id !== undefined)
+      .map((f) => ({
+        id: f.id,
+        code: f.code,
+        kind: f.kind,
+        summary: f.summary,
+        ...(f.detail !== undefined ? { detail: f.detail } : {}),
+        dmOnly: f.dmOnly,
+        options: f.resolution?.options ?? [],
+      })),
+  };
 }

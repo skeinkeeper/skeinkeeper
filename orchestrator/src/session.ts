@@ -36,6 +36,7 @@ import type {
 } from "./interfaces/llm.js";
 import type { ToolDispatcher } from "./registry.js";
 import { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
+import type { SessionIntakeConfig } from "./intake/types.js";
 import type { Eagerness } from "./voice/eagerness.js";
 import type { NarrationSegment } from "./voice/markers.js";
 import { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
@@ -86,6 +87,8 @@ export interface SessionConfig {
   /** Send a private DM to the operator for setup escalations (design doc
    *  0023). Wired by the operator app; tools reach it via ctx.notifyOperator. */
   notifyOperator?: (message: string) => Promise<void>;
+  /** Prior intake decisions (TDD 0031). Persisted per-campaign. */
+  intake?: SessionIntakeConfig;
 }
 
 export class Session {

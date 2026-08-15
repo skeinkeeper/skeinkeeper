@@ -52,6 +52,17 @@ export {
   readPackSummaries,
   readOwnershipMap,
 } from "./intake/foundry_reads.js";
+export { runMinimumIntake, runExtendedIntake } from "./intake/runner.js";
+export { formatIntakeReportForOperator } from "./intake/report.js";
+export {
+  applyIntakeResolution,
+  createIntakeResolutionState,
+  announceReadyAllowed,
+  unresolvedCriticalCodes,
+  type IntakeResolutionState,
+  type IntakeResolutionHooks,
+} from "./intake/resolve.js";
+export { DM_ONLY_MARKER } from "./intake/summary.js";
 export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
 export { renderActorState } from "./foundry/render.js";
 export { resolveCharacterName, type NameResolution } from "./identity.js";
