@@ -1,7 +1,7 @@
 # Skeinkeeper — Open-Source AI Dungeon Master
 
 **Product Requirements Document**
-**Status:** Draft · 2026-05-26
+**Status:** Draft · 2026-08-15
 
 > **Skeinkeeper** — keeper of the threads of fate. An open-source, self-hosted AI Dungeon Master that runs tabletop RPG campaigns for your friend group over Discord and Foundry VTT.
 >
@@ -17,16 +17,18 @@ The target user is **a technically comfortable DM-or-DM-curious friend who can r
 
 **Why open source:** the other AI-DM tools (Friends & Fables, AIDungeonMaster.ai, RoleForge, Voyage, MacerAI, and a dozen smaller products) are closed-source and run on the vendor's servers — you play under their model choices, with your campaign data in their database. Skeinkeeper occupies the niche none of them fills: the technically inclined group that wants to own its data, bring its own LLM and voice API keys, get the voice + Foundry combination none of the others offer, and run the whole thing on its own infrastructure.
 
+**Foundry is the table.** Skeinkeeper does not support another virtual tabletop. The operator runs Foundry themselves, on infrastructure they control, and Skeinkeeper operates that world. The operator does not obtain a separate third-party product to connect Skeinkeeper to Foundry.
+
 ## 2. Goals & Non-Goals
 
 ### Goals
 
 - Deliver a fluent AI DM experience for a 4-person fully-remote table (each player on their own Discord client + own Foundry view) running D&D 5e (Lost Mine of Phandelver as the reference campaign).
 - Voice-first interaction over Discord with distinct NPC voices.
-- Autonomous Foundry VTT operation — maps, tokens, combat tracker, dice, fog of war, all driven by the AI.
+- Autonomous Foundry VTT operation — maps, tokens, combat tracker, dice, fog of war, all driven by the AI. Foundry is the only VTT in scope.
 - Persistent state and memory across sessions.
-- Pluggable internally: LLM provider, VTT, and voice stack are swappable behind stable interfaces.
-- Operator runs everything locally: `docker compose up`, then access a local web UI on `localhost`.
+- Operator-swappable LLM provider and voice stack. Foundry is not swappable.
+- Operator runs Skeinkeeper and Foundry on infrastructure they control: `docker compose up`, a local web UI on `localhost`, and their own Foundry world.
 - Apache 2.0 licensed; community contributions welcomed.
 
 ### Non-Goals (for v1)
@@ -35,17 +37,22 @@ The target user is **a technically comfortable DM-or-DM-curious friend who can r
 - Tables larger than ~6 players in a single session.
 - **In-person play with a shared microphone or shared Foundry screen.** Skeinkeeper assumes each player has their own Discord voice client (for clean diarization, latency, and echo isolation) and their own Foundry view (for the table-text surface — see Surface model below). Mixed-room configurations (two people sharing a mic, players watching one operator's Foundry screen) are not supported.
 - **Theatre-of-mind play.** Every player has their own Foundry view; Foundry isn't optional for the player experience.
+- **Any VTT other than Foundry.** Roll20, Owlbear Rodeo, and every other tabletop host are out of scope at every roadmap phase, not only at v1. A second VTT would be a new product, not a plugin.
+- **A separate third-party Foundry integration product.** The operator must not be required to find, install, pay for, or operate someone else's Foundry connector in order to play.
+- **Hosted Foundry the operator does not run** (including The Forge). Foundry and Skeinkeeper stay on the operator's machine or a network they control.
 - **Out-of-session interaction with the bot.** Sessions are session-bounded. The bot does not maintain async DMs, persistent threads players can revisit later, or pre/post-session question channels. Players who want to ask the operator something between sessions do so out-of-band.
 - Native mobile clients (the Discord client provides mobile voice; the operator's web UI is desktop-first; the player's Foundry view is Foundry's native client).
-- Shipping or validating rulesets other than D&D 5e at MVP. The architecture is system-portable — per-system mechanics come from Foundry's system modules, not from Skeinkeeper (see [ADR-0012](adr/0012-drop-ruleset-plugin-interface.md)) — but 5e (Lost Mine of Phandelver) is the only validated target at alpha. Other systems become reachable as their Foundry module plus a small renderer exist.
+- Shipping or validating rulesets other than D&D 5e at MVP. Per-system mechanics come from the Foundry system the operator loaded, not from Skeinkeeper (see [ADR-0012](adr/0012-drop-ruleset-plugin-interface.md)) — but 5e (Lost Mine of Phandelver) is the only validated target at alpha. Other systems become reachable as their Foundry system plus a small renderer exist.
 - Marketplace for user-generated campaigns.
 - Built-in livestreaming, recording, or content moderation.
+- **Clickable in-Foundry operator buttons at v0.5.** Operators resolve escalations and run overrides by typing commands in Foundry chat. One-click prompts are a later UX upgrade, not a v0.5 ship gate.
+- **A new in-Foundry operator control panel at v0.5.** Pre-game configuration, credentials, cost, and logs stay on the localhost console. In-play commands and escalations stay in Foundry chat.
 
 ## 3. Users & Personas
 
-- **The Operator** — the person who installs and runs Skeinkeeper, and the **host** at the table — not the DM. Technical comfort: medium-to-high. Comfortable with Docker, command line, environment variables, and configuring API keys for LLM/voice providers. Their per-session role is host-level: launch Foundry with the campaign content loaded, start a Discord voice channel, invite each friend to **both** the Discord voice channel **and** Foundry as a Foundry user with ownership of their character actor, launch Skeinkeeper. The AI handles in-play DM duties **and** the setup work that a human DM would do between sitting down and starting the game — assessing materials, picking the starting scene, mapping characters to players, deciding which monster stat block to use (see §4.8). The operator answers escalations when intake surfaces a critical gap or genuine ambiguity, and can override any AI decision via the web UI's live-session view (§4.3). One operator per Skeinkeeper instance.
+- **The Operator** — the person who installs and runs Skeinkeeper, and the **host** at the table — not the DM. Technical comfort: medium-to-high. Comfortable with Docker, command line, environment variables, and configuring API keys for LLM/voice providers. Their per-session role is host-level: launch Foundry with the campaign content loaded and Skeinkeeper's Foundry support enabled, start a Discord voice channel, invite each friend to **both** the Discord voice channel **and** Foundry as a Foundry user with ownership of their character actor, launch Skeinkeeper. The AI handles in-play DM duties **and** the setup work that a human DM would do between sitting down and starting the game — assessing materials, picking the starting scene, mapping characters to players, deciding which monster stat block to use (see §4.8). The operator answers escalations when intake surfaces a critical gap or genuine ambiguity, and can override any AI decision via the web UI's live-session view (§4.3). One operator per Skeinkeeper instance.
 - **The Players** — the operator's friends. Each connects to the session via their own Discord voice client and their own Foundry view; both surfaces are mandatory (see Surface model below and Non-Goals above). They interact with Skeinkeeper via Discord voice, Foundry's text chat + whisper, and a one-time Discord DM consent prompt on first voice-join. They never touch the configuration UI. Don't need Skeinkeeper accounts; they're known to Skeinkeeper by Discord ID, with the operator-supplied Discord-user → Foundry-user link maintained internally.
-- **The AI DM** — a system actor. Has authority to mutate campaign state via tool calls, narrate, voice NPCs, and operate the VTT.
+- **The AI DM** — a system actor. Has authority to mutate campaign state via tool calls, narrate, voice NPCs, and operate Foundry.
 
 ## 4. Functional Requirements
 
@@ -53,20 +60,20 @@ The target user is **a technically comfortable DM-or-DM-curious friend who can r
 
 Skeinkeeper operates over two player-facing surfaces with deliberate, non-overlapping responsibilities. The split is a design intent, not an accident; do not mirror content between them.
 
-| Surface                              | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Why                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Discord voice**                    | All audio: AI narration out, player speech in, NPC voices, presence events.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Real-time, low-latency, per-speaker diarization with one client per player.                                                                                                                                                                                                                                                                                                   |
-| **Discord DMs (1:1)**                | One-time player consent prompt on first voice-channel-join (per §4.6 + §5.5). **Nothing else.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Consent must precede voice processing and may fire before the player has connected to Foundry; Discord voice-join is the only event reliably available at that moment. One-time, low-frequency.                                                                                                                                                                               |
-| **Foundry public chat**              | The mirrored AI narration transcript; player text input ("I look around the room"); IC/OOC convention markers; dice-roll receipts (player rolls and AI/GM rolls per §4.2 + §4.3); item-use feedback; scene-change notifications.                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Everyone has Foundry open; consolidating table text there lets players keep Foundry fullscreen and not glance away. Foundry's own UI affordances (roll dialogs, ownership-aware visibility, persistent chat) are the right surface for this.                                                                                                                                  |
-| **Foundry whisper / GM-only chat**   | (a) Player↔DM 1:1 side-channels (private Q&A, private in-scene actions); (b) audience-targeted journal/handout reveals to a specific `player:<id>`; (c) `gm`-audience content (secret DCs, hidden room contents, NPC true motives); (d) **operator escalations** (`notify_operator`: intake findings, ambiguity prompts, hard-gap warnings, per §4.8 + ADR-0024) delivered as GM-only chat (or whisper to the operator's Foundry user); (e) **operator resolution + override commands** (`/skeinkeeper intake resolve <id> <option>`, scene switches, eagerness/PvP toggles, etc.) typed as Foundry chat commands or — when bridge support lands — clicked as interactive prompts. | The audience model (`table` / `player:<id>` / `gm` from §4.7) maps directly onto Foundry public / whisper / GM-chat; one delivery mechanism for the whole audience taxonomy. The operator is in Foundry fullscreen during the session (per ADR-0023's operator-as-player premise), so Foundry whispers/GM-chat are strictly more visible than minimized Discord DMs would be. |
-| **Operator web console (localhost)** | Operator-only configuration, observability, live-session view, override controls.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Operator surface only; players never see it (per §4.4).                                                                                                                                                                                                                                                                                                                       |
+| Surface                              | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Why                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Discord voice**                    | All audio: AI narration out, player speech in, NPC voices, presence events.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Real-time, low-latency, per-speaker diarization with one client per player.                                                                                                                                                                                                                                                                                                   |
+| **Discord DMs (1:1)**                | One-time player consent prompt on first voice-channel-join (per §4.6 + §5.5). **Nothing else.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Consent must precede voice processing and may fire before the player has connected to Foundry; Discord voice-join is the only event reliably available at that moment. One-time, low-frequency.                                                                                                                                                                               |
+| **Foundry public chat**              | The mirrored AI narration transcript; player text input ("I look around the room"); IC/OOC convention markers; dice-roll receipts (player rolls and AI/GM rolls per §4.2 + §4.3); item-use feedback; scene-change notifications.                                                                                                                                                                                                                                                                                                                                                                                                                              | Everyone has Foundry open; consolidating table text there lets players keep Foundry fullscreen and not glance away. Foundry's own UI affordances (roll dialogs, ownership-aware visibility, persistent chat) are the right surface for this.                                                                                                                                  |
+| **Foundry whisper / GM-only chat**   | (a) Player↔DM 1:1 side-channels (private Q&A, private in-scene actions); (b) audience-targeted journal/handout reveals to a specific `player:<id>`; (c) `gm`-audience content (secret DCs, hidden room contents, NPC true motives); (d) **operator escalations** (`notify_operator`: intake findings, ambiguity prompts, hard-gap warnings, per §4.8 + ADR-0024) delivered as GM-only chat (or whisper to the operator's Foundry user); (e) **operator resolution + override commands** (`/skeinkeeper intake resolve <id> <option>`, scene switches, eagerness/PvP toggles, etc.) typed as Foundry chat commands. | The audience model (`table` / `player:<id>` / `gm` from §4.7) maps directly onto Foundry public / whisper / GM-chat; one delivery mechanism for the whole audience taxonomy. The operator is in Foundry fullscreen during the session (per ADR-0023's operator-as-player premise), so Foundry whispers/GM-chat are strictly more visible than minimized Discord DMs would be. |
+| **Operator web console (localhost)** | Operator-only configuration, observability, live-session view, override controls.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Operator surface only; players never see it (per §4.4). Pre-game config and credentials stay here. In-play commands stay in Foundry chat.                                                                                                                                                                                                                                     |
 
 **Hard rules**:
 
 - **No mirroring between Discord text and Foundry chat.** A player's table text input lives in Foundry; the AI's table narration mirror lives in Foundry. Skeinkeeper does not maintain a parallel Discord text channel mirror.
 - **Consent stays on Discord DM (one-time exception).** Consent fires on Discord voice-join, before Foundry presence is guaranteed; Discord DM is the only surface reliably available at that moment. This is the _sole_ remaining text use of Discord — operator escalations and all operator commands are in Foundry.
 - **Sessions are session-bounded.** No surface listed above carries pre/post-session interaction with the bot. Async player↔DM use is a non-goal (see Non-Goals above).
-- **Foundry-down ends the session.** Under the new configuration, every player needs Foundry for both visuals and table text; if the bridge or Foundry instance disconnects mid-session, there is no degraded "voice-only" mode. The orchestrator preserves state and the operator restarts when Foundry is back (per §5.8).
+- **Foundry-down ends the session.** Every player needs Foundry for both visuals and table text; if Foundry becomes unreachable mid-session, there is no degraded "voice-only" mode. State is preserved and the operator restarts when Foundry is back (per §5.8).
 
 ### 4.1 Voice & Discord Integration
 
@@ -80,7 +87,7 @@ Skeinkeeper operates over two player-facing surfaces with deliberate, non-overla
   - **Wake-word** (default): players prefix utterances with a configured term ("DM", "Storyteller", or any operator-set string + aliases). STT-output prefix match with fuzzy tolerance.
   - **Always-on with VAD** — every utterance treated as directed to the AI unless flagged OOC.
   - **Push-to-talk** — Discord PTT bounds when the AI listens.
-- **Text input lives in Foundry public chat**, not on a parallel Discord channel. A player typing in Foundry's chat field is surfaced to Skeinkeeper through the MCP bridge.
+- **Text input lives in Foundry public chat**, not on a parallel Discord channel. A player typing in Foundry's chat field is table input to the AI.
 - IC vs OOC disambiguation via convention (`!ooc` slash, `((parentheticals))`, or wake-phrase "DM, OOC:") — applies to voice utterances and to Foundry-chat text input alike.
 
 **Outbound (AI → players):**
@@ -94,7 +101,7 @@ Skeinkeeper operates over two player-facing surfaces with deliberate, non-overla
 
 - **One-time player consent prompt** when a player joins voice for the first time (per §4.6 + §5.5). This is the sole text use of Discord; nothing else. Operator escalations and all operator commands live in Foundry (see §4.2 + Surface model).
 
-**TTS/STT providers (pluggable via internal interface):**
+**TTS/STT providers (operator-swappable):**
 
 - TTS: ElevenLabs (recommended), OpenAI TTS, Azure Neural TTS, Cartesia. Operator brings their own API key.
 - STT: Deepgram (recommended, best diarization), OpenAI Whisper API, AssemblyAI, local Whisper. Operator brings their own API key (or runs local Whisper).
@@ -102,33 +109,44 @@ Skeinkeeper operates over two player-facing surfaces with deliberate, non-overla
 
 ### 4.2 Foundry VTT Integration
 
-The operator runs their own Foundry instance. Skeinkeeper connects to it through a self-hosted, open-source Foundry MCP bridge (see [ADR-0001](adr/0001-use-foundry-mcp-for-vtt.md), superseded by [ADR-0011](adr/0011-prefer-oss-foundry-mcp-bridges.md)), which exposes the command surface we need: scenes, tokens, actors, items, combat, dice, chat, and journals. Under the Surface model above, Foundry is the table-text surface as well as the visual surface; the bridge must expose the AI's text-output path into Foundry chat.
+The operator runs their own Foundry world. Foundry is the visual surface and the table-text surface. Skeinkeeper operates that world. The operator does not obtain a separate third-party product to connect the two.
+
+**FR-F1 Foundry is the only VTT.** Skeinkeeper does not run a session against any other virtual tabletop. — Acceptance: INSTALL and the operator console describe Foundry as required; there is no setting, plugin slot, or documented path that starts a session on another VTT.
+
+**FR-F2 Foundry support ships with Skeinkeeper.** Enabling it is documented in INSTALL and does not require a third-party Foundry connector. Listing in Foundry's public package directory is not a v0.5 requirement. — Acceptance: an operator following INSTALL can enable Skeinkeeper's Foundry support from the Skeinkeeper project and Start a session without installing any other Foundry-to-Skeinkeeper product.
+
+**FR-F3 Supported Foundry versions are v13 and v14.** Earlier versions are a non-goal. — Acceptance: Start succeeds against Foundry v13 and against Foundry v14 when the rest of host pre-flight is met; Start is refused against a declared-unsupported version and the operator-visible message names the version problem.
+
+**FR-F4 The operator runs Foundry on infrastructure they control** — the same machine as Skeinkeeper, or a network they control. Hosted Foundry the operator does not run is a non-goal. — Acceptance: INSTALL states this constraint; there is no documented path for a Foundry host the operator does not run.
+
+**FR-F5 Unauthorized Foundry is refused.** If Foundry is not on the same machine as Skeinkeeper, the operator must explicitly authorize that Foundry from the console before Start. — Acceptance: an unauthorized Foundry on the operator's network is refused at Start with a visible reason; after the operator authorizes it in the console, Start can succeed. Same-machine Foundry does not require that extra authorization step.
+
+**FR-F6 Missing or unreachable Foundry fails closed.** If Skeinkeeper's Foundry support is not enabled in the world, or Foundry is not reachable, Start does not begin. There is no pretend table and no voice-only session. — Acceptance: with Foundry stopped or Skeinkeeper's Foundry support disabled, Start is refused, the operator-visible message names the problem and what to enable or start, and the Discord bot does not join voice as if a session were running.
 
 **Per-player Foundry access (host pre-flight):**
 
 - Each player has their own Foundry user account, with ownership of their character actor. Created/granted by the operator before Start (per §4.6 host pre-flight and §4.8). Shared-screen or theatre-of-mind configurations are non-goals.
 
-**Functional surface:**
+**Functional surface** (what the table can do in Foundry):
 
 - Scene activation, fog of war, lighting from pre-built templates.
 - Token creation, placement, movement, disposition (friendly/neutral/hostile).
 - Combat tracker management: initiative, turn order, conditions, death saves.
-- **Server-side dice rolling for AI/GM/secret rolls**, with roll-mode selection (`public` / `gm` / `blind` / `whisperTo`) so the audience model from §4.7 is enforced at the bridge call. Result lands in Foundry chat. _(Player-initiated rolls already use Foundry's native roll UI via `request-player-rolls`; this requirement extends server-side rolling to AI-side rolls.)_
-- **AI text output to Foundry chat** — table-audience narration to public chat, `player:<id>`-audience content to Foundry whisper, `gm`-audience content to GM-only chat. The bridge must expose this; see Critical bridge dependencies below.
+- **AI/GM/secret dice rolls appear in Foundry chat** with the intended visibility (`public` / GM-only / blind / whisper to named players) so the audience model from §4.7 holds for rolls as well as text. Player-initiated rolls use Foundry's own roll UI.
+- **AI text appears in Foundry chat** — table-audience narration in public chat, `player:<id>`-audience content as a whisper to that player, `gm`-audience content in GM-only chat.
 - **Operator escalation channel** — `notify_operator` content (intake findings, hard-gap warnings, ambiguity prompts) is delivered as GM-only chat (or whisper to the operator's Foundry user), per ADR-0024.
-- **Operator commands** — operator-side resolutions, overrides, and toggles (e.g., `/skeinkeeper intake resolve <id> <option>`, scene-switch, eagerness/PvP toggles) are typed as Foundry chat commands surfaced through the bridge; when interactive-prompt support lands, escalations can also render one-click resolution buttons inline.
+- **Operator commands** — resolutions, overrides, and toggles (e.g. `/skeinkeeper intake resolve <id> <option>`, scene-switch, eagerness/PvP toggles) are typed as Foundry chat commands. Clickable prompts are a non-goal at v0.5 (see Non-Goals).
 - Compendium access (D&D 5e default).
 - Journal entries; per-audience handout reveals matching the audience model.
 - Read-write access to actor sheets (HP, conditions, spell slots, inventory).
 
-**Critical bridge dependencies (v0.5).** Four bridge capabilities are now load-bearing for the Surface model and must move to the critical-path upstream batch (or be addressed via fork):
+**Load-bearing table-text behaviors (v0.5).** These are session-blocking. A session that cannot do all of them must not Start (FR-F6).
 
-1. **`post-chat-message`** with audience targeting (`table` → public; `whisperTo: [userId]` → whisper; `gm` → GM-only). Without this, the AI cannot write text to Foundry chat, and the entire table-text surface — plus the operator-escalation channel — collapses back to Discord.
-2. **Server-side `roll-dice`** with roll modes (`public` / `gm` / `blind` / `whisperTo`). Without this, AI/GM rolls remain in Skeinkeeper's local roller and don't land in Foundry chat — breaking the auditability of rolls and the consolidation of table text on one surface.
-3. **`delete-chat-messages`** filtered by author / recipient / time-range. Required for per-player erasure (§5.5): when a player invokes erasure, Skeinkeeper must remove that player's whisper history from Foundry as well as from its own audience-tagged store; without this, the per-audience erasure guarantee under [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) is operational (operator manually deletes), not architectural.
-4. **`chat-command` listener** — a way to surface operator-typed Foundry chat commands (e.g. `/skeinkeeper intake resolve <id> <option>`) to the bridge so the orchestrator can handle them. Without this, the operator has no in-Foundry text path to resolve escalations or run overrides; the bridge would need to either parse operator chat for known commands or expose a generic command-channel. _Optional but desirable:_ **interactive-prompt support** (clickable buttons in chat messages) so escalations can render one-click resolution options instead of requiring typed commands.
-
-All four are tracked against [TDD 0027](tdd/0027-mcp-bridge-gap-reaudit-upstream-proposal.md)'s upstream batch.
+1. **AI table text lands in the right Foundry chat.** Public narration is visible to every player; a whisper is visible only to the named player (and the GM view); GM-only content is not visible to players. — Acceptance: after a table-audience line, every player's Foundry public chat shows it; after a `player:<id>` line, only that player's Foundry client shows the whisper; after a `gm` line, a player client does not show it.
+2. **AI/GM rolls land in Foundry chat with the intended visibility.** — Acceptance: a public AI roll appears in public chat; a GM-only or whispered AI roll does not appear in a non-recipient player's chat.
+3. **Player erasure also removes that player's Foundry whispers.** Without this, the per-audience erasure guarantee under [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) is a manual operator chore. — Acceptance: after `skeinkeeper player:delete` for a player, that player's Foundry whisper history with the AI is gone from Foundry as well as from Skeinkeeper's store.
+4. **Operator-typed `/skeinkeeper` commands in Foundry chat are carried out.** — Acceptance: an authorized operator typing `/skeinkeeper eagerness show` (or an equivalent documented verb) in Foundry chat produces the same effect as the matching console control.
+5. **Player text in Foundry public chat is table input.** — Acceptance: a player typing "I search the room" in Foundry public chat is treated as that player's table action (subject to IC/OOC conventions), the same as an equivalent voice utterance.
 
 ### 4.3 AI DM Engine Capabilities
 
@@ -162,7 +180,7 @@ All four are tracked against [TDD 0027](tdd/0027-mcp-bridge-gap-reaudit-upstream
 
 **Operator override**
 
-- Pause, edit any state, rewrite the last AI turn, take the wheel and DM manually — all via the web UI's "live session view."
+- Pause, edit any state, rewrite the last AI turn, take the wheel and DM manually — all via the web UI's "live session view." In-play command verbs are also available as Foundry chat commands (see §4.2).
 
 ### 4.4 Local Web UI for Configuration
 
@@ -170,7 +188,7 @@ A web application served from the local Skeinkeeper process on `localhost:3000` 
 
 **Capabilities:**
 
-- **Connection config:** Discord bot token, Foundry URL + API key, LLM provider + model + key, TTS provider + key, STT provider + key. Stored encrypted using OS keyring (libsecret on Linux, Keychain on macOS, Credential Manager on Windows) with a libsodium-sealed config file fallback.
+- **Connection config:** Discord bot token, LLM provider + model + key, TTS provider + key, STT provider + key, and whatever the operator must confirm so Skeinkeeper can operate their Foundry world (including authorizing a Foundry that is not on the same machine, per FR-F5). Stored encrypted using OS keyring (libsecret on Linux, Keychain on macOS, Credential Manager on Windows) with a libsodium-sealed config file fallback.
 - **Campaign management:** create / archive campaigns. Upload supplemental content (notes, custom NPCs, maps). Choose ruleset (D&D 5e default; other rulesets if the matching Foundry system is installed). Choose AI personality preset. Configure Lines & Veils, custom rules, fudging policy.
 - **Party management:** view/edit character sheets, HP, inventory, status. Sync to/from Foundry. Per-player Discord identity and voice mapping.
 - **State inspection:** browse warm state (quest flags, NPC relationships, location, faction reputation). Edit any field; changes recorded in audit log.
@@ -214,7 +232,7 @@ A player can whisper the AI DM directly in Foundry for a **private 1:1 side-chan
 
 **Operator visibility.** Side-channel content is private from _other players_, **not from the operator**: the operator sees all whispers via standard Foundry GM-view, and Skeinkeeper persists the audience-tagged transcript for review, export, and erasure like any other session content. The audit log surfaces side-channel activity.
 
-**Privacy semantics.** A player's side-channel content is **player-scoped and individually erasable**; the campaign's shared memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) / [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)). Per-player erasure deletes both the Skeinkeeper-side dialogue store _and_ the corresponding Foundry whisper history for that player — the operator's erasure obligation extends to the Foundry side via the bridge. The consent flow discloses this up front. See §5.5.
+**Privacy semantics.** A player's side-channel content is **player-scoped and individually erasable**; the campaign's shared memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) / [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)). Per-player erasure deletes both the Skeinkeeper-side dialogue store _and_ the corresponding Foundry whisper history for that player — the operator's erasure obligation extends to Foundry, not only to Skeinkeeper's own store. The consent flow discloses this up front. See §5.5.
 
 See [TDD 0026](tdd/0026-player-dm-side-channels.md), [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md), [ADR-0020](adr/0020-single-scene-invariant.md).
 
@@ -225,7 +243,7 @@ The AI DM is handed the campaign **cold** — like a guest DM walking into a hos
 **Host pre-flight (what the operator must do before Start):**
 
 - Foundry is running with the intended campaign content (system + module + compendium packs) loaded.
-- The Foundry MCP bridge is connected.
+- Skeinkeeper's Foundry support is enabled in that world and reachable (FR-F2, FR-F6).
 - A Discord voice channel exists; Skeinkeeper's bot has been invited.
 - Skeinkeeper is running with credentials configured (per §4.5).
 - Each player has an invite to the Discord voice channel **and** has been added as a Foundry user with ownership of their character actor. Both surfaces are required (per Surface model + §4.6).
@@ -251,7 +269,7 @@ It then produces a structured **intake report** and surfaces it to the operator 
 3. **Source-material indexing** — the AI builds a retrievable index over loaded campaign content (journals, monsters, items, scenes) keyed by location, quest, and keyword, so it can pull the right entry during play. Re-indexing on subsequent Starts is incremental.
 4. **Pre-loading expected content** — the AI imports needed monster/NPC actors from compendium into the world (without placing tokens on any scene) so they're ready when an encounter triggers. Lazy import at trigger time is acceptable when faster.
 
-**Live state perception during play.** The AI subscribes to Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access — and to Discord voice presence. Perception is a platform capability; **when and how** the AI reacts to a given perception is the behavior spec's job (per §4.3 and the [behavior spec](../behavior/default.md)).
+**Live state perception during play.** The AI notices Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access — and Discord voice presence. Perception is a platform capability; **when and how** the AI reacts to a given perception is the behavior spec's job (per §4.3 and the [behavior spec](../behavior/default.md)).
 
 **Triggered actions.** The AI can place tokens with `hidden` visibility, reveal them when narratively appropriate, share journal entries with a specified audience (`table` / `player:<id>`, per §4.7), and distribute loot to actor inventories. These are platform capabilities; trigger _policy_ lives in the behavior spec.
 
@@ -269,31 +287,31 @@ See [ADR-0023](adr/0023-operator-as-host-model.md), [ADR-0024](adr/0024-silence-
 
 Four-tier model (see [ADR-0002](adr/0002-four-tier-memory-model.md); warm-tier contents revised by [ADR-0013](adr/0013-warm-tier-after-foundry-source-of-truth.md) once Foundry became the source of truth for mechanical state):
 
-| Tier     | Contents                                                                                                                                                                                                                                  | Mechanism                                                                                   |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Hot      | Current scene, last ~20 turns, active NPCs, active rules subset                                                                                                                                                                           | In-prompt, sliding window                                                                   |
-| Warm     | **Foundry-owned:** party & NPC actor sheets (HP, conditions, inventory, per-system stats), active scene, combat tracker. **Skeinkeeper-owned:** campaign metadata, sessions, quest flags (AI-DM-internal plot state), audit log, consents | Foundry read via `FoundryClient`/MCP + Skeinkeeper SQLite; both mutated via tool calls only |
-| Cold     | Campaign content, SRD rules, monster stat blocks                                                                                                                                                                                          | Vector store (LanceDB), chunked + embedded                                                  |
-| Episodic | Per-session summaries, key beats, NPC deltas, party choices                                                                                                                                                                               | Generated post-session; consolidated periodically                                           |
+| Tier     | Contents                                                                                                                                                                                                                                  | Mechanism                                                                        |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Hot      | Current scene, last ~20 turns, active NPCs, active rules subset                                                                                                                                                                           | In-prompt, sliding window                                                        |
+| Warm     | **Foundry-owned:** party & NPC actor sheets (HP, conditions, inventory, per-system stats), active scene, combat tracker. **Skeinkeeper-owned:** campaign metadata, sessions, quest flags (AI-DM-internal plot state), audit log, consents | Foundry (authoritative for mechanical state) + Skeinkeeper SQLite; mutations via tool calls only |
+| Cold     | Campaign content, SRD rules, monster stat blocks                                                                                                                                                                                          | Vector store (LanceDB), chunked + embedded                                       |
+| Episodic | Per-session summaries, key beats, NPC deltas, party choices                                                                                                                                                                               | Generated post-session; consolidated periodically                                |
 
 **Tenant scoping in the data model.** Every persistent record carries a `tenant_id`, and every read and write goes through a tenant-aware query layer that refuses tenant-less queries — cross-tenant access doesn't compile. A fresh install uses a single tenant (`"default"`); an operator who runs more than one campaign group in the same instance (say, a D&D group and a Pathfinder group) gets hard isolation between them, plus scoped backup and restore. See [ADR-0008](adr/0008-tenant-scoping.md).
 
-### 5.2 Plugin Architecture
+### 5.2 What the operator can swap
 
-The three plugin interfaces (`LLMProvider`, `VTTDriver`, `VoiceIO`) per [ADR-0004](adr/0004-plugin-interface-pattern.md) are the orchestrator's modular boundaries. (ADR-0004 originally defined a fourth, `Ruleset`; it was dropped by [ADR-0012](adr/0012-drop-ruleset-plugin-interface.md) — Foundry's per-system data models already provide that abstraction, so per-system mechanics are not Skeinkeeper's concern.) Implementations:
+The operator can change **LLM provider** and **voice stack** without changing the rest of the product. Foundry is not a swap: it is the table.
 
-- `LLMProvider`: `AnthropicProvider` (default). Other providers (`OpenAIProvider`, `GrokProvider`, `GeminiProvider`) implementable via the interface.
-- `VTTDriver`: `FoundryDriver` over a Foundry MCP bridge (default). Others (`OwlbearDriver`, `Roll20Driver`) as community contributions.
-- `VoiceIO`: `DiscordVoiceIO` wrapping STT/TTS providers (default).
+- **LLM:** Anthropic Claude is the default. Other providers are allowed via the existing provider seam ([ADR-0004](adr/0004-plugin-interface-pattern.md)).
+- **Voice:** Discord voice wrapping the operator's chosen STT/TTS providers is the default.
+- **Table:** Foundry only. There is no community contribution path for another VTT.
 
-Per-system mechanics are handled by a thin presentation layer — per-system renderers that format a Foundry actor's opaque `system` blob into a one-line summary for the prompt — plus per-system mutation tools registered at session start once the active Foundry system is known. Neither is a plugin interface (see [ADR-0012](adr/0012-drop-ruleset-plugin-interface.md)).
+Per-system mechanics come from the Foundry system the operator loaded. Skeinkeeper formats that system's actor data for the AI and registers the matching mutation tools once the active system is known. That is not a separate plugin surface (see [ADR-0012](adr/0012-drop-ruleset-plugin-interface.md)).
 
 ### 5.3 Performance & Latency
 
 - **Voice round-trip target:** ≤ 3s p95 from player end-of-utterance to AI start-of-speech (short responses); ≤ 6s p95 for long narration (first audio chunk).
 - **Streamed TTS** required. AI starts speaking before generation completes.
 - **Tool call latency:** ≤ 500ms p95 for state-mutation tools against local SQLite.
-- **VTT operation latency:** ≤ 1s p95 for Foundry MCP calls.
+- **Foundry operation latency:** ≤ 1s p95 from an AI table action to the matching change visible in Foundry (scene switch, chat line, roll, token move).
 - **Session length:** must run a 4-hour session without degradation, memory leak, or context overflow.
 
 ### 5.4 Cost (Operator-Borne)
@@ -319,7 +337,8 @@ Reference cost expectations at default settings (Claude + ElevenLabs + Deepgram,
 - **Audit log of every state mutation, tool call, and AI decision.** Operator can export their own data at any time.
 - **No telemetry by default** — see §5.6.
 - **Tenant-scoping in the data model** so each campaign group's data is isolated by construction (see [ADR-0008](adr/0008-tenant-scoping.md)).
-- **Per-audience visibility and erasure** — every stored utterance/memory carries an explicit audience (`table` / `player:<id>` / `gm`; see §4.7). A player's private side-channel content is player-scoped and individually erasable; shared campaign memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) and [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)). Under the Surface model, side-channel content is stored in Skeinkeeper's audience-tagged dialogue store _and_ delivered via Foundry whisper; per-player erasure cascades to both — the deletion adapter calls the bridge to remove the corresponding Foundry whisper history for that player. The audience anti-leak guarantee is preserved at two layers: Skeinkeeper composes hot context with audience-scoping (a `player:<id>` LLM context excludes other players' private content and any `gm` content), and Foundry's whisper render enforces per-recipient visibility on delivery.
+- **Per-audience visibility and erasure** — every stored utterance/memory carries an explicit audience (`table` / `player:<id>` / `gm`; see §4.7). A player's private side-channel content is player-scoped and individually erasable; shared campaign memory is campaign-scoped (per [ADR-0017](adr/0017-per-audience-memory-visibility-erasure.md) and [ADR-0014](adr/0014-episodic-memory-campaign-scoped-erasure.md)). Under the Surface model, side-channel content is stored in Skeinkeeper's audience-tagged dialogue store _and_ delivered via Foundry whisper; per-player erasure cascades to both. The audience anti-leak guarantee is preserved at two layers: Skeinkeeper composes hot context with audience-scoping (a `player:<id>` LLM context excludes other players' private content and any `gm` content), and Foundry's whisper render enforces per-recipient visibility on delivery.
+- **Skeinkeeper's Foundry support does not phone home.** It talks only to the operator's Skeinkeeper and the operator's Foundry. This is non-negotiable for a Foundry add-on (see [ADR-0009](adr/0009-telemetry-opt-in.md)).
 
 **Voice data:**
 
@@ -365,7 +384,7 @@ Both streams are explicit, opt-in, and fully disclosed; the default install neve
 Best-effort. There are no SLAs for self-hosted software; the operator gets what runs on their machine. We aim for:
 
 - No crashes during a 4-hour session under normal load.
-- Graceful degradation: if TTS provider fails, fall back to text-only narration in Foundry chat. If primary LLM fails, surface a warning + pause. **If Foundry or the bridge disconnects, the session pauses with state preserved** — there is no "voice-only" continuation mode, because under the Surface model the player text surface lives in Foundry; the operator restarts the session when Foundry is back.
+- Graceful degradation: if TTS provider fails, fall back to text-only narration in Foundry chat. If primary LLM fails, surface a warning + pause. **If Foundry becomes unreachable, the session pauses with state preserved** — there is no "voice-only" continuation mode, because under the Surface model the player text surface lives in Foundry; the operator restarts the session when Foundry is back.
 
 ## 6. Architecture Principles
 
@@ -373,7 +392,7 @@ Best-effort. There are no SLAs for self-hosted software; the operator gets what 
 2. **State lives in the database, not in the prompt.** The model reads state via retrieval; never trusts prior outputs as source of truth.
 3. **Tool calls are the only way the world changes.** See [ADR-0003](adr/0003-tool-call-only-state-mutation.md).
 4. **Behavior is spec, not code.** The Behavior Spec is loaded as system prompt; it iterates independently of the platform.
-5. **Modular boundaries are real.** No Foundry-specific or Claude-specific calls outside their drivers.
+5. **LLM and voice are swappable; Foundry is not.** The operator can change LLM or voice providers. The table is Foundry.
 6. **Audit everything.** The operator can answer "why did the AI do that?" for every session.
 7. **Tenant scoping is in the data model from day one** so multiple campaign groups in one install stay isolated; cross-tenant queries don't compile (see [ADR-0008](adr/0008-tenant-scoping.md)).
 8. **The operator is sovereign.** Web UI can override any state, prompt, or AI decision. The AI yields to the operator on every conflict.
@@ -388,15 +407,15 @@ Closed alpha with the founder's table running Lost Mine of Phandelver. Discord v
 
 ### v0.5 — Public Beta
 
-Public GitHub repository goes live. Documented `docker compose up` install path. Onboarding wizard in the web UI. Behavior Spec personality presets. Multi-campaign support. Memory inspector. Foundry write integration (AI moves tokens, runs combat tracker, reveals fog, **posts to Foundry chat per the audience model, performs server-side rolls, and erases per-player whisper history on player-erasure** — see §4.2 Critical bridge dependencies). NPC voice profiles. Eval harness with ≥ 10 scenario fixtures. **Success criterion:** 50+ operators running their own instances; ≥ 5 completing full Phandelver runs; documented issues fixed.
+Public GitHub repository goes live. Documented `docker compose up` install path, including enabling Skeinkeeper's Foundry support from the Skeinkeeper project. Onboarding wizard in the web UI. Behavior Spec personality presets. Multi-campaign support. Memory inspector. Full Foundry write integration (AI moves tokens, runs combat tracker, reveals fog, posts to Foundry chat per the audience model, performs server-side rolls, and erases per-player whisper history on player-erasure — see §4.2). NPC voice profiles. Eval harness with ≥ 10 scenario fixtures. **Success criterion:** 50+ operators running their own instances; ≥ 5 completing full Phandelver runs; documented issues fixed.
 
 ### v1.0 — Production Open Source Release
 
-Plugin interfaces stabilized and documented. Second campaign supported alongside Phandelver to prove the abstraction. Replay/debugger. Contribution guide; first external contributors onboarded. Behavior Spec evaluation harness as a CI gate. **Success criterion:** the project is contributed to by at least 3 people outside the founder; ≥ 200 active operators.
+LLM and voice provider seams stabilized and documented. Second campaign supported alongside Phandelver to prove the abstraction. Replay/debugger. Contribution guide; first external contributors onboarded. Behavior Spec evaluation harness as a CI gate. **Success criterion:** the project is contributed to by at least 3 people outside the founder; ≥ 200 active operators.
 
-### v2.0+ — Multi-Everything
+### v2.0+ — Deeper table, more systems
 
-Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry system module, a renderer, and a per-system tool set. Second VTT driver (Owlbear Rodeo is the lowest effort). Second LLM provider validated in production. Internal campaign content authoring tools.
+Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry system, a renderer, and a per-system tool set. Second LLM provider validated in production. Internal campaign content authoring tools. No second VTT.
 
 ## 8. License & Governance
 
@@ -404,11 +423,11 @@ Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry syst
 - **Repository:** public GitHub from v0.5 onward (private during alpha for the founder's iteration speed).
 - **Repo structure:** monorepo (`/orchestrator`, `/plugins/*`, `/app`, `/server`, `/telemetry`, `/eval`, `/docs`).
 - **Docs in repo:** this PRD, the Behavior Spec, the ADRs, the eval harness fixtures, the TDDs.
-- **CONTRIBUTING.md** with plugin authoring guide as the primary contributor path.
+- **CONTRIBUTING.md** with provider-plugin authoring guide as the primary contributor path (LLM and voice; not a second VTT).
 - **DCO** for commit sign-off; no formal CLA at v1.
-- **Issue templates** distinguishing bug, feature, VTT-request, and LLM-provider-request.
+- **Issue templates** distinguishing bug, feature, and LLM-provider-request. No VTT-request template — Foundry is not a contribution surface.
 - **CI:** lint, type-check, unit tests, eval harness, telemetry-event-registry validation. No merges without green eval.
-- **Versioning:** SemVer. Plugin API stability promised from v1.0.
+- **Versioning:** SemVer. Provider-plugin API stability promised from v1.0.
 - **WotC IP awareness:** Phandelver content is WotC IP. The repo ships the loader and abstractions; actual Phandelver content must be supplied by the operator from their own legally-acquired copy. SRD-based rules content (CC-BY-4.0) is fine to ship — see [ADR-0007](adr/0007-phandelver-content-operator-supplied.md).
 
 ## 9. Open Questions
@@ -419,15 +438,28 @@ Second validated ruleset (Pathfinder 2e or Call of Cthulhu) via its Foundry syst
 
 **9.3 Voice consent.** Each player consents to voice processing once on first join. Show a clear one-time consent banner in Discord. Recommendation: yes.
 
-**9.4 LLM provider sourcing.** Build on Claude as primary (Anthropic); allow operator-configured alternates via the plugin interface. Recommendation: ship Claude only at alpha; add OpenAI provider at v0.5.
+**9.4 LLM provider sourcing.** Build on Claude as primary (Anthropic); allow operator-configured alternates via the provider seam. Recommendation: ship Claude only at alpha; add OpenAI provider at v0.5.
 
-**9.5 Multi-AI-DM collaboration.** Some advanced groups use multiple AIs (narrator + combat + voice). Out of scope for v1; the `LLMProvider` interface permits it later.
+**9.5 Multi-AI-DM collaboration.** Some advanced groups use multiple AIs (narrator + combat + voice). Out of scope for v1; the LLM provider seam permits it later.
 
-**9.6 Intake escalation UX.** When the AI surfaces multiple ambiguities or gaps at once, what's the right Discord-DM format? A single structured DM with embedded reply controls (slash-command response per item), or a back-and-forth thread per item? Recommendation: single structured DM with one slash-command response path at v0.5; iterate after live UX observation.
+**9.6 Intake escalation UX.** When the AI surfaces multiple ambiguities or gaps at once, what is the right Foundry GM-chat format? A single structured GM message the operator answers with one `/skeinkeeper intake resolve` command per item, or a back-and-forth per item? Recommendation: one structured GM-chat report with typed command responses at v0.5; iterate after live UX observation. Clickable buttons are a non-goal at v0.5.
 
 **9.7 Hard-gap policy.** When critical content is missing and the operator can't resolve it on the spot (e.g., a player has a Fairy race but neither _Witchlight_ nor _Multiverse_ is loaded), what's the AI's fallback? Improvise from SRD-adjacent content, refuse to Start, or proceed with the player's character but flag the resource gap throughout the session? Recommendation: proceed with operator acknowledgement; the AI improvises reasonably during play and logs the gap, rather than blocking the session.
 
 **9.8 Spoiler-safe escalation framing.** How does the AI decide whether escalation _context_ (which encounter is being prepared, which monster is being selected, which journal is about to be revealed) is spoiler-laden for the operator-as-player case? Heuristics could include: anything tied to an unrevealed scene, anything keyed to an in-progress quest, anything the players' characters haven't yet observed. Recommendation: conservative default at v0.5 (escalate the choice without context whenever possible; explicit DM-only flag when context is required); refine via live observation and an operator-configurable "I'm also a player" toggle if needed.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement testability | Each new requirement can be independently confirmed or failed by a later TDD/runtime-verify gate | A few requirements need one clarifying question to become testable | A new requirement can be read as done without any observable outcome |
+| Acceptance-criterion observability | Every new requirement names what a user sees or does when it works | Criteria are observable but slightly operator-console-heavy | Criteria are "implemented" / "supported" / "a test exists" |
+| Scope coherence | One product: Foundry-only table + Discord voice; no second product sneaks in | Related install/support constraints sit next to the same change | Document splits into a new product or an unrelated subsystem |
+| Non-goal explicitness | Dropped VTT plugins, third-party Foundry connectors, hosted Foundry, and v0.5 in-Foundry operator chrome are named as non-goals | Most dropped items named; one implied | A dropped path remains as a goal, roadmap line, or contribution promise |
+| Open-question honesty | Unresolved items are in Open questions; waived interview items are listed | Minor leftovers noted | Invented answers or silent deferrals |
+| MCP/bridge language scrubbed | No MCP, bridge-upstream, or third-party Foundry-integration product remains as a requirement | Historical ADR citations only, clearly not current requirements | MCP/bridge still described as how Skeinkeeper talks to Foundry |
+| Foundry-only is global | Goals, plugins, roadmap, and issue-template promises all say Foundry is the only VTT | Core requirements say Foundry-only; one stale v2 line remains and is called out | Owlbear/Roll20/VTTDriver still promised |
+| No implementation HOW leaked | No transport, process topology, protocol, or Foundry API mechanism is required | A user-visible installable is named without saying how it talks to Skeinkeeper | WebSocket, sidecar, pairing protocol, hooks, or client interfaces appear as requirements |
 
 ---
 
