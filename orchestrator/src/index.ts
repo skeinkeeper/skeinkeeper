@@ -119,6 +119,17 @@ export {
   type EpisodicSummary,
 } from "./memory/summarize.js";
 export { ingestColdEntries, type ColdEntry } from "./memory/ingest.js";
+export type {
+  CreatureCriteria,
+  IndexSource,
+  SearchQuery,
+  WorldContentReader,
+  WorldCreatureEntry,
+  WorldItemEntry,
+  WorldJournalEntry,
+  WorldJournalPage,
+  WorldSceneEntry,
+} from "./autosetup/world-types.js";
 export {
   runVoiceSession,
   VOICE_CONSENT_TEXT,
