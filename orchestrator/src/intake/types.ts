@@ -113,6 +113,8 @@ export interface ExtendedIntakeResult {
   currentOwnershipMap: Record<ActorId, FoundryUserId>;
   warmStateSummary: WarmStateSummary;
   findings: IntakeFinding[];
+  /** After-the-fact "I did the following" lines (TDD 0032). */
+  actions?: string[];
 }
 
 export interface ResolutionOptions {

@@ -14,8 +14,10 @@ const SECTION_ORDER: FindingKind[] = ["critical-gap", "ambiguity", "recommendati
 
 export function formatIntakeReportForOperator(
   findings: ReadonlyArray<IntakeFinding>,
+  opts?: { actions?: ReadonlyArray<string> },
 ): IntakeOperatorPayload {
-  if (findings.length === 0) {
+  const actions = opts?.actions ?? [];
+  if (findings.length === 0 && actions.length === 0) {
     return { text: "", findings: [], delivery: "notify_operator", dmOnly: false };
   }
 
@@ -26,12 +28,16 @@ export function formatIntakeReportForOperator(
     groups.set(f.kind, list);
   }
 
-  const parts: string[] = ["Intake report"];
+  const parts: string[] = findings.length > 0 || actions.length > 0 ? ["Intake report"] : [];
   for (const kind of SECTION_ORDER) {
     const list = groups.get(kind);
     if (list === undefined || list.length === 0) continue;
     parts.push("", `## ${SECTION_TITLE[kind]}`);
     for (const f of list) parts.push(renderFinding(f));
+  }
+  if (actions.length > 0) {
+    parts.push("", "## I did the following");
+    for (const line of actions) parts.push(`- ${line}`);
   }
 
   return {

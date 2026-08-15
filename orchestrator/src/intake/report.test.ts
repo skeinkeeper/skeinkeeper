@@ -74,4 +74,12 @@ describe("formatIntakeReportForOperator", () => {
     expect(payload.findings).toEqual([]);
     expect(payload.dmOnly).toBe(false);
   });
+
+  it("appends an I did the following footer for autonomous actions", () => {
+    const payload = formatIntakeReportForOperator([], {
+      actions: ["Activated starting scene Goblin Ambush."],
+    });
+    expect(payload.text).toContain("## I did the following");
+    expect(payload.text).toContain("Activated starting scene Goblin Ambush.");
+  });
 });

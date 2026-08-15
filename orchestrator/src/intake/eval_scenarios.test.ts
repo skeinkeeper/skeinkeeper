@@ -95,7 +95,8 @@ describe("TDD 0031 eval scenarios", () => {
     expect(result.ready).toBe(true);
     expect(result.minimum.criticalFindings).toEqual([]);
     const extended = await result.extended!;
-    expect(extended.findings).toEqual([]);
+    expect(extended.findings.map((f) => f.code)).toEqual(["RECO_PROPOSED_STARTING_SCENE"]);
+    expect(extended.actions?.[0]).toMatch(/Activated starting scene/);
   });
 
   it("2. multiple modules ambiguity — report renders the choice; resolve writes SessionConfig.intake", async () => {
@@ -219,7 +220,7 @@ describe("TDD 0031 eval scenarios", () => {
     });
     expect(result.ready).toBe(true);
     const extended = await result.extended!;
-    expect(extended.findings.map((f) => f.code)).toEqual([]);
+    expect(extended.findings.map((f) => f.code)).toEqual(["RECO_PROPOSED_STARTING_SCENE"]);
   });
 
   it("6. concurrency: onboarding can start before extended intake finishes", async () => {

@@ -4,6 +4,7 @@
 import type { TenantDb } from "@skeinkeeper/server";
 import type { FoundryClient } from "../foundry/client.js";
 import type { MemoryStore } from "../memory/store.js";
+import { applyInitialScene, stripSceneFindings } from "../autosetup/initial-scene.js";
 import { persistSurfacedFindings } from "./persist.js";
 import { formatIntakeReportForOperator } from "./report.js";
 import {
@@ -103,8 +104,23 @@ export async function kickExtendedIntake(
   const started = Date.now();
   const minimum = await runMinimumIntake(ctx, foundry, memory, tenantDb);
   const extended = await runExtendedIntake(ctx, foundry, memory, minimum, tenantDb);
-  const amb = extended.findings.filter((f) => f.kind === "ambiguity").length;
-  const reco = extended.findings.filter((f) => f.kind === "recommendation").length;
+  const scene = await applyInitialScene(extended, ctx.sessionConfig, foundry, {
+    campaignId: ctx.campaignId,
+    sessionId: ctx.sessionId,
+    ...(onTelemetry !== undefined ? { onTelemetry } : {}),
+  });
+  const findings = [...stripSceneFindings(extended.findings), ...scene.findings];
+  const actions = [
+    ...scene.actions,
+    ...(scene.activationError !== undefined ? [scene.activationError] : []),
+  ];
+  const withScene: ExtendedIntakeResult = {
+    ...extended,
+    findings,
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+  const amb = withScene.findings.filter((f) => f.kind === "ambiguity").length;
+  const reco = withScene.findings.filter((f) => f.kind === "recommendation").length;
   onTelemetry?.("intake.extended.completed", {
     campaignId: ctx.campaignId,
     sessionId: ctx.sessionId,
@@ -112,7 +128,7 @@ export async function kickExtendedIntake(
     ambiguityCount: amb,
     recommendationCount: reco,
   });
-  for (const f of extended.findings) {
+  for (const f of withScene.findings) {
     onTelemetry?.("intake.finding.surfaced", {
       campaignId: ctx.campaignId,
       sessionId: ctx.sessionId,
@@ -121,5 +137,12 @@ export async function kickExtendedIntake(
       dmOnly: f.dmOnly,
     });
   }
-  return extended;
+  if (scene.activationError !== undefined) {
+    onTelemetry?.("autosetup.scene.deferred", {
+      campaignId: ctx.campaignId,
+      sessionId: ctx.sessionId,
+      candidateCount: 0,
+    });
+  }
+  return withScene;
 }

@@ -27,6 +27,7 @@ import {
   Mutex,
   PVP_SETTING_KEY,
   ToolDispatcher,
+  activateScene,
   archiveSession,
   announceReadyAllowed,
   applyIntakeResolution,
@@ -248,8 +249,11 @@ export class SessionManager {
    * this same method. Discord text is consent-only under the surface model.
    */
   async resolveIntakeFinding(findingId: number, optionId: string): Promise<IntakeResolveResult> {
+    const foundry = this.session?.config.foundry;
     const result = await applyIntakeResolution(this.intakeState, findingId, optionId, {
-      ...(this.session !== null ? { foundry: this.session.config.foundry } : {}),
+      ...(foundry !== undefined
+        ? { foundry, onSceneChoice: (sceneId) => activateScene(foundry, sceneId) }
+        : {}),
     });
     if (this.session !== null) this.session.config.intake = this.intakeState.intake;
     saveIntakeConfig(this.deps.tenantDb, this.deps.campaignId, this.intakeState.intake);
@@ -355,7 +359,9 @@ export class SessionManager {
     this.intakeState = createIntakeResolutionState(merged, this.intakeState.intake);
     this.intakeReadyFlag = announceReadyAllowed(this.intakeState);
     this.emitIntakeEvent();
-    const report = formatIntakeReportForOperator(persisted);
+    const report = formatIntakeReportForOperator(persisted, {
+      ...(extended.actions !== undefined ? { actions: extended.actions } : {}),
+    });
     if (report.text.length > 0) {
       void this.dmOperator(report.text).catch(() => undefined);
     }

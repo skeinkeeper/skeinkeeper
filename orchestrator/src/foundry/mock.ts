@@ -54,6 +54,8 @@ export class MockFoundryClient implements FoundryClient {
   readonly updates: Array<{ actorId: string; update: Record<string, unknown> }> = [];
   readonly rolls: Array<{ formula: string; speaker?: string; whisperTo?: ReadonlyArray<string> }> =
     [];
+  /** setActiveScene invocations (TDD 0032 activateScene idempotency). */
+  readonly sceneSwitches: string[] = [];
   /** Override the deterministic roll result; set by tests. */
   rollResultFor: (formula: string) => RollResult = (formula) => ({
     total: 10,
@@ -200,6 +202,7 @@ export class MockFoundryClient implements FoundryClient {
 
   /** Activate a scene by id or (case-insensitive) name (ADR-0015). */
   async setActiveScene(sceneIdOrName: string): Promise<void> {
+    this.sceneSwitches.push(sceneIdOrName);
     const byId = this.scenesById.get(sceneIdOrName);
     const scene =
       byId ??

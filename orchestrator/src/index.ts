@@ -120,6 +120,21 @@ export {
 } from "./memory/summarize.js";
 export { ingestColdEntries, type ColdEntry } from "./memory/ingest.js";
 export { extractKeys, type ExtractedKeys, type WorldEntrySource } from "./memory/world-metadata.js";
+export {
+  activateScene,
+  applyInitialScene,
+  chooseInitialScene,
+  stripSceneFindings,
+  type ApplyInitialSceneResult,
+  type SceneChoice,
+} from "./autosetup/initial-scene.js";
+export {
+  refreshIndex,
+  resetIndexRefreshMutexForTests,
+  type RefreshCounts,
+  type RefreshIndexContext,
+  type RefreshReport,
+} from "./autosetup/index-refresh.js";
 export type {
   CreatureCriteria,
   IndexSource,
