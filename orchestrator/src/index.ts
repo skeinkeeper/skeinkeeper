@@ -38,6 +38,7 @@ export {
   type FoundryPackRef,
   type FoundryCreatureRef,
   type FoundrySearchHit,
+  type FoundryTokenDetails,
   type RollResult as FoundryRollResult,
 } from "./foundry/client.js";
 export * from "./intake/types.js";

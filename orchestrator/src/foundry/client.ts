@@ -30,6 +30,22 @@ export interface FoundrySceneToken {
   readonly name: string;
   /** Foundry token disposition: -1 hostile, 0 neutral, 1 friendly. */
   readonly disposition?: number;
+  readonly id?: string;
+  readonly hidden?: boolean;
+  readonly x?: number;
+  readonly y?: number;
+}
+
+/** Token snapshot used by reveal/hide and place-hidden-token (TDD 0033). */
+export interface FoundryTokenDetails {
+  readonly id: string;
+  readonly actorId: string;
+  readonly name: string;
+  readonly hidden: boolean;
+  readonly x?: number;
+  readonly y?: number;
+  readonly sceneId?: string;
+  readonly disposition?: number;
 }
 
 export interface FoundryScene {
@@ -139,4 +155,13 @@ export interface FoundryClient {
   ): Promise<RollResult>;
   /** Activate a scene by id or name — an in-play DM action (ADR-0015). */
   setActiveScene(sceneIdOrName: string): Promise<void>;
+  /** Token visibility / position (TDD 0033). MCP: update-token. */
+  updateToken(args: {
+    tokenId: string;
+    hidden?: boolean;
+    x?: number;
+    y?: number;
+    sceneId?: string;
+  }): Promise<void>;
+  getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null>;
 }

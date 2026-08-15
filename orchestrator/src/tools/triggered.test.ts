@@ -116,6 +116,7 @@ describe("reveal_token / hide_token", () => {
       caller: "llm" as const,
       foundry,
       campaignId: "c1",
+      analytics,
     };
     await dispatcher.dispatch({ name: "reveal_token", input: { tokenId: "tok-gob" } }, ctx);
     await dispatcher.dispatch({ name: "hide_token", input: { tokenId: "tok-gob" } }, ctx);

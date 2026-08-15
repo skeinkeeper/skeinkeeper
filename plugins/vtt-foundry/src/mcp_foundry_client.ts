@@ -10,6 +10,7 @@ import type {
   FoundrySceneRef,
   FoundrySceneToken,
   FoundrySearchHit,
+  FoundryTokenDetails,
   FoundryUser,
   FoundryWorldInfo,
   FoundryModuleRef,
@@ -212,6 +213,27 @@ export class McpFoundryClient implements FoundryClient {
     );
   }
 
+  async updateToken(args: {
+    tokenId: string;
+    hidden?: boolean;
+    x?: number;
+    y?: number;
+    sceneId?: string;
+  }): Promise<void> {
+    await this.caller.callTool("update-token", {
+      tokenId: args.tokenId,
+      ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
+      ...(args.x !== undefined ? { x: args.x } : {}),
+      ...(args.y !== undefined ? { y: args.y } : {}),
+      ...(args.sceneId !== undefined ? { sceneId: args.sceneId } : {}),
+    });
+  }
+
+  async getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null> {
+    const res = await this.caller.callTool("get-token-details", { tokenId });
+    return parseTokenDetails(res, tokenId);
+  }
+
   async rollDice(): Promise<FoundryRollResult> {
     // The bridge only exposes interactive rolls (request-player-rolls),
     // which prompt a human in Foundry — not a server-side roll returning a
@@ -261,11 +283,22 @@ export function parseScene(res: unknown): FoundryScene | null {
   const tokens: FoundrySceneToken[] = tokenArr.map((t) => {
     const tr = asRecord(t) ?? {};
     const token: FoundrySceneToken = {
-      actorId: str(tr["actorId"]) ?? str(tr["actor_id"]) ?? str(tr["id"]) ?? "",
+      actorId: str(tr["actorId"]) ?? str(tr["actor_id"]) ?? "",
       name: str(tr["name"]) ?? "(token)",
     };
+    const id = str(tr["id"]) ?? str(tr["_id"]);
+    const hidden = tr["hidden"];
+    const x = num(tr["x"]);
+    const y = num(tr["y"]);
     const disp = num(tr["disposition"]);
-    return disp !== undefined ? { ...token, disposition: disp } : token;
+    return {
+      ...token,
+      ...(id !== undefined ? { id } : {}),
+      ...(typeof hidden === "boolean" ? { hidden } : {}),
+      ...(x !== undefined ? { x } : {}),
+      ...(y !== undefined ? { y } : {}),
+      ...(disp !== undefined ? { disposition: disp } : {}),
+    };
   });
 
   const scene: FoundryScene = {
@@ -324,6 +357,27 @@ function parseModules(info: Record<string, unknown> | null): FoundryModuleRef[] 
     const active = rec?.["active"] === undefined ? undefined : rec["active"] !== false;
     return active !== undefined ? { id, title, active } : { id, title };
   });
+}
+
+function parseTokenDetails(res: unknown, fallbackId: string): FoundryTokenDetails | null {
+  const rec = asRecord(unwrap(res, ["token", "data"])) ?? asRecord(res);
+  if (!rec) return null;
+  const id = str(rec["id"]) ?? str(rec["_id"]) ?? fallbackId;
+  const actorId = str(rec["actorId"]) ?? str(rec["actor_id"]) ?? "";
+  const name = str(rec["name"]) ?? "(token)";
+  const hidden = rec["hidden"] === true;
+  const details: FoundryTokenDetails = { id, actorId, name, hidden };
+  const x = num(rec["x"]);
+  const y = num(rec["y"]);
+  const sceneId = str(rec["sceneId"]) ?? str(rec["scene_id"]);
+  const disp = num(rec["disposition"]);
+  return {
+    ...details,
+    ...(x !== undefined ? { x } : {}),
+    ...(y !== undefined ? { y } : {}),
+    ...(sceneId !== undefined ? { sceneId } : {}),
+    ...(disp !== undefined ? { disposition: disp } : {}),
+  };
 }
 
 function parseSearchHits(res: unknown): FoundrySearchHit[] {

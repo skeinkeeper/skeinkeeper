@@ -247,3 +247,24 @@ describe("McpFoundryClient — intake reads (TDD 0031)", () => {
     expect((await client.searchJournals("Gundren"))[0]?.name).toBe("Gundren");
   });
 });
+
+describe("McpFoundryClient — token visibility (TDD 0033)", () => {
+  it("updateToken wraps update-token", async () => {
+    const caller = new FakeMcpToolCaller({ "update-token": { ok: true } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await client.updateToken({ tokenId: "tok-1", hidden: false });
+    expect(caller.calls[0]).toEqual({
+      name: "update-token",
+      args: { tokenId: "tok-1", hidden: false },
+    });
+  });
+
+  it("getTokenDetails wraps get-token-details", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-token-details": { token: { id: "tok-1", actorId: "a1", name: "Goblin", hidden: true } },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const tok = await client.getTokenDetails("tok-1");
+    expect(tok).toEqual({ id: "tok-1", actorId: "a1", name: "Goblin", hidden: true });
+  });
+});

@@ -12,6 +12,8 @@ export interface ToolHandlerContext {
   tenantDb: TenantDb;
   sessionId: string;
   turnId: string;
+  /** Campaign this turn belongs to (TDD 0033 telemetry). */
+  campaignId?: string;
   /** Per-session transient flags (TDD 0032). Optional for older callers. */
   runState?: SessionRunState;
   /** Caller hint: did this dispatch originate from the LLM or the operator?
@@ -26,6 +28,8 @@ export interface ToolHandlerContext {
   /** Send a private message to the human operator (Discord DM) for setup
    *  escalations (design doc 0023). Present in real sessions. */
   notifyOperator?: (message: string) => Promise<void>;
+  /** Opt-in product analytics (ADR-0009). */
+  analytics?: AnalyticsClient;
 }
 
 export interface ToolDefinition<S extends z.ZodTypeAny, O extends z.ZodTypeAny> {

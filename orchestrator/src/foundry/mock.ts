@@ -9,11 +9,23 @@ import type {
   FoundryPackRef,
   FoundryScene,
   FoundrySceneRef,
+  FoundrySceneToken,
   FoundrySearchHit,
+  FoundryTokenDetails,
   FoundryUser,
   FoundryWorldInfo,
   RollResult,
 } from "./client.js";
+
+interface MutableToken {
+  id: string;
+  actorId: string;
+  name: string;
+  hidden: boolean;
+  x: number;
+  y: number;
+  disposition?: number;
+}
 
 export interface MockFoundryClientOptions {
   system: string;
@@ -43,6 +55,8 @@ export class MockFoundryClient implements FoundryClient {
   private readonly systemName: string;
   private readonly actorsById = new Map<string, FoundryActor>();
   private readonly scenesById = new Map<string, FoundryScene>();
+  private readonly tokensByScene = new Map<string, MutableToken[]>();
+  private tokenSeq = 0;
   private partyActorIds: ReadonlyArray<string>;
   private activeSceneId: string | undefined;
   private modules: ReadonlyArray<FoundryModuleRef>;
@@ -56,6 +70,14 @@ export class MockFoundryClient implements FoundryClient {
     [];
   /** setActiveScene invocations (TDD 0032 activateScene idempotency). */
   readonly sceneSwitches: string[] = [];
+  /** updateToken invocations (TDD 0033). */
+  readonly tokenUpdates: Array<{
+    tokenId: string;
+    hidden?: boolean;
+    x?: number;
+    y?: number;
+    sceneId?: string;
+  }> = [];
   /** Override the deterministic roll result; set by tests. */
   rollResultFor: (formula: string) => RollResult = (formula) => ({
     total: 10,
@@ -68,7 +90,7 @@ export class MockFoundryClient implements FoundryClient {
     this.systemName = opts.systemName ?? opts.system;
     this.connected = opts.connected ?? true;
     for (const a of opts.actors ?? []) this.actorsById.set(a.id, a);
-    for (const s of opts.scenes ?? []) this.scenesById.set(s.id, s);
+    for (const s of opts.scenes ?? []) this.seedScene(s);
     this.partyActorIds = opts.partyActorIds ?? [];
     if (opts.activeSceneId !== undefined) this.activeSceneId = opts.activeSceneId;
     this.modules = opts.modules ?? [];
@@ -108,7 +130,65 @@ export class MockFoundryClient implements FoundryClient {
   }
 
   setScene(scene: FoundryScene): void {
+    this.seedScene(scene);
+  }
+
+  private seedScene(scene: FoundryScene): void {
     this.scenesById.set(scene.id, scene);
+    this.tokensByScene.set(
+      scene.id,
+      scene.tokens.map((t) => this.toMutableToken(t)),
+    );
+  }
+
+  private toMutableToken(t: FoundrySceneToken): MutableToken {
+    this.tokenSeq += 1;
+    const token: MutableToken = {
+      id: t.id ?? `tok-${t.actorId}-${this.tokenSeq}`,
+      actorId: t.actorId,
+      name: t.name,
+      hidden: t.hidden === true,
+      x: t.x ?? 0,
+      y: t.y ?? 0,
+    };
+    if (t.disposition !== undefined) token.disposition = t.disposition;
+    return token;
+  }
+
+  private sceneTokens(sceneId: string): FoundrySceneToken[] {
+    return (this.tokensByScene.get(sceneId) ?? []).map((t) => this.toSceneToken(t));
+  }
+
+  private toSceneToken(t: MutableToken): FoundrySceneToken {
+    const token: FoundrySceneToken = {
+      id: t.id,
+      actorId: t.actorId,
+      name: t.name,
+      hidden: t.hidden,
+      x: t.x,
+      y: t.y,
+    };
+    if (t.disposition !== undefined) token.disposition = t.disposition;
+    return token;
+  }
+
+  private findToken(tokenId: string): { sceneId: string; token: MutableToken } | undefined {
+    for (const [sceneId, tokens] of this.tokensByScene) {
+      const token = tokens.find((t) => t.id === tokenId);
+      if (token !== undefined) return { sceneId, token };
+    }
+    return undefined;
+  }
+
+  private sceneSnapshot(scene: FoundryScene): FoundryScene {
+    const snap: FoundryScene = {
+      id: scene.id,
+      name: scene.name,
+      active: scene.id === this.activeSceneId,
+      tokens: this.sceneTokens(scene.id),
+    };
+    if (scene.description !== undefined) snap.description = scene.description;
+    return snap;
   }
 
   setPartyActorIds(ids: ReadonlyArray<string>): void {
@@ -149,9 +229,8 @@ export class MockFoundryClient implements FoundryClient {
   }
 
   async listSceneActors(sceneId: string): Promise<ReadonlyArray<FoundryActor>> {
-    const scene = this.scenesById.get(sceneId);
-    if (!scene) return [];
-    return scene.tokens
+    if (!this.scenesById.has(sceneId)) return [];
+    return this.sceneTokens(sceneId)
       .map((t) => this.actorsById.get(t.actorId))
       .filter((a): a is FoundryActor => a !== undefined);
   }
@@ -162,7 +241,8 @@ export class MockFoundryClient implements FoundryClient {
 
   async getActiveScene(): Promise<FoundryScene | null> {
     if (this.activeSceneId === undefined) return null;
-    return this.scenesById.get(this.activeSceneId) ?? null;
+    const scene = this.scenesById.get(this.activeSceneId);
+    return scene === undefined ? null : this.sceneSnapshot(scene);
   }
 
   async listScenes(): Promise<ReadonlyArray<FoundrySceneRef>> {
@@ -232,6 +312,38 @@ export class MockFoundryClient implements FoundryClient {
         (s) => s.name.toLowerCase() === sceneIdOrName.toLowerCase(),
       );
     if (scene !== undefined) this.activeSceneId = scene.id;
+  }
+
+  async updateToken(args: {
+    tokenId: string;
+    hidden?: boolean;
+    x?: number;
+    y?: number;
+    sceneId?: string;
+  }): Promise<void> {
+    this.tokenUpdates.push(args);
+    const found = this.findToken(args.tokenId);
+    if (found === undefined) {
+      throw new Error(`token-update-failed: token not found`);
+    }
+    if (args.hidden !== undefined) found.token.hidden = args.hidden;
+    if (args.x !== undefined) found.token.x = args.x;
+    if (args.y !== undefined) found.token.y = args.y;
+  }
+
+  async getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null> {
+    const found = this.findToken(tokenId);
+    if (found === undefined) return null;
+    return {
+      id: found.token.id,
+      actorId: found.token.actorId,
+      name: found.token.name,
+      hidden: found.token.hidden,
+      x: found.token.x,
+      y: found.token.y,
+      sceneId: found.sceneId,
+      ...(found.token.disposition !== undefined ? { disposition: found.token.disposition } : {}),
+    };
   }
 
   async applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void> {

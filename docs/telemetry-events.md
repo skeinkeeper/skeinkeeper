@@ -178,3 +178,51 @@ Fires when one indexing source errors; other sources continue.
 - `campaignId: string` — as above.
 - `source: string` — `world-journal` | `world-scene` | `world-creature` | `world-actor-item`.
 - `reason: string` — error class/message with no journal text or names.
+
+### `action.place_hidden_token` (v1)
+
+Fires when the AI attempts to place a hidden token (TDD 0033).
+
+- `campaignId: string` — campaign identifier (not a name).
+- `sceneId: string` — target scene id (not a name).
+- `actorRefKind: string` — `compendium` | `actor` | `name-pack`.
+- `success: boolean` — whether the placement completed.
+
+### `action.reveal_token` (v1)
+
+Fires when a token is revealed to the table.
+
+- `campaignId: string` — as above.
+- `success: boolean` — whether the bridge ack succeeded.
+
+### `action.hide_token` (v1)
+
+Fires when a token is hidden from the table.
+
+- `campaignId: string` — as above.
+- `success: boolean` — whether the bridge ack succeeded.
+
+### `action.share_journal_to_audience` (v1)
+
+Fires when a journal is shared to a specified audience.
+
+- `campaignId: string` — as above.
+- `audienceKind: string` — `table` | `player` | `gm`.
+- `path: string` — `foundry-public-chat` | `foundry-whisper` | `gm-noop`.
+- `success: boolean` — whether delivery (or the GM no-op) succeeded.
+
+### `action.distribute_loot` (v1)
+
+Fires when loot is distributed to actor inventories.
+
+- `campaignId: string` — as above.
+- `recipientCount: number` — number of actor recipients in the batch.
+- `itemCount: number` — number of item lines attempted.
+- `partialFailure: boolean` — true when any recipient or item did not succeed.
+
+### `perception.event_stream.wired` (v1)
+
+Fires when the Foundry event stream is wired at session start (TDD 0033). Registry name uses an underscore; TDD 0033's `perception.event-stream.wired` is the same event.
+
+- `campaignId: string` — as above.
+- `kind: string` — `null` (v0.5 production default) | `mock` | `real`.

@@ -158,6 +158,51 @@ export const events = {
     description: "One indexing source failed; others continued.",
     props: {} as { campaignId: string; source: string; reason: string },
   },
+  "action.place_hidden_token": {
+    v: 1,
+    description: "Hidden-token placement attempted.",
+    props: {} as {
+      campaignId: string;
+      sceneId: string;
+      actorRefKind: "compendium" | "actor" | "name-pack";
+      success: boolean;
+    },
+  },
+  "action.reveal_token": {
+    v: 1,
+    description: "Token revealed to the table.",
+    props: {} as { campaignId: string; success: boolean },
+  },
+  "action.hide_token": {
+    v: 1,
+    description: "Token hidden from the table.",
+    props: {} as { campaignId: string; success: boolean },
+  },
+  "action.share_journal_to_audience": {
+    v: 1,
+    description: "Journal share attempted, with the path used.",
+    props: {} as {
+      campaignId: string;
+      audienceKind: "table" | "player" | "gm";
+      path: "foundry-public-chat" | "foundry-whisper" | "gm-noop";
+      success: boolean;
+    },
+  },
+  "action.distribute_loot": {
+    v: 1,
+    description: "Loot distribution attempted.",
+    props: {} as {
+      campaignId: string;
+      recipientCount: number;
+      itemCount: number;
+      partialFailure: boolean;
+    },
+  },
+  "perception.event_stream.wired": {
+    v: 1,
+    description: "Foundry event stream wired at session start.",
+    props: {} as { campaignId: string; kind: "null" | "mock" | "real" },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;
