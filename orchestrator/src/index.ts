@@ -16,6 +16,15 @@ export {
 export { rollFormula, type RollResult, type RollOptions } from "./dice.js";
 export { BUILTIN_TOOLS, registerBuiltinTools, createDefaultRegistry } from "./tools/index.js";
 export {
+  JOURNAL_EXCERPT_DEFAULT,
+  TriggeredActionError,
+  distributeLootDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  revealTokenDef,
+  shareJournalToAudienceDef,
+} from "./tools/triggered.js";
+export {
   assembleHotContext,
   formatHotContextAsText,
   type HotContext,

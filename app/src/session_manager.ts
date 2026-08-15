@@ -39,6 +39,7 @@ import {
   kickExtendedIntake,
   loadIntakeConfig,
   MockFoundryClient,
+  NullFoundryEventStream,
   persistFindingResolution,
   persistSurfacedFindings,
   runSessionStartIntake,
@@ -585,6 +586,12 @@ export class SessionManager {
       notifyOperator: (message) => this.dmOperator(message),
       intake: this.intakeState.intake,
       runState: this.runState,
+      foundryEvents: new NullFoundryEventStream(),
+      perceptionKind: "null",
+      isPlayerConsented: (id) => this.deps.consent.isGranted(id),
+      notifyTable: async (text) => {
+        await this.voiceIO?.speak(text);
+      },
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     await this.runIntakeAtStart();
@@ -598,6 +605,7 @@ export class SessionManager {
     this.unsubscribeRoster = presence.subscribe(emitRoster);
 
     this.running = true;
+    this.session.releasePerception();
     this.deps.onEvent?.({ kind: "status", status: "running" });
 
     this.routing = {

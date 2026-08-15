@@ -4,6 +4,13 @@
 import { z } from "zod";
 import { defineTool, ToolRegistry, type AnyToolDefinition } from "../registry.js";
 import { rollFormula } from "../dice.js";
+import {
+  distributeLootDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  revealTokenDef,
+  shareJournalToAudienceDef,
+} from "./triggered.js";
 
 /**
  * Core tools — system-agnostic, owned by Skeinkeeper. Per design doc
@@ -20,6 +27,8 @@ import { rollFormula } from "../dice.js";
  *  - World state: quest flags, party movement, in-game time.
  *  - Player whisper: Discord side, not VTT side.
  *  - Fudge: meta-mechanic, not system-specific.
+ *  - Triggered play actions (TDD 0033): reveal/hide/place tokens, journal
+ *    share, loot distribution.
  */
 
 // ---- roll ----
@@ -243,6 +252,11 @@ export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   fudgeRollDef,
   recordPlayerCharacterDef,
   notifyOperatorDef,
+  revealTokenDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  shareJournalToAudienceDef,
+  distributeLootDef,
 ];
 
 export function registerBuiltinTools(registry: ToolRegistry): void {

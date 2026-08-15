@@ -101,6 +101,8 @@ On Start the orchestrator runs a deterministic **minimum intake** pass (TDD 0031
 
 After extended intake, **autonomous pre-game setup** (TDD 0032) runs without blocking onboarding: activate an unambiguous starting scene, incrementally index world journals/scenes/creatures/actor-items into the cold tier (`coldIndexReady` flips when that finishes), and pre-load party-required compendium actors into the world without placing tokens. Ownership writes are operator-side (TDD 0036). Silence is success — the intake report's "I did the following" footer is the after-the-fact note.
 
+**Live perception** (TDD 0033) is a push `FoundryEventStream` subscribed at session start (events queue until the session is ready). Production v0.5 wires a no-op stream; `MockFoundryEventStream` covers tests. Triggered in-play actions (hidden tokens, journal share, loot) are typed tools over `FoundryClient` — policy for when to fire them lives in the behavior spec.
+
 ## How a turn works
 
 A simplified flow:
@@ -108,7 +110,7 @@ A simplified flow:
 1. **Player speaks** in Discord voice channel.
 2. **VoiceIO** transcribes via STT, attributes to player by Discord user ID.
 3. **Orchestrator** assembles hot context: warm-state snapshot (Foundry read + Skeinkeeper SQLite read) + retrieved cold knowledge + dialogue window + behavior spec.
-4. **LLM call** with tools available. Core tools (system-agnostic), the eight registered today: `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator notes — including the session-intake report). System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
+4. **LLM call** with tools available. Core tools (system-agnostic): `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator notes — including the session-intake report), plus TDD 0033 triggered actions `reveal_token`, `hide_token`, `place_hidden_token`, `share_journal_to_audience`, `distribute_loot`. System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
 5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to MCP calls (reads + scene activation today; broader mutation as the bridge gains it). Either way, the dispatcher writes an audit-log row and returns results to the model.
 6. **Model narrates** over the deterministic outcome.
 7. **VoiceIO** streams TTS back to Discord. Foundry's chat log reflects any actor/scene changes that routed through MCP.
