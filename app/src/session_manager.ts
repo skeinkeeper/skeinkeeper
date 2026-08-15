@@ -978,6 +978,7 @@ export class SessionManager {
   /**
    * Discord DMs after the surface narrowing: consent buttons stay on the
    * interaction path; free-text DMs get a one-time courtesy redirect.
+   * Nothing here dispatches a side-channel turn (TDD 0035).
    */
   private registerConsentOnlyDms(client: Client): void {
     client.on(Events.MessageCreate, (message) => {

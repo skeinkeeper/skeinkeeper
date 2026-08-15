@@ -1,0 +1,23 @@
+name: side-channel-share-anonymity
+description: |
+  TDD 0026 §4.5 / TDD 0035 / behavior spec §11.1: when a private rules
+  question is worth sharing, the AI previews the exact text and offers
+  keep-private / share-anonymously / share-attributed, leaning anonymous.
+  Scripted for CI. Transport is Foundry whisper.
+behavior_spec: default
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: system
+      text: "(PRIVATE Foundry whisper from Dana. The table is stuck on whether a torch lights the whole room.)"
+    - speaker: player
+      text: "Does a torch actually light this whole chamber, or just 20 feet?"
+llm_script:
+  narration: "A torch lights 20 feet brightly and another 20 dim. Worth a quick clarification for everyone? I can say 'Quick clarification for everyone: a torch is 20 bright / 20 dim' without naming you, or 'Dana asked whether a torch lights the whole room.' Default is keep this private."
+  stop_reason: end_turn
+expectations:
+  - kind: not_empty
+    field: narration
+  - kind: contains_any_of
+    field: narration
+    texts: ["Quick clarification", "anonym", "private", "Dana asked"]

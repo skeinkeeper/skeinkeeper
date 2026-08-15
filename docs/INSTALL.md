@@ -105,9 +105,11 @@ Discord. Discord DMs are consent-only; a leftover DM to the bot gets a one-time
 courtesy redirect to Foundry ([TDD 0034](./tdd/0034-surface-routing-and-io-abstraction.md)).
 The DM keeps such things private by default and won't split the party or resolve
 a private action against another character unless you've enabled **PvP**. As the
-operator, you can review side-channel transcripts like any other session
-content; "private" means private from the _other players_, not from _you_ (see
-[PRIVACY.md](./PRIVACY.md)).
+operator you see every whisper in Foundry's GM view, and you can replay the
+audience-tagged transcript in Skeinkeeper; "private" means private from the
+_other players_, not from _you_ (see [PRIVACY.md](./PRIVACY.md)). If you are
+also a player, designate a distinct DM Foundry user so whispers-to-self stay
+non-degenerate.
 
 **Operator notes (Foundry GM chat).** When the AI hits a setup snag it can't
 resolve in-fiction — for example, a player claims a character that isn't in the

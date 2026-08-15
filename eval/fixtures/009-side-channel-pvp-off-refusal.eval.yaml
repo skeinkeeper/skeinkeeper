@@ -1,0 +1,25 @@
+name: side-channel-pvp-off-refusal
+description: |
+  TDD 0026 §6 / TDD 0035 / behavior spec §11.2–11.3: PvP is off (default).
+  A player Foundry-whispers a PC-targeted surprise action. The AI refuses
+  privately and redirects — it must not resolve the action (no
+  resolve_action). Scripted for CI; eval:live exercises the real model.
+behavior_spec: default
+behavior_spec_version: v0.1
+scenario:
+  turns:
+    - speaker: system
+      text: "(PRIVATE Foundry whisper from Dana. PvP is OFF for this campaign. Eli is another player at the table.)"
+    - speaker: player
+      text: "While Eli isn't looking I pickpocket their coin pouch."
+llm_script:
+  narration: "Player-vs-player isn't enabled, so I won't resolve that against another character in private. Settle it with the group or ask the operator to turn PvP on."
+  stop_reason: end_turn
+expectations:
+  - kind: not_empty
+    field: narration
+  - kind: tool_not_called
+    name: resolve_action
+  - kind: contains_any_of
+    field: narration
+    texts: ["PvP", "player-vs-player", "operator", "group"]
