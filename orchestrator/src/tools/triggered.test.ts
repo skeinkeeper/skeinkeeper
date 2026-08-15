@@ -10,6 +10,7 @@ import {
   hideTokenDef,
   placeHiddenTokenDef,
   revealTokenDef,
+  shareJournalToAudienceDef,
 } from "./triggered.js";
 import { ToolRegistry } from "../registry.js";
 
@@ -40,6 +41,7 @@ function setup() {
   registry.register(hideTokenDef);
   registry.register(distributeLootDef);
   registry.register(placeHiddenTokenDef);
+  registry.register(shareJournalToAudienceDef);
   const analytics = { track: vi.fn(), flush: vi.fn().mockResolvedValue(undefined) };
   return {
     tenantDb,
@@ -395,5 +397,152 @@ describe("place_hidden_token", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/scene-changed-mid-action/);
     expect(foundry.createdTokens).toEqual([]);
+  });
+});
+
+describe("share_journal_to_audience", () => {
+  function journalFoundry() {
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      journals: [
+        {
+          id: "j-note",
+          name: "Sildar's Letter",
+          text: "Meet me at the inn. ".repeat(200),
+          pages: [{ id: "p1", name: "Body", text: "Short page body." }],
+        },
+      ],
+    });
+    return foundry;
+  }
+
+  it("table audience writes table dialogue and does not whisper players", async () => {
+    const { tenantDb, dispatcher, analytics } = setup();
+    const foundry = journalFoundry();
+    const table: string[] = [];
+    const whispers: Array<{ playerId: string; text: string }> = [];
+    const result = await dispatcher.dispatch(
+      { name: "share_journal_to_audience", input: { journalId: "j-note", audience: "table" } },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        analytics,
+        notifyTable: async (text) => {
+          table.push(text);
+        },
+        whisperPlayer: async (playerId, text) => {
+          whispers.push({ playerId, text });
+        },
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const out = result.output as { path: string; audienceKind: string };
+      expect(out.path).toBe("foundry-public-chat");
+      expect(out.audienceKind).toBe("table");
+    }
+    expect(table.length).toBe(1);
+    expect(table[0]).toContain("Sildar's Letter");
+    expect(whispers).toEqual([]);
+    const rows = tenantDb.dialogue.listBySession("s");
+    expect(rows.every((r) => r.audience === "table")).toBe(true);
+    expect(analytics.track).toHaveBeenCalledWith(
+      "action.share_journal_to_audience",
+      expect.objectContaining({
+        audienceKind: "table",
+        path: "foundry-public-chat",
+        success: true,
+      }),
+    );
+  });
+
+  it("player audience frames a whisper and leaves other players untouched", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = journalFoundry();
+    const whispers: Array<{ playerId: string; text: string }> = [];
+    const result = await dispatcher.dispatch(
+      {
+        name: "share_journal_to_audience",
+        input: { journalId: "j-note", audience: "player:p1", excerpt: { chars: 40 } },
+      },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        isPlayerConsented: (id) => id === "p1",
+        whisperPlayer: async (playerId, text) => {
+          whispers.push({ playerId, text });
+        },
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.output as { path: string }).path).toBe("foundry-whisper");
+    expect(whispers).toHaveLength(1);
+    expect(whispers[0]?.playerId).toBe("p1");
+    expect(whispers[0]?.text).toContain("*A note slips into your hand:*");
+    expect(whispers[0]?.text).toContain("Sildar's Letter");
+    expect(whispers[0]?.text).toContain("ask your DM to share");
+    expect(whispers[0]?.text.length).toBeLessThan(400);
+    const rows = tenantDb.dialogue.listBySession("s");
+    expect(rows.map((r) => r.audience)).toEqual(["player:p1"]);
+  });
+
+  it("rejects a non-consented player audience", async () => {
+    const { tenantDb, dispatcher } = setup();
+    const foundry = journalFoundry();
+    const whispers: string[] = [];
+    const result = await dispatcher.dispatch(
+      {
+        name: "share_journal_to_audience",
+        input: { journalId: "j-note", audience: "player:p2" },
+      },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        isPlayerConsented: () => false,
+        whisperPlayer: async (text) => {
+          whispers.push(text);
+        },
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/consent-rejected/);
+    expect(whispers).toEqual([]);
+    expect(tenantDb.dialogue.listBySession("s")).toEqual([]);
+  });
+
+  it("gm audience is a no-op success", async () => {
+    const { tenantDb, dispatcher, analytics } = setup();
+    const foundry = journalFoundry();
+    const result = await dispatcher.dispatch(
+      { name: "share_journal_to_audience", input: { journalId: "j-note", audience: "gm" } },
+      {
+        tenantDb,
+        sessionId: "s",
+        turnId: "t",
+        caller: "llm",
+        foundry,
+        campaignId: "c1",
+        analytics,
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.output as { path: string }).path).toBe("gm-noop");
+    expect(tenantDb.dialogue.listBySession("s")).toEqual([]);
+    expect(analytics.track).toHaveBeenCalledWith(
+      "action.share_journal_to_audience",
+      expect.objectContaining({ audienceKind: "gm", path: "gm-noop", success: true }),
+    );
   });
 });
