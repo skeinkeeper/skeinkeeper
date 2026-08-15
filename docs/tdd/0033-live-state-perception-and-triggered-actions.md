@@ -1,6 +1,6 @@
 # TDD 0033: Live State Perception & Triggered Actions
 
-Status: draft
+Status: implemented
 PRD refs: 4.8
 PRD-rev: 5c3a198
 ADR constraints: 0003, 0008, 0010, 0017, 0018, 0023, 0024, 0029, 0030
@@ -256,15 +256,15 @@ state introduced by this TDD.
 
 ## Requirement traceability
 
-| PRD ref                                     | Requirement                                                                                                                          | Satisfied by                                                                                                                                                                                              |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 4.8 (place tokens with `hidden` visibility) | "The AI can place tokens with `hidden` visibility"                                                                                   | `place_hidden_token` → TDD 0042 `createToken({ hidden: true })` |
-| 4.8 (reveal tokens)                         | "reveal them when narratively appropriate"                                                                                           | `reveal_token` tool; `update-token hidden:false`                                                                                                                                                          |
-| 4.8 (share journals to audience)            | "share journal entries with a specified audience (`table` / `player:<id>`, per §4.7)"                                                | `share_journal_to_audience` tool with per-audience branching; Foundry-whisper fallback (TDD 0035) for player audience until the upstream lands                                                            |
-| 4.8 (distribute loot)                       | "distribute loot to actor inventories"                                                                                               | `distribute_loot` tool; `add-actor-items` per item                                                                                                                                                        |
-| 4.8 (live state perception)                 | "subscribes to Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access" | TDD 0041 `evt` channel extended by this TDD with `scene`/`token`/`combat`/`actor`/`journal`; no third-party connector |
-| 4.8 (Discord voice presence)                | "and to Discord voice presence"                                                                                                      | Voice presence shipped in the legacy onboarding TDD (`VoiceIO.presence`); the responsibility now lives in TDD 0036 (which supersedes TDD 0023); not re-designed here                                      |
-| 4.8 (behavior policy separation)            | "behavior spec's job (per §4.3)" — trigger _policy_ lives in the behavior spec                                                       | Tools are platform capabilities; per-action policy is out of scope per ADR-0006                                                                                                                           |
+| PRD ref                                     | Requirement                                                                                                                          | Satisfied by                                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.8 (place tokens with `hidden` visibility) | "The AI can place tokens with `hidden` visibility"                                                                                   | `place_hidden_token` → TDD 0042 `createToken({ hidden: true })`                                                                                                      |
+| 4.8 (reveal tokens)                         | "reveal them when narratively appropriate"                                                                                           | `reveal_token` tool; `update-token hidden:false`                                                                                                                     |
+| 4.8 (share journals to audience)            | "share journal entries with a specified audience (`table` / `player:<id>`, per §4.7)"                                                | `share_journal_to_audience` tool with per-audience branching; Foundry-whisper fallback (TDD 0035) for player audience until the upstream lands                       |
+| 4.8 (distribute loot)                       | "distribute loot to actor inventories"                                                                                               | `distribute_loot` tool; `add-actor-items` per item                                                                                                                   |
+| 4.8 (live state perception)                 | "subscribes to Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access" | TDD 0041 `evt` channel extended by this TDD with `scene`/`token`/`combat`/`actor`/`journal`; no third-party connector                                                |
+| 4.8 (Discord voice presence)                | "and to Discord voice presence"                                                                                                      | Voice presence shipped in the legacy onboarding TDD (`VoiceIO.presence`); the responsibility now lives in TDD 0036 (which supersedes TDD 0023); not re-designed here |
+| 4.8 (behavior policy separation)            | "behavior spec's job (per §4.3)" — trigger _policy_ lives in the behavior spec                                                       | Tools are platform capabilities; per-action policy is out of scope per ADR-0006                                                                                      |
 
 ## Dependencies considered
 
@@ -374,11 +374,11 @@ Scenario fixtures required before this ships:
 
 ## Evaluation rubric
 
-| Criterion | High-quality | Acceptable | Failing |
-| --- | --- | --- | --- |
-| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
-| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
-| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
-| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
-| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
-| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
+| Criterion                       | High-quality                                                                                       | Acceptable                                                   | Failing                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Requirement traceability        | Every in-scope FR/NFR maps to a named interface, type, or step                                     | One mapping is slightly coarse but still findable            | An in-scope FR has no row, or the row is "handled in code"        |
+| Interface concreteness          | Method names, args, return types, and error cases are specified                                    | Types are named; one edge payload is implied                 | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason                                    | No new dep, and the section says why                         | New dep with empty or "none considered" analysis                  |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named                                   | Observable but one scenario is console-only                  | Non-actionable plan (no surface, no observation point)            |
+| Scope-bound adherence           | Touched files ≤8, body ≤500, per-file estimates present                                            | One justified exception marker                               | Silent over-bound or missing Touched files / Expected diff        |
+| Naming consistency              | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name                  |
