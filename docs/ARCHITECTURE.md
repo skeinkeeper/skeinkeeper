@@ -40,7 +40,7 @@ Skeinkeeper is a single-process application that an operator runs on one machine
       │  Local State   │
       │ (SQLite +      │   AI-DM-side state only — campaign metadata,
       │  LanceDB +     │   sessions, audit log, consents, quest flags,
-      │  audit log)    │   cold + episodic memory (LanceDB, TDD 0019)
+      │  audit log)    │   intake findings (TDD 0031), cold + episodic memory (LanceDB, TDD 0019)
       └────────────────┘
 ```
 
@@ -95,6 +95,10 @@ A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-int
 
 See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP bridge choice (supersedes [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md)) and [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
 
+## Session intake
+
+On Start the orchestrator runs a deterministic **minimum intake** pass (TDD 0031) against `FoundryClient` + warm state: identify the Foundry system, enumerate party-actor candidates, and classify critical gaps. Unresolved criticals block the onboarding "I'm ready" announcement. **Extended intake** (modules, scenes, packs, ownership, recommendations) is kicked off in parallel with onboarding and does not block the first turn. Findings are delivered as one structured `notify_operator` message (Critical / I need a decision / For your info). The operator resolves them on the web console via `SessionManager.resolveIntakeFinding` (Foundry chat-command parity lands in TDD 0040).
+
 ## How a turn works
 
 A simplified flow:
@@ -102,7 +106,7 @@ A simplified flow:
 1. **Player speaks** in Discord voice channel.
 2. **VoiceIO** transcribes via STT, attributes to player by Discord user ID.
 3. **Orchestrator** assembles hot context: warm-state snapshot (Foundry read + Skeinkeeper SQLite read) + retrieved cold knowledge + dialogue window + behavior spec.
-4. **LLM call** with tools available. Core tools (system-agnostic), the eight registered today: `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator DM for setup escalations). System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
+4. **LLM call** with tools available. Core tools (system-agnostic), the eight registered today: `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator notes — including the session-intake report). System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
 5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to MCP calls (reads + scene activation today; broader mutation as the bridge gains it). Either way, the dispatcher writes an audit-log row and returns results to the model.
 6. **Model narrates** over the deterministic outcome.
 7. **VoiceIO** streams TTS back to Discord. Foundry's chat log reflects any actor/scene changes that routed through MCP.

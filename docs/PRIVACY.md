@@ -23,6 +23,7 @@ What Skeinkeeper stores:
 - **Operator setting** — the Discord user ID of the **operator** who receives setup-note DMs, when you designate yourself in the console or via `/skeinkeeper operator claim`. It's the operator's own ID (operator config, not data collected about a player); removed when the campaign is deleted.
 - **Session transcripts** — the text of what was said, both player utterances and AI narration
 - **Audit log** — every tool call, state mutation, and AI decision, with timestamps
+- **Intake findings** — PII-free session-start classifications (stable codes + rubric summaries) in `session_intake_finding`. Cascades on campaign/tenant delete. Not personal data about players.
 - **Episodic memory** — structured summaries of past sessions, embedded for retrieval
 - **Consent records** — per-player records of voice processing consent
 - **Deletion log** — anonymous record that an erasure happened (no personally-identifying content)
