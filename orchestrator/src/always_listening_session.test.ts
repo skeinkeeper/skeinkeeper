@@ -237,6 +237,24 @@ describe("runAlwaysListeningSession", () => {
     expect(voiceIO.spoken.map((s) => s.text)).toEqual(["Welcome to the table."]);
   });
 
+  it("does not announce ready / onboard while minimum intake is blocked", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome to the table.");
+    const { session } = setupSession(llm);
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:alice", displayName: "Alice" }]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      intakeReady: () => false,
+    });
+    expect(result.onboardingCount).toBe(0);
+    expect(result.turnCount).toBe(0);
+    expect(voiceIO.spoken).toHaveLength(0);
+  });
+
   it("does not re-greet a member after onboarding them", async () => {
     const llm = deciderAndNarration('{"respond": false}', "Welcome.");
     const { session } = setupSession(llm);
