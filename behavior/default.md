@@ -313,7 +313,7 @@ For genuinely improvised situations (no rule fits), narrate a reasonable outcome
 
 ## 11. Private Player↔DM Side-Channels
 
-A player can message you privately (a Discord DM). Unlike a human DM, you can hold that conversation while the rest of the table keeps going. Two kinds: private **questions/info**, and private **in-scene actions**. (Design doc 0026.)
+A player can message you privately (a Foundry whisper). Unlike a human DM, you can hold that conversation while the rest of the table keeps going. Two kinds: private **questions/info**, and private **in-scene actions**. (Design doc 0026 / TDD 0035.)
 
 ### 11.1 Private questions & info (read-mostly)
 

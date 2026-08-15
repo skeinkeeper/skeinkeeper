@@ -60,9 +60,9 @@ It serves the **operator console** at `http://localhost:3000`. From there you:
 - Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([TDD 0026](./tdd/0026-player-dm-side-channels.md)).
 - _(Optional)_ Watch the **live feed**: each respond/skip decision, the DM's turns, consent prompts.
 
-During play you only need to watch **Foundry + Discord** — operator notes come to
-you as Discord DMs (see "Operator notes" below), so the console's live feed is
-optional observability, not something you have to babysit.
+During play you only need to watch **Foundry + Discord voice** — operator notes
+come to you as Foundry GM chat (see "Operator notes" below), so the console's
+live feed is optional observability, not something you have to babysit.
 
 **Same controls from Discord.** Every operator control above is also a slash
 command, and the two surfaces stay in sync live — change the DM voice in Discord
@@ -100,19 +100,20 @@ bot DMs them the consent text; they grant or withdraw with
 transcribed until consent is granted. Note the consent text discloses that the
 campaign's **shared memory** is not individually erasable ([ADR-0014](./adr/0014-episodic-memory-campaign-scoped-erasure.md)).
 
-**Private side-channels.** A player can **DM the bot directly** for a side
-question or a surprise action — the DM answers privately, and what's said stays
-out of the other players' view ([TDD 0026](./tdd/0026-player-dm-side-channels.md)).
+**Private side-channels.** A player whispers the DM **in Foundry**, not on
+Discord. Discord DMs are consent-only; a leftover DM to the bot gets a one-time
+courtesy redirect to Foundry ([TDD 0034](./tdd/0034-surface-routing-and-io-abstraction.md)).
 The DM keeps such things private by default and won't split the party or resolve
 a private action against another character unless you've enabled **PvP**. As the
 operator, you can review side-channel transcripts like any other session
 content; "private" means private from the _other players_, not from _you_ (see
 [PRIVACY.md](./PRIVACY.md)).
 
-**Operator notes (Discord).** When the AI hits a setup snag it can't resolve
-in-fiction — for example, a player claims a character that isn't in the world —
-it DMs _you_. Players never see these notes. Designate yourself the operator any
-of three ways ([TDD 0024](./tdd/0024-operator-self-designation.md)):
+**Operator notes (Foundry GM chat).** When the AI hits a setup snag it can't
+resolve in-fiction — for example, a player claims a character that isn't in the
+world — it posts a GM-only Foundry chat message. Players never see these notes.
+Designate yourself the operator any of three ways
+([TDD 0024](./tdd/0024-operator-self-designation.md)):
 
 - **In Discord:** type `/skeinkeeper operator claim` — you become the operator;
   no IDs or usernames needed. (`clear` / `show` manage it.) `claim`/`clear`

@@ -71,7 +71,7 @@ To be a present DM, Skeinkeeper transcribes the table's ongoing conversation con
 
 Skeinkeeper also reads **who is in the voice channel** (Discord user IDs + display names) so it can welcome newcomers and run the session-start introductions. This presence signal is used transiently in the moment — it is not a new stored record beyond the player↔character map and consent records already listed above.
 
-**Operator notes go to the operator over Discord DM.** When the AI hits a setup problem it can't resolve in-fiction (for example, a player names a character that isn't in the Foundry world), it sends a private Discord DM to the operator. Players never see these notes. They carry campaign-operational details (a player's display name, a character name) — nothing beyond what's already covered above. The note _messages_ aren't stored; the only thing persisted is the operator's own Discord ID (the "Operator setting" above), so Skeinkeeper knows whom to DM.
+**Operator notes go to Foundry GM chat.** When the AI hits a setup problem it can't resolve in-fiction (for example, a player names a character that isn't in the Foundry world), it posts a GM-only Foundry chat message (and whispers the operator's Foundry user when one is known). Players never see these notes. They carry campaign-operational details (a player's display name, a character name) — nothing beyond what's already covered above. The note _messages_ live in Foundry's chat log, not in Skeinkeeper. Discord DMs are used only for the one-time voice-consent prompt (and a one-time courtesy redirect if a player DMs the bot after side-channels moved to Foundry).
 
 This consent is per-player, recorded with a timestamp and the version of the consent text shown.
 

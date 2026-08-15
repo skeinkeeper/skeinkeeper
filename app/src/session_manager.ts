@@ -22,10 +22,22 @@ import {
   joinVoiceChannel,
   type VoiceConnection,
 } from "@discordjs/voice";
-import { DiscordVoiceIO, type PresenceSource } from "@skeinkeeper/voice-discord";
+import {
+  DiscordConsentSurface,
+  DiscordVoiceIO,
+  DiscordVoiceSurface,
+  type PresenceSource,
+} from "@skeinkeeper/voice-discord";
+import {
+  FoundryChatCommandSurface,
+  FoundryGmChatSurface,
+  FoundryPublicChatSurface,
+  FoundryWhisperSurface,
+} from "@skeinkeeper/vtt-foundry";
 import {
   Mutex,
   PVP_SETTING_KEY,
+  SurfaceRouter,
   ToolDispatcher,
   activateScene,
   archiveSession,
@@ -49,7 +61,6 @@ import {
   loadBehaviorSpec,
   pvpEnabledFromSetting,
   runAlwaysListeningSession,
-  runTurn,
   startSession,
   VOICE_CONSENT_TEXT,
   type Eagerness,
@@ -57,12 +68,13 @@ import {
   type IntakeFinding,
   type IntakeResolutionState,
   type IntakeResolveResult,
+  type FoundryClient,
   type MemoryStore,
   type PresenceMember,
   type Session,
   type VoiceIO,
 } from "@skeinkeeper/orchestrator";
-import { playerAudience, playerConversation, type TenantDb } from "@skeinkeeper/server";
+import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { AppConfig } from "./config.js";
 import type { ConsentService } from "./consent.js";
@@ -193,6 +205,8 @@ export class SessionManager {
   private intakeReadyFlag = true;
   private extendedStarted = false;
   private runState = createSessionRunState();
+  private surfaces: SurfaceRouter | null = null;
+  private consentSurface: DiscordConsentSurface | null = null;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -333,7 +347,7 @@ export class SessionManager {
     this.emitIntakeEvent();
     if (result.report.text.length > 0) {
       try {
-        await this.dmOperator(result.report.text);
+        await this.emitOperatorNote(result.report.text);
       } catch {
         // notify_operator reports undelivered; gate still blocks
       }
@@ -369,7 +383,7 @@ export class SessionManager {
       ...(extended.actions !== undefined ? { actions: extended.actions } : {}),
     });
     if (report.text.length > 0) {
-      void this.dmOperator(report.text).catch(() => undefined);
+      void this.emitOperatorNote(report.text).catch(() => undefined);
     }
   }
 
@@ -452,6 +466,8 @@ export class SessionManager {
     this.voiceChannel = null;
     this.client = null;
     this.connection = null;
+    this.surfaces = null;
+    this.consentSurface = null;
   }
 
   private async doStart(): Promise<void> {
@@ -462,7 +478,7 @@ export class SessionManager {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
-        // Inbound player DMs are the side-channel transport (design doc 0026 §7).
+        // Consent DMs + the one-time courtesy redirect (TDD 0034).
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
       ],
@@ -470,7 +486,7 @@ export class SessionManager {
       partials: [Partials.Channel, Partials.Message],
     });
     this.client = client;
-    this.registerSideChannelDms(client);
+    this.registerConsentOnlyDms(client);
     const ready = new Promise<void>((resolve) => client.once(Events.ClientReady, () => resolve()));
     await client.login(config.discord.botToken);
     await ready;
@@ -570,49 +586,11 @@ export class SessionManager {
       // Minimum intake fails fast as FOUNDRY_NOT_CONNECTED (TDD 0031).
       foundry = new MockFoundryClient({ system: "", connected: false });
     }
-    // Operator escalations reach the human via Discord DM (design docs 0023,
-    // 0024). The closure reads the operator live, so a designation set/changed
-    // mid-session (console or slash command) takes effect immediately.
-    this.session = startSession({
-      sessionId: `sess-${Date.now()}`,
-      campaignId: this.deps.campaignId,
-      behaviorSpec,
-      llm: providers.llm,
-      dispatcher,
-      foundry,
-      tenantDb: this.deps.tenantDb,
-      eagerness: this.controls.eagerness,
-      memory: { embed: providers.embed, store: this.deps.memoryStore },
-      notifyOperator: (message) => this.dmOperator(message),
-      intake: this.intakeState.intake,
-      runState: this.runState,
-      foundryEvents: new NullFoundryEventStream(),
-      perceptionKind: "null",
-      isPlayerConsented: (id) => this.deps.consent.isGranted(id),
-      notifyTable: async (text) => {
-        await this.voiceIO?.speak(text);
-      },
-      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
-    });
-    await this.runIntakeAtStart();
-
-    // Resolve a username typed before the bot was online (design doc 0024 §1),
-    // and surface the initial operator + voice roster to the console.
-    await this.resolvePendingOperator();
-    this.emitOperatorEvent();
-    const emitRoster = (members: ReadonlyArray<PresenceMember>): void => this.emitRoster(members);
-    emitRoster(presence.current());
-    this.unsubscribeRoster = presence.subscribe(emitRoster);
-
-    this.running = true;
-    this.session.releasePerception();
-    this.deps.onEvent?.({ kind: "status", status: "running" });
-
-    this.routing = {
+    const routing = {
       dmVoiceId: this.controls.dmVoiceId,
-      getNpcVoice: (key) =>
+      getNpcVoice: (key: string) =>
         this.deps.tenantDb.voiceAssignments.get(this.deps.campaignId, "npc", key)?.providerVoiceId,
-      assignNpcVoice: async (key) => {
+      assignNpcVoice: async (key: string) => {
         const voices = await providers.voiceLibrary.list();
         const a = await assignNpcVoiceLLM(providers.llm, {
           npcKey: key,
@@ -630,6 +608,49 @@ export class SessionManager {
         return a.providerVoiceId;
       },
     };
+    this.routing = routing;
+    const surfaces = this.buildSurfaceRouter(foundry, voiceIO, client, routing);
+    this.surfaces = surfaces;
+    // Operator escalations land in Foundry GM chat (TDD 0034). The router
+    // fans `gm` + escalation to GM chat and, when known, a whisper.
+    this.session = startSession({
+      sessionId: `sess-${Date.now()}`,
+      campaignId: this.deps.campaignId,
+      behaviorSpec,
+      llm: providers.llm,
+      dispatcher,
+      foundry,
+      tenantDb: this.deps.tenantDb,
+      eagerness: this.controls.eagerness,
+      memory: { embed: providers.embed, store: this.deps.memoryStore },
+      notifyOperator: (message) => this.emitOperatorNote(message),
+      intake: this.intakeState.intake,
+      runState: this.runState,
+      foundryEvents: new NullFoundryEventStream(),
+      perceptionKind: "null",
+      isPlayerConsented: (id) => this.deps.consent.isGranted(id),
+      notifyTable: async (text) => {
+        await surfaces.emit({ audience: { kind: "table" }, text });
+      },
+      whisperPlayer: async (playerId, text) => {
+        await surfaces.emit({ audience: { kind: "player", playerId }, text });
+      },
+      surfaces,
+      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+    });
+    await this.runIntakeAtStart();
+
+    // Resolve a username typed before the bot was online (design doc 0024 §1),
+    // and surface the initial operator + voice roster to the console.
+    await this.resolvePendingOperator();
+    this.emitOperatorEvent();
+    const emitRoster = (members: ReadonlyArray<PresenceMember>): void => this.emitRoster(members);
+    emitRoster(presence.current());
+    this.unsubscribeRoster = presence.subscribe(emitRoster);
+
+    this.running = true;
+    this.session.releasePerception();
+    this.deps.onEvent?.({ kind: "status", status: "running" });
 
     this.loopPromise = runAlwaysListeningSession({
       voiceIO,
@@ -678,6 +699,8 @@ export class SessionManager {
     this.presenceSource = null;
     this.guild = null;
     this.voiceChannel = null;
+    this.surfaces = null;
+    this.consentSurface = null;
     this.extendedStarted = false;
     this.intakeReadyFlag = true;
     this.runState = createSessionRunState();
@@ -878,89 +901,81 @@ export class SessionManager {
     });
   }
 
-  /**
-   * DM the operator a setup note (design docs 0023, 0024). Reads the operator
-   * live so a mid-session designation works. Throws when no operator is set so
-   * the notify_operator tool reports undelivered; logs a degraded fallback.
-   */
-  private async dmOperator(message: string): Promise<void> {
-    const id = this.operator.get();
-    if (id === undefined || this.client === null) {
-      // Degraded fallback when no operator is designated (design doc 0024 §4).
-      console.warn(`[operator note — no operator set] ${message}`);
-      throw new Error("no operator designated");
-    }
-    const user = await this.client.users.fetch(id);
-    await user.send({ content: `🧵 **Skeinkeeper (operator note):** ${message}` });
+  private buildSurfaceRouter(
+    foundry: FoundryClient,
+    voiceIO: VoiceIO,
+    client: Client,
+    voiceRouting: NonNullable<SessionManager["routing"]>,
+  ): SurfaceRouter {
+    const router = new SurfaceRouter({
+      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+      hashPlayerId: (id) => this.deps.tenantDb.piiCrypto.hash(id),
+    });
+    const consent = new DiscordConsentSurface({
+      sendDm: async (discordId, text) => {
+        const user = await client.users.fetch(discordId);
+        await user.send({ content: text });
+      },
+    });
+    this.consentSurface = consent;
+    const gm = new FoundryGmChatSurface({ client: foundry });
+    router.register(new DiscordVoiceSurface(voiceIO, voiceRouting));
+    router.register(consent);
+    router.register(new FoundryPublicChatSurface({ client: foundry }));
+    router.register(new FoundryWhisperSurface({ client: foundry }));
+    router.register(gm);
+    router.register(
+      new FoundryChatCommandSurface({
+        client: foundry,
+        reply: gm,
+        ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+      }),
+    );
+    return router;
   }
 
   /**
-   * Inbound side-channel transport (design doc 0026 §7): a player DMs the bot.
-   * Each DM is routed to that player's 1:1 conversation and run as a private
-   * side-channel turn (player audience + conversationId, orchestration tier),
-   * with the answer delivered back in the DM. The structural audience scoping
-   * (design doc 0026 §10) keeps other players' private content and `gm` secrets
-   * out of the turn entirely. LIVE-VALIDATION REQUIRED.
+   * Operator notes via Foundry GM chat (TDD 0034). Logs and throws when the
+   * emit has no successful surface so notify_operator reports undelivered.
    */
-  private registerSideChannelDms(client: Client): void {
+  private async emitOperatorNote(message: string): Promise<void> {
+    const router = this.surfaces;
+    if (router === null) {
+      console.warn(`[operator note — no surface router] ${message}`);
+      throw new Error("no operator surface");
+    }
+    const report = await router.emit({
+      audience: { kind: "gm" },
+      text: message,
+      meta: { escalation: true },
+    });
+    if (report.perSurface.every((p) => p.status === "failed")) {
+      console.warn(`[operator note — emit failed] ${message}`);
+      throw new Error(report.perSurface[0]?.error ?? "surface emit failed");
+    }
+  }
+
+  /**
+   * Discord DMs after the surface narrowing: consent buttons stay on the
+   * interaction path; free-text DMs get a one-time courtesy redirect.
+   */
+  private registerConsentOnlyDms(client: Client): void {
     client.on(Events.MessageCreate, (message) => {
-      void this.handleSideChannelDm(message);
+      void this.handleConsentOnlyDm(message);
     });
   }
 
-  private async handleSideChannelDm(message: Message): Promise<void> {
+  private async handleConsentOnlyDm(message: Message): Promise<void> {
     if (message.author.bot) return;
-    if (message.guildId !== null) return; // DMs only, never a guild channel
-    const text = message.content.trim();
-    if (text.length === 0) return;
-    const session = this.session;
-    if (session === null || !this.running) return;
-
+    if (message.guildId !== null) return;
+    if (message.content.trim().length === 0) return;
+    if (!this.running) return;
     const authorId = message.author.id;
-    // Only actual table participants get a side-channel — a random DM to the bot
-    // shouldn't spin up a turn.
     if (!this.isTableParticipant(authorId)) return;
-
     try {
-      if ("sendTyping" in message.channel) {
-        await message.channel.sendTyping(); // the "thinking…" signal (0026 §10)
-      }
+      await this.consentSurface?.handleNonConsentDm(authorId);
     } catch {
-      // typing indicator is best-effort
-    }
-
-    const displayName =
-      this.guild?.members.cache.get(authorId)?.displayName ?? message.author.username;
-    // Read PvP once, at initiation (0026 §6), and surface it so the model can
-    // apply the §11.3 gate for any PC-targeting action it's asked to resolve.
-    const pvpNote = this.controls.pvpEnabled
-      ? "PvP is ENABLED for this campaign."
-      : "PvP is DISABLED for this campaign — do not resolve an action against another player's character in private; refuse and redirect to the group.";
-
-    try {
-      const turn = await runTurn(
-        session,
-        { speaker: authorId, displayName, text },
-        {
-          conversation: {
-            id: playerConversation(this.deps.tenantDb.piiCrypto, authorId),
-            audience: playerAudience(this.deps.tenantDb.piiCrypto, authorId),
-          },
-          modelTier: "orchestration",
-          systemNote: pvpNote,
-        },
-      );
-      if (turn.narration.trim().length > 0) {
-        await message.reply(turn.narration);
-      }
-    } catch {
-      try {
-        await message.reply(
-          "(Something went wrong handling that privately — try again, or raise it at the table.)",
-        );
-      } catch {
-        // give up if even the fallback reply fails
-      }
+      // courtesy reply is best-effort
     }
   }
 
