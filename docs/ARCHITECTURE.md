@@ -99,6 +99,8 @@ See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP
 
 On Start the orchestrator runs a deterministic **minimum intake** pass (TDD 0031) against `FoundryClient` + warm state: identify the Foundry system, enumerate party-actor candidates, and classify critical gaps. Unresolved criticals block the onboarding "I'm ready" announcement. **Extended intake** (modules, scenes, packs, ownership, recommendations) is kicked off in parallel with onboarding and does not block the first turn. Findings are delivered as one structured `notify_operator` message (Critical / I need a decision / For your info). The operator resolves them on the web console via `SessionManager.resolveIntakeFinding` (Foundry chat-command parity lands in TDD 0040).
 
+After extended intake, **autonomous pre-game setup** (TDD 0032) runs without blocking onboarding: activate an unambiguous starting scene, incrementally index world journals/scenes/creatures/actor-items into the cold tier (`coldIndexReady` flips when that finishes), and pre-load party-required compendium actors into the world without placing tokens. Ownership writes are operator-side (TDD 0036). Silence is success — the intake report's "I did the following" footer is the after-the-fact note.
+
 ## How a turn works
 
 A simplified flow:

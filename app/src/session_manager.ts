@@ -31,6 +31,8 @@ import {
   archiveSession,
   announceReadyAllowed,
   applyIntakeResolution,
+  createSessionRunState,
+  foundryWorldContentReader,
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
   createIntakeResolutionState,
@@ -190,6 +192,7 @@ export class SessionManager {
   private intakeState: IntakeResolutionState = createIntakeResolutionState([]);
   private intakeReadyFlag = true;
   private extendedStarted = false;
+  private runState = createSessionRunState();
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -314,6 +317,9 @@ export class SessionManager {
       foundry: session.config.foundry,
       memory: this.deps.memoryStore,
       tenantDb: this.deps.tenantDb,
+      embed: this.deps.providers.embed,
+      worldContent: foundryWorldContentReader(session.config.foundry),
+      runState: this.runState,
       onTelemetry: (name: string, props?: Record<string, unknown>) => this.trackIntake(name, props),
     };
   }
@@ -579,6 +585,7 @@ export class SessionManager {
       memory: { embed: providers.embed, store: this.deps.memoryStore },
       notifyOperator: (message) => this.dmOperator(message),
       intake: this.intakeState.intake,
+      runState: this.runState,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     await this.runIntakeAtStart();
@@ -666,6 +673,7 @@ export class SessionManager {
     this.voiceChannel = null;
     this.extendedStarted = false;
     this.intakeReadyFlag = true;
+    this.runState = createSessionRunState();
     this.deps.onEvent?.({ kind: "status", status: "stopped" });
   }
 

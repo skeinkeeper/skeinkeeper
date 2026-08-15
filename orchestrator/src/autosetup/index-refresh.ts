@@ -104,12 +104,14 @@ async function runRefresh(
     embed,
     ctx,
     "world-journal",
-    loaded.journals.map((j) => ({
-      foundryId: j.id,
-      lastModified: j.modifiedAt,
-      text: embedText(j.name, j.text),
-      keys: journalKeys.get(j.id) ?? { keywords: [] },
-    })),
+    loaded.journals.map((j) =>
+      currentEntry(
+        j.id,
+        j.modifiedAt,
+        embedText(j.name, j.text),
+        journalKeys.get(j.id) ?? { keywords: [] },
+      ),
+    ),
     report,
   );
   await syncSource(
@@ -117,12 +119,14 @@ async function runRefresh(
     embed,
     ctx,
     "world-scene",
-    loaded.scenes.map((s) => ({
-      foundryId: s.id,
-      lastModified: s.modifiedAt,
-      text: embedText(s.name, s.folder),
-      keys: extractKeys({ kind: "scene", entry: s, journalByFolder }),
-    })),
+    loaded.scenes.map((s) =>
+      currentEntry(
+        s.id,
+        s.modifiedAt,
+        embedText(s.name, s.folder),
+        extractKeys({ kind: "scene", entry: s, journalByFolder }),
+      ),
+    ),
     report,
   );
   await syncSource(
@@ -132,16 +136,16 @@ async function runRefresh(
     "world-creature",
     loaded.creatures.map((c) => {
       const xref = creatureXref(c, loaded.journals, journalKeys, journalByFolder);
-      return {
-        foundryId: c.id,
-        lastModified: c.modifiedAt,
-        text: embedText(c.name, c.text),
-        keys: extractKeys({
+      return currentEntry(
+        c.id,
+        c.modifiedAt,
+        embedText(c.name, c.text),
+        extractKeys({
           kind: "creature",
           entry: c,
           ...(xref !== undefined ? { journalCrossRef: xref } : {}),
         }),
-      };
+      );
     }),
     report,
   );
@@ -150,12 +154,14 @@ async function runRefresh(
     embed,
     ctx,
     "world-actor-item",
-    loaded.items.map((i) => ({
-      foundryId: i.id,
-      lastModified: i.modifiedAt,
-      text: embedText(i.name, i.text),
-      keys: extractKeys({ kind: "item", entry: i }),
-    })),
+    loaded.items.map((i) =>
+      currentEntry(
+        i.id,
+        i.modifiedAt,
+        embedText(i.name, i.text),
+        extractKeys({ kind: "item", entry: i }),
+      ),
+    ),
     report,
   );
 
@@ -207,7 +213,7 @@ async function readOne<T>(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     report.errors.push({ source, error });
-    ctx.onTelemetry?.("index.run.source-failed", {
+    ctx.onTelemetry?.("index.run.source_failed", {
       campaignId: ctx.campaignId,
       source,
       reason: error,
@@ -221,6 +227,20 @@ interface CurrentEntry {
   lastModified?: string;
   text: string;
   keys: ExtractedKeys;
+}
+
+function currentEntry(
+  foundryId: string,
+  lastModified: string | undefined,
+  text: string,
+  keys: ExtractedKeys,
+): CurrentEntry {
+  return {
+    foundryId,
+    text,
+    keys,
+    ...(lastModified !== undefined ? { lastModified } : {}),
+  };
 }
 
 async function syncSource(

@@ -123,3 +123,58 @@ Fires when `announceReady` is blocked by unresolved critical findings.
 - `campaignId: string` — as above.
 - `sessionId: string` — as above.
 - `blockingFindings: string[]` — FindingCode values that are still blocking.
+
+### `autosetup.scene.activated` (v1)
+
+Fires when the AI activates an unambiguous starting scene (TDD 0032).
+
+- `campaignId: string` — campaign identifier (not a name).
+- `sessionId: string` — session identifier.
+- `reason: string` — `already-active` | `single-starter` | `prior-resolved`.
+
+### `autosetup.scene.deferred` (v1)
+
+Fires when scene activation waits on operator resolution.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `candidateCount: number` — how many starter scenes were equally plausible.
+
+### `autosetup.preload.created` (v1)
+
+Fires when pre-load imported actors/items into the world.
+
+- `campaignId: string` — as above.
+- `source: string` — always `compendium` at v0.5.
+- `count: number` — number of entities created. No names or Foundry IDs.
+
+### `autosetup.preload.deferred` (v1)
+
+Fires when pre-load skipped entries for lazy-at-trigger import.
+
+- `campaignId: string` — as above.
+- `count: number` — number of entries deferred.
+
+### `index.run.started` (v1)
+
+Fires when a world-content indexing run begins.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+
+### `index.run.completed` (v1)
+
+Fires when an indexing run finishes (including partial source failure).
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `durationMs: number` — wall-clock duration.
+- `perSourceCounts: object` — `{ added, updated, deleted }` per source. No content.
+
+### `index.run.source_failed` (v1)
+
+Fires when one indexing source errors; other sources continue.
+
+- `campaignId: string` — as above.
+- `source: string` — `world-journal` | `world-scene` | `world-creature` | `world-actor-item`.
+- `reason: string` — error class/message with no journal text or names.

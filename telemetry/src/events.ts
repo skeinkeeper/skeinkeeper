@@ -114,6 +114,50 @@ export const events = {
     description: "announceReady was blocked by unresolved critical intake findings.",
     props: {} as { campaignId: string; sessionId: string; blockingFindings: string[] },
   },
+  "autosetup.scene.activated": {
+    v: 1,
+    description: "Initial scene activated autonomously.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      reason: "already-active" | "single-starter" | "prior-resolved";
+    },
+  },
+  "autosetup.scene.deferred": {
+    v: 1,
+    description: "Initial-scene activation deferred pending operator resolution.",
+    props: {} as { campaignId: string; sessionId: string; candidateCount: number },
+  },
+  "autosetup.preload.created": {
+    v: 1,
+    description: "Pre-load created actors or items in the world.",
+    props: {} as { campaignId: string; source: "compendium"; count: number },
+  },
+  "autosetup.preload.deferred": {
+    v: 1,
+    description: "Pre-load deferred to lazy-at-trigger.",
+    props: {} as { campaignId: string; count: number },
+  },
+  "index.run.started": {
+    v: 1,
+    description: "World-content indexing run began.",
+    props: {} as { campaignId: string; sessionId: string },
+  },
+  "index.run.completed": {
+    v: 1,
+    description: "World-content indexing run finished.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      durationMs: number;
+      perSourceCounts: Record<string, { added: number; updated: number; deleted: number }>;
+    },
+  },
+  "index.run.source_failed": {
+    v: 1,
+    description: "One indexing source failed; others continued.",
+    props: {} as { campaignId: string; source: string; reason: string },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;

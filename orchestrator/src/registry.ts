@@ -5,12 +5,15 @@ import type { z } from "zod";
 import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryClient } from "./foundry/client.js";
+import type { SessionRunState } from "./session/run-state.js";
 import type { Mutex } from "./util/mutex.js";
 
 export interface ToolHandlerContext {
   tenantDb: TenantDb;
   sessionId: string;
   turnId: string;
+  /** Per-session transient flags (TDD 0032). Optional for older callers. */
+  runState?: SessionRunState;
   /** Caller hint: did this dispatch originate from the LLM or the operator?
    *  Operator-gated tools refuse LLM invocation. */
   caller: "llm" | "operator";

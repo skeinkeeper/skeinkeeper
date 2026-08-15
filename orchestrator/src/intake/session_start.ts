@@ -4,7 +4,11 @@
 import type { TenantDb } from "@skeinkeeper/server";
 import type { FoundryClient } from "../foundry/client.js";
 import type { MemoryStore } from "../memory/store.js";
-import { applyInitialScene, stripSceneFindings } from "../autosetup/initial-scene.js";
+import { dispatchPostIntakeAutosetup } from "../autosetup/dispatch.js";
+import type { VerifyIdentityPreflight } from "../autosetup/identity-preflight.js";
+import type { EmbeddingProvider } from "../interfaces/embedding.js";
+import type { SessionRunState } from "../session/run-state.js";
+import type { WorldContentReader } from "../autosetup/world-types.js";
 import { persistSurfacedFindings } from "./persist.js";
 import { formatIntakeReportForOperator } from "./report.js";
 import {
@@ -27,6 +31,10 @@ export interface SessionStartIntakeDeps {
   memory: MemoryStore;
   tenantDb: TenantDb;
   onTelemetry?: (name: string, props?: Record<string, unknown>) => void;
+  embed?: EmbeddingProvider;
+  worldContent?: WorldContentReader;
+  runState?: SessionRunState;
+  verifyIdentityPreflight?: VerifyIdentityPreflight;
 }
 
 export interface SessionStartIntakeResult {
@@ -104,20 +112,25 @@ export async function kickExtendedIntake(
   const started = Date.now();
   const minimum = await runMinimumIntake(ctx, foundry, memory, tenantDb);
   const extended = await runExtendedIntake(ctx, foundry, memory, minimum, tenantDb);
-  const scene = await applyInitialScene(extended, ctx.sessionConfig, foundry, {
+  const dispatched = await dispatchPostIntakeAutosetup({
+    intake: extended,
+    sessionConfig: ctx.sessionConfig,
+    foundry,
     campaignId: ctx.campaignId,
     sessionId: ctx.sessionId,
+    memory,
+    ...(deps.embed !== undefined ? { embed: deps.embed } : {}),
+    ...(deps.worldContent !== undefined ? { worldContent: deps.worldContent } : {}),
+    ...(deps.runState !== undefined ? { runState: deps.runState } : {}),
+    ...(deps.verifyIdentityPreflight !== undefined
+      ? { verifyIdentityPreflight: deps.verifyIdentityPreflight }
+      : {}),
     ...(onTelemetry !== undefined ? { onTelemetry } : {}),
   });
-  const findings = [...stripSceneFindings(extended.findings), ...scene.findings];
-  const actions = [
-    ...scene.actions,
-    ...(scene.activationError !== undefined ? [scene.activationError] : []),
-  ];
   const withScene: ExtendedIntakeResult = {
     ...extended,
-    findings,
-    ...(actions.length > 0 ? { actions } : {}),
+    findings: dispatched.findings,
+    ...(dispatched.actions.length > 0 ? { actions: dispatched.actions } : {}),
   };
   const amb = withScene.findings.filter((f) => f.kind === "ambiguity").length;
   const reco = withScene.findings.filter((f) => f.kind === "recommendation").length;
@@ -135,13 +148,6 @@ export async function kickExtendedIntake(
       findingCode: f.code,
       kind: f.kind,
       dmOnly: f.dmOnly,
-    });
-  }
-  if (scene.activationError !== undefined) {
-    onTelemetry?.("autosetup.scene.deferred", {
-      campaignId: ctx.campaignId,
-      sessionId: ctx.sessionId,
-      candidateCount: 0,
     });
   }
   return withScene;

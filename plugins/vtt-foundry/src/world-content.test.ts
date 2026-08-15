@@ -123,7 +123,7 @@ describe("readWorldCreatures", () => {
 describe("readWorldActorItems", () => {
   it("parses get-character-entity items for each actor", async () => {
     const caller = new FakeMcpToolCaller({
-      "get-character-entity": (args) => {
+      "get-character-entity": (args: Record<string, unknown>) => {
         if (args["id"] === "a1") {
           return {
             character: {

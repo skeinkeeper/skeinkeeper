@@ -37,6 +37,7 @@ import type {
 import type { ToolDispatcher } from "./registry.js";
 import { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
 import type { SessionIntakeConfig } from "./intake/types.js";
+import type { SessionRunState } from "./session/run-state.js";
 import type { Eagerness } from "./voice/eagerness.js";
 import type { NarrationSegment } from "./voice/markers.js";
 import { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
@@ -89,6 +90,8 @@ export interface SessionConfig {
   notifyOperator?: (message: string) => Promise<void>;
   /** Prior intake decisions (TDD 0031). Persisted per-campaign. */
   intake?: SessionIntakeConfig;
+  /** Per-session transient flags (TDD 0032). */
+  runState?: SessionRunState;
 }
 
 export class Session {
@@ -442,6 +445,7 @@ async function runLlmIterations(
       foundry: cfg.foundry,
       ...(cfg.notifyOperator !== undefined ? { notifyOperator: cfg.notifyOperator } : {}),
       ...(cfg.fudgeAllowed !== undefined ? { flags: { fudgeAllowed: cfg.fudgeAllowed } } : {}),
+      ...(cfg.runState !== undefined ? { runState: cfg.runState } : {}),
     };
     for (const tc of iterationToolCalls) {
       const result = await cfg.dispatcher.dispatch({ name: tc.name, input: tc.input }, ctx);

@@ -130,6 +130,17 @@ export {
 } from "./autosetup/initial-scene.js";
 export { preloadExpectedContent, type PreloadReport } from "./autosetup/preload.js";
 export {
+  dispatchPostIntakeAutosetup,
+  type DispatchAutosetupArgs,
+  type DispatchAutosetupResult,
+} from "./autosetup/dispatch.js";
+export { foundryWorldContentReader } from "./autosetup/foundry-world-reader.js";
+export {
+  invokeIdentityPreflight,
+  type VerifyIdentityPreflight,
+} from "./autosetup/identity-preflight.js";
+export { createSessionRunState, type SessionRunState } from "./session/run-state.js";
+export {
   refreshIndex,
   resetIndexRefreshMutexForTests,
   type RefreshCounts,
