@@ -226,3 +226,33 @@ Fires when the Foundry event stream is wired at session start (TDD 0033). Regist
 
 - `campaignId: string` — as above.
 - `kind: string` — `null` (v0.5 production default) | `mock` | `real`.
+
+### `surface.emit` (v1)
+
+Fires when a registered outbound surface successfully emits (TDD 0034). Player IDs, when present, are the salted hash — never the raw Discord id.
+
+- `surface: string` — adapter name (e.g., `foundry-public`, `discord-voice`).
+- `audience: object` — `{ kind: "table" | "player" | "gm", player?: string }`. `player` is the hashed Discord id.
+- `latencyMs: number` — wall-clock emit latency for that surface.
+
+### `surface.emit.failed` (v1)
+
+Fires when a surface emit fails, times out, or no registered surface handles the audience (`reason: "no-handling-surface"`).
+
+- `surface: string` — adapter name, or `(none)` when no surface handled the audience.
+- `audience: object` — as `surface.emit`.
+- `reason: string` — `timeout`, `no-handling-surface`, or the error message. No content.
+
+### `surface.input` (v1)
+
+Fires when the router yields an inbound surface event. Kind only; no utterance or command text.
+
+- `surface: string` — adapter name (e.g., `foundry-public`).
+- `kind: string` — event kind (e.g., `chat.public`, `voice.utterance`).
+
+### `surface.command.parsed` (v1)
+
+Fires when a `/skeinkeeper` Foundry chat command is parsed. Verb only — args can contain Discord IDs.
+
+- `verb: string` — the first token after `/skeinkeeper`.
+- `ok: boolean` — whether the verb and args were recognized.

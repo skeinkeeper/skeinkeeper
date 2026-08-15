@@ -203,6 +203,34 @@ export const events = {
     description: "Foundry event stream wired at session start.",
     props: {} as { campaignId: string; kind: "null" | "mock" | "real" },
   },
+  "surface.emit": {
+    v: 1,
+    description: "An outbound surface emit succeeded.",
+    props: {} as {
+      surface: string;
+      audience: { kind: "table" | "player" | "gm"; player?: string };
+      latencyMs: number;
+    },
+  },
+  "surface.emit.failed": {
+    v: 1,
+    description: "An outbound surface emit failed or had no handling surface.",
+    props: {} as {
+      surface: string;
+      audience: { kind: "table" | "player" | "gm"; player?: string };
+      reason: string;
+    },
+  },
+  "surface.input": {
+    v: 1,
+    description: "An inbound surface event was received. Kind only; no content.",
+    props: {} as { surface: string; kind: string },
+  },
+  "surface.command.parsed": {
+    v: 1,
+    description: "A Foundry /skeinkeeper command was parsed. Verb only; no args.",
+    props: {} as { verb: string; ok: boolean },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;
