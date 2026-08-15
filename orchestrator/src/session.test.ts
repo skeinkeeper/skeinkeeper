@@ -23,6 +23,7 @@ import {
 } from "./session.js";
 import type { NarrationSegment } from "./voice/markers.js";
 import { z } from "zod";
+import { MockFoundryEventStream } from "./perception/event-stream.js";
 
 const SPEC: BehaviorSpec = {
   content: "You are the AI DM. Behavior spec content here.",
@@ -176,6 +177,24 @@ describe("telemetry emission (design doc 0009 / audit wave 3)", () => {
     const spec = events.find((e) => e.name === "behavior_spec.loaded")!;
     expect(spec.props.version).toBe("v0.1");
     expect(typeof spec.props.sizeKbBucket).toBe("string");
+  });
+
+  it("wires the Foundry event stream and queues until session ready", () => {
+    const { analytics, events } = recordingAnalytics();
+    const stream = new MockFoundryEventStream();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
+    const { session } = setupSession({
+      analytics: analytics as any,
+      foundryEvents: stream,
+      perceptionKind: "mock",
+    });
+    stream.emit({ type: "scene-activated", sceneId: "s1" });
+    expect(session.perceptionEvents).toEqual([]);
+    session.releasePerception();
+    expect(session.perceptionEvents).toEqual([{ type: "scene-activated", sceneId: "s1" }]);
+    expect(events.map((e) => e.name)).toContain("perception.event_stream.wired");
+    const wired = events.find((e) => e.name === "perception.event_stream.wired");
+    expect(wired?.props.kind).toBe("mock");
   });
 
   it("emits llm.completed for a narration turn (bucketed, no content)", async () => {

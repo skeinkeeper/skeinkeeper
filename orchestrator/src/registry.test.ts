@@ -49,12 +49,17 @@ describe("ToolRegistry", () => {
     expect(names).toEqual(
       [
         "advance_time",
+        "distribute_loot",
         "fudge_roll",
+        "hide_token",
         "move_party",
         "notify_operator",
+        "place_hidden_token",
         "record_player_character",
+        "reveal_token",
         "roll",
         "set_quest_flag",
+        "share_journal_to_audience",
         "whisper",
       ].sort(),
     );
