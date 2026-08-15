@@ -2,12 +2,12 @@
 
 Status: draft
 PRD refs: 4.1, 4.2, 4.6, 4.8, 5.8
-PRD-rev: 59a0fda
-ADR constraints: 0008, 0010, 0011, 0016, 0017, 0018, 0023, 0024, 0025, 0026
+PRD-rev: 5c3a198
+ADR constraints: 0008, 0010, 0016, 0017, 0018, 0023, 0024, 0025, 0026, 0029, 0030
 Supersedes: [TDD 0023](./0023-session-onboarding-presence-operator-channel.md), [TDD 0016](./0016-player-character-identity-mapping.md)
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0015 (always-listening loop)](./0015-always-listening-voice-loop.md), [0020 (operator app)](./0020-operator-app.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0031 (session intake & intake report)](./0031-session-intake-and-intake-report.md), [0032 (autonomous pre-game setup actions)](./0032-autonomous-pre-game-setup-actions.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0037 (bridge dependencies — surface-model critical batch)](./0037-bridge-dependencies-surface-model-critical-batch.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
+Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0015 (always-listening loop)](./0015-always-listening-voice-loop.md), [0020 (operator app)](./0020-operator-app.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0031 (session intake & intake report)](./0031-session-intake-and-intake-report.md), [0032 (autonomous pre-game setup actions)](./0032-autonomous-pre-game-setup-actions.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
 
 ## Carries forward / supersedes (read first)
 
@@ -24,7 +24,7 @@ This TDD supersedes both [TDD 0023](./0023-session-onboarding-presence-operator-
 **Carried forward from TDD 0016 unchanged:**
 
 - **Player-initiated mapping at session start via the intro ritual.** The AI asks each player who they're playing; extracts the character name; resolves to a Foundry actor.
-- **Name → Foundry-actor resolution** via the bridge's existing `list-characters` + fuzzy matching (case-insensitive, nickname-tolerant). Ambiguity or no-match → clarifying question; still-unresolved → operator escalation, not blocking the table.
+- **Name → Foundry-actor resolution** via FoundryClient.listPartyActors + fuzzy matching (case-insensitive, nickname-tolerant). Ambiguity or no-match → clarifying question; still-unresolved → operator escalation, not blocking the table.
 - **`record_player_character` LLM-callable tool.** Upserts the map row; audit-logs. Carries forward; extended this TDD to also bind the Foundry user ID (3-way).
 - **Operator override path.** The operator can correct any mapping; operator-set rows carry `source: "operator"` and win over player-set rows. Surface for the override moves to Foundry chat commands (TDD 0040); the data model is unchanged.
 
@@ -47,7 +47,7 @@ PRD §4.6 + §4.8 + ADR-0023 say the operator does host work; the AI does DM wor
 | Pre-flight item                                                                                                                                                                                  | Carried from 0023? | New in this TDD? |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :----------------: | :--------------: |
 | Foundry is running with the campaign content loaded                                                                                                                                              |        Yes         |        —         |
-| The Foundry MCP bridge is connected                                                                                                                                                              |        Yes         |        —         |
+| The Skeinkeeper Foundry add-on is connected (TDD 0041; Start fails closed if not)                                                                                                                |        Yes         |        —         |
 | A Discord voice channel exists; the bot has been invited                                                                                                                                         |        Yes         |        —         |
 | Skeinkeeper is running with credentials configured (§4.5)                                                                                                                                        |        Yes         |        —         |
 | Each player has an invite to the Discord voice channel                                                                                                                                           |        Yes         |        —         |
@@ -126,7 +126,7 @@ The verifier is pure: same input → same output; CI-testable per finding kind.
 
 #### 3b. Check at Start (intake stage)
 
-Runs as part of TDD 0031's extended intake (`runExtendedIntake`). Inputs: the campaign's `player_character_map` rows + `FoundryClient.listUsers()` (TDD 0037 Band A cap #5) + the seated-player set (Discord-channel members with consent) + the operator-Foundry-user (TDD 0024) + the DM-Foundry-user (campaign config).
+Runs as part of TDD 0031's extended intake (`runExtendedIntake`). Inputs: the campaign's `player_character_map` rows + `FoundryClient.listUsers()` (TDD 0041) + the seated-player set (Discord-channel members with consent) + the operator-Foundry-user (TDD 0024) + the DM-Foundry-user (campaign config).
 
 - **Status `critical-gaps`** → blocks Start. Findings surface in the intake report (TDD 0031); `notify_operator` escalation lands in Foundry GM chat (per §4 below) with one line per critical finding plus a single resolution prompt: "Add the listed Foundry users + actor ownership and retry Start."
 - **Status `warnings-only`** → does NOT block Start; warnings surface in the intake report's "FYI" section.
@@ -338,7 +338,7 @@ The Foundry-user ↔ actor-ownership relationship lives in Foundry per [ADR-0018
 - **`notify_operator` falls back to GM-broadcast + SSE when operator is unknown.** _Observation point:_ integration test — `operatorFoundryUserId = undefined`; call the tool. _Expected:_ one `FoundryGmChatSurface.emit` `mode: "gm"` call; one SSE-bus `AppEvent` of kind `operatorEscalation` for the web console.
 - **Foundry-presence drop emits a `presence.foundry.dropped` event.** _Observation point:_ unit test — feed the polling job two consecutive `listUsers()` snapshots; first has `u1` active, second inactive. _Expected:_ one `presence.foundry.dropped` event recorded with `foundryUserId: "u1"`.
 - **`eval:live` (behavior-spec interplay):** the AI's onboarding-ritual phrasing carries forward unchanged from 0023; existing fixtures continue to apply. New `eval:live`: the AI's response to a per-player pre-flight gap (one-time DM courtesy + table greeting suppression). One fixture confirming the AI does NOT greet the unmapped player at the table; one confirming the courtesy DM is sent once per player.
-- **Live: operator end-to-end pre-flight scenarios.** Operator sets up a campaign with a player whose Foundry user is missing; runs Start; observes the intake-report critical finding in Foundry GM chat; adds the Foundry user; runs `/skeinkeeper preflight verify`; observes the `ok` inline; runs Start successfully. Operator-validated against real Foundry + bridge with Band A capabilities.
+- **Live: operator end-to-end pre-flight scenarios.** Operator sets up a campaign with a player whose Foundry user is missing; runs Start; observes the intake-report critical finding in Foundry GM chat; adds the Foundry user; runs `/skeinkeeper preflight verify`; observes the `ok` inline; runs Start successfully. Operator-validated against real Foundry + first-party add-on.
 
 ## Requirement traceability
 
@@ -359,7 +359,7 @@ The Foundry-user ↔ actor-ownership relationship lives in Foundry per [ADR-0018
 
 No new third-party Skeinkeeper-side dependencies. Reuses:
 
-- `FoundryClient.listUsers()` from TDD 0037 Band A (v0.5-blocking).
+- `FoundryClient.listUsers()` from TDD 0041.
 - `SurfaceRouter` from TDD 0034.
 - `record_player_character` + identity-map storage from TDD 0016 (carried + extended).
 - Voice presence + `selectOnboardingTargets` from TDD 0023 (carried).
@@ -377,7 +377,7 @@ Alternatives considered:
 
 2. **The PRD doesn't explicitly require a DM-Foundry-user designation; this TDD requires one** (per §"Carries forward" → TDD 0035 PRD-conflict #1). **Resolution:** added to §1 host pre-flight items; verifier emits `no-dm-foundry-user-designated` as critical (or warning, per operator-as-player vs. pure-host); INSTALL.md update co-shipped naming the required Foundry-user setup.
 
-3. **Foundry-presence as a session-pause signal — PRD §5.8 says "If Foundry or the bridge disconnects, the session pauses" but doesn't define what "Foundry disconnects" means** (entire Foundry instance vs. a single user). **Resolution:** per this TDD's §6, only the bridge-side disconnect pauses the session (TDD 0039 owns that lifecycle); individual user disconnect is a per-player presence event surfaced as `notify_operator` info. Captured in TDD 0039's design.
+3. **Foundry-presence as a session-pause signal — PRD §5.8 says "If Foundry becomes unreachable, the session pauses" but doesn't define what "Foundry disconnects" means** (entire Foundry instance vs. a single user). **Resolution:** per this TDD's §6, only add-on disconnect (evt gone) pauses the session (TDD 0039 owns that lifecycle); individual user disconnect is a per-player presence event surfaced as `notify_operator` info. Captured in TDD 0039's design.
 
 ## Decisions to promote (ADR candidates)
 
@@ -420,3 +420,14 @@ All PII-free per [ADR-0010](../adr/0010-privacy-as-architecture.md). The `prefli
 - **Foundry-presence polling cadence (60s default).** Latency-sensitive? Probably not at v0.5 — drop detection within a minute is acceptable for a session lifecycle event. Configurable via session config; defer tuning to operator feedback.
 - **Per-player Discord-DM courtesy when a voice-join pre-flight gap blocks onboarding.** The one-time DM is sent on first-failed-voice-join; if the player rejoins later still-unmapped, is it sent again? Recommendation: yes, once per session per player (the operator may have failed to act between joins; the reminder is the courteous thing). Configurable, off by default if the operator finds it noisy.
 - **Operator who is also a player AND also the DM Foundry user — degenerate edge case.** PRD-conflict #3 + verifier raises `dm-foundry-user-is-operator-player-user` critical. Recommendation: enforce; INSTALL.md naming the constraint at host pre-flight. If a single-Foundry-user operator-as-player config is ever requested, revisit (a future "operator-as-self-side-channel" design would need to address it).
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

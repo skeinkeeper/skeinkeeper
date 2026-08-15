@@ -1,6 +1,6 @@
 # TDD 0037: MCP Bridge Dependencies — Surface-Model v0.5 Critical Batch
 
-Status: draft
+Status: superseded by [0041](./0041-first-party-foundry-addon.md)
 PRD refs: 4.2, 5.5, 8 (v0.5 roadmap)
 PRD-rev: 59a0fda
 ADR constraints: 0011, 0017, 0018, 0023, 0025

@@ -2,15 +2,15 @@
 
 Status: draft
 PRD refs: 4 (Surface model preamble), 4.1, 4.2, 4.3, 4.7, 4.8, 5.8
-PRD-rev: 59a0fda
-ADR constraints: 0003, 0008, 0010, 0011, 0016, 0017, 0018, 0021, 0023, 0024, 0025, 0026, 0027
+PRD-rev: 5c3a198
+ADR constraints: 0003, 0008, 0010, 0016, 0017, 0018, 0021, 0023, 0024, 0025, 0026, 0027, 0029, 0030
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0006 (tool registry)](./0006-tool-registry.md), [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0012 (voice IO)](./0012-voice-io.md), [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0015 (always-listening loop)](./0015-always-listening-voice-loop.md), [0020 (operator app)](./0020-operator-app.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0037 (bridge dependencies — surface-model critical batch)](./0037-bridge-dependencies-surface-model-critical-batch.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
+Related TDDs: [0006 (tool registry)](./0006-tool-registry.md), [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0012 (voice IO)](./0012-voice-io.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0015 (always-listening loop)](./0015-always-listening-voice-loop.md), [0020 (operator app)](./0020-operator-app.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
 
 ## Approach
 
-The PRD's new §4 _Surface model_ collapses what was previously a mixed Discord+Foundry+console surface set into a deliberate, non-overlapping split: **voice on Discord; one-time consent on Discord DM; everything else player- or operator-facing on Foundry; operator-only configuration on the localhost web console.** This is a cross-cutting routing decision that touches the side-channel design (TDD 0035), the onboarding/operator-escalation design (TDD 0036), the erasure adapter (TDD 0038), the operator-control surface (TDD 0040), and at least three v0.5-blocking bridge dependencies (TDD 0037).
+The PRD's new §4 _Surface model_ collapses what was previously a mixed Discord+Foundry+console surface set into a deliberate, non-overlapping split: **voice on Discord; one-time consent on Discord DM; everything else player- or operator-facing on Foundry; operator-only configuration on the localhost web console.** This is a cross-cutting routing decision that touches the side-channel design (TDD 0035), the onboarding/operator-escalation design (TDD 0036), the erasure adapter (TDD 0038), the operator-control surface (TDD 0040), and the first-party Foundry add-on (TDD 0041).
 
 Today the orchestrator's outbound paths are ad-hoc: `notify_operator` writes Discord DMs (TDD 0023); the `whisper` tool writes Discord DMs (TDD 0026); the always-listening loop's narration writes Discord voice + (historically) a Discord text channel mirror (TDD 0015). Each path embeds its surface choice in its caller. Under the new surface model, every audience-tagged output and every inbound event needs to route through one place that knows the new mapping, so the surface decisions live in one design instead of being smeared across the orchestrator, the side-channel module, the onboarding module, and the operator-channel module.
 
@@ -148,13 +148,13 @@ Emit is **fan-out parallel** (table audience writes voice _and_ public chat simu
 
 ### 5. Foundry public chat — the new player text input
 
-PRD §4.1's relocation of player text input from a parallel Discord text channel to Foundry public chat lives in `FoundryPublicChatSurface`'s inbound adapter. The chat-event subscription comes from the bridge (TDD 0037 §`chat-command` listener delivers ALL public-chat events to Skeinkeeper, not only `/`-prefixed commands; the bridge driver distinguishes operator commands from player text input by prefix match).
+PRD §4.1's relocation of player text input from a parallel Discord text channel to Foundry public chat lives in `FoundryPublicChatSurface`'s inbound adapter. The chat-event subscription comes from TDD 0041 `subscribeChatEvents` (all public-chat events, not only `/`-prefixed commands). The adapter distinguishes operator commands from player text input by prefix match.
 
-Inbound event shape (`chat.public`, above): the bridge delivers `{ foundryUserId, text }`; the adapter parses the IC/OOC convention markers (`!ooc`, `((parens))`, or the per-campaign-configured wake phrase) and emits the typed event. The orchestrator turn loop (TDD 0011) treats `chat.public` events identically to `voice.utterance` events except for the transport — both produce `TurnInput` rows; the speaker is the resolved Discord user (via TDD 0036's 3-way identity).
+Inbound event shape (`chat.public`, above): the add-on delivers `{ foundryUserId, text }`; the adapter parses the IC/OOC convention markers (`!ooc`, `((parens))`, or the per-campaign-configured wake phrase) and emits the typed event. The orchestrator turn loop (TDD 0011) treats `chat.public` events identically to `voice.utterance` events except for the transport — both produce `TurnInput` rows; the speaker is the resolved Discord user (via TDD 0036's 3-way identity).
 
 ### 6. Foundry chat-command surface — operator command input
 
-The bridge driver (`/plugins/vtt-foundry/`) parses operator commands out of the Foundry public-chat stream by **`/skeinkeeper`-prefix match** (the verbatim verb taxonomy from TDD 0025 is retained, per the design decision in this design pass — see §4.2 of the PRD on operator commands). Commands the bridge driver recognizes:
+The Foundry adapter (`/plugins/vtt-foundry/`) parses operator commands out of the Foundry public-chat stream by **`/skeinkeeper`-prefix match** (the verbatim verb taxonomy from TDD 0025 is retained, per the design decision in this design pass — see §4.2 of the PRD on operator commands). Commands the adapter recognizes:
 
 ```
 /skeinkeeper session action:<start|stop|pause|resume>
@@ -169,9 +169,9 @@ The bridge driver (`/plugins/vtt-foundry/`) parses operator commands out of the 
 
 `/skeinkeeper`-prefix match is deterministic; the parser rejects malformed args with an inline error chat message back to the invoker (`FoundryGmChatSurface` whisper to that Foundry user). The verb-to-`ConsoleControl` mapping is a small pure table; unit-tested. Other Foundry chat messages (no prefix or different prefix) are emitted as `chat.public` events; the parser never silently consumes a message that wasn't `/skeinkeeper`-prefixed.
 
-**Why the prefix and not the bridge's native command-registration surface (when it lands).** Foundry's top-level slash namespace (`/r`, `/w`, `/gm`, `/em`, …) is globally first-come-first-served across all installed modules. `/skeinkeeper` is our pseudo-namespace inside the global slash space and collision-safe against Foundry core and other modules. It also preserves the verb taxonomy from TDD 0025 verbatim, so an operator who learned the Discord-slash surface doesn't relearn — they just type the same string in Foundry chat instead. Operator chat surfacing details and parity discipline are TDD 0040's job; this TDD provides the inbound adapter that surfaces `chat.command` events with parsed verb + args.
+**Why the prefix and not a Foundry-core registered slash command.** Foundry's top-level slash namespace (`/r`, `/w`, `/gm`, `/em`, …) is globally first-come-first-served across all installed modules. `/skeinkeeper` is our pseudo-namespace inside the global slash space and collision-safe against Foundry core and other modules. It also preserves the verb taxonomy from TDD 0025 verbatim, so an operator who learned the Discord-slash surface doesn't relearn — they just type the same string in Foundry chat instead. Operator chat surfacing details and parity discipline are TDD 0040's job; this TDD provides the inbound adapter that surfaces `chat.command` events with parsed verb + args.
 
-**v0.5 dependency: `chat-command` listener bridge capability.** The bridge today has no first-class chat-event subscription tool. This TDD's inbound adapter is **buildable only after** TDD 0037's critical batch lands the `chat-command` listener (the design pass's `/loop` decision: block v0.5 on this bridge dep landing rather than ship a Discord-only operator surface or rely on a brittle full-chat-stream poll). The design above is what the adapter looks like once the dep is available; without it, the entire operator-command surface in 0040 is non-functional and the operator-escalation flow in 0036 has no resolution path.
+**v0.5 dependency: TDD 0041 `subscribeChatEvents`.** The inbound adapter is buildable with the first-party add-on. Without a connected add-on, Start fails closed (FR-F6) and 0040 has no Foundry command path.
 
 ### 7. The web console as a surface (operator-only)
 
@@ -227,13 +227,13 @@ The router is constructed once per `Session` (TDD 0011) and shared across turns.
 | --------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DiscordVoiceSurface`       | `plugins/voice-discord/` | TDD 0012 + 0015 + 0018; extended to implement the OutboundSurface/InboundSurface shapes here                                                                   |
 | `DiscordConsentSurface`     | `plugins/voice-discord/` | TDD 0012; narrowed to consent-only per the PRD's surface model                                                                                                 |
-| `FoundryPublicChatSurface`  | `plugins/vtt-foundry/`   | This TDD; consumes the bridge's `post-chat-message` (TDD 0037) and chat-event subscription (TDD 0037 `chat-command` listener — also delivers non-`/` messages) |
-| `FoundryWhisperSurface`     | `plugins/vtt-foundry/`   | This TDD; consumes the bridge's `post-chat-message` with `whisperTo` and chat-event subscription                                                               |
-| `FoundryGmChatSurface`      | `plugins/vtt-foundry/`   | This TDD; consumes the bridge's `post-chat-message` with `gm` mode                                                                                             |
+| `FoundryPublicChatSurface`  | `plugins/vtt-foundry/`   | This TDD; consumes `FoundryClient.postChatMessage` + `subscribeChatEvents` (TDD 0041) |
+| `FoundryWhisperSurface`     | `plugins/vtt-foundry/`   | This TDD; consumes `postChatMessage` with `whisperTo` and `subscribeChatEvents`      |
+| `FoundryGmChatSurface`      | `plugins/vtt-foundry/`   | This TDD; consumes `postChatMessage` with `gm` mode                                  |
 | `FoundryChatCommandSurface` | `plugins/vtt-foundry/`   | This TDD; parses `/skeinkeeper`-prefixed messages from the chat-event subscription                                                                             |
 | `WebConsoleSurface`         | `app/web/`               | TDD 0020 + 0025; extended to implement InboundSurface for `console.control`                                                                                    |
 
-The Foundry-side adapters all depend on `FoundryClient` (TDD 0014) for transport. The chat-event subscription is a new `FoundryClient` method (`subscribeChatEvents(handler)`) wired through `McpFoundryClient` to the bridge's chat-listener capability (TDD 0037).
+The Foundry-side adapters all depend on `FoundryClient` ([TDD 0041](./0041-first-party-foundry-addon.md)) for transport. Chat events arrive via `subscribeChatEvents`, which the add-on implements as `evt chat`.
 
 ## Data & state
 
@@ -245,10 +245,10 @@ Foundry-side state writes (chat messages, whispers, GM chat) are mechanical stat
 
 1. **`Audience` type and the `OutboundSurface` / `InboundSurface` interfaces** in `orchestrator/surfaces/`. Pure types; no transport.
 2. **`SurfaceRouter`** with in-memory fan-out + multiplexed inbound. Unit-tested with two `FakeSurface` implementations.
-3. **`FoundryPublicChatSurface` (outbound)** wrapping `FoundryClient.postChatMessage`. Requires the v0.5-blocking bridge dep (TDD 0037 §1) to be available; until then, the orchestrator's table-audience text writes are a no-op behind a feature flag, blocked at session-start with an operator-visible warning.
+3. **`FoundryPublicChatSurface` (outbound)** wrapping `FoundryClient.postChatMessage` (TDD 0041).
 4. **`FoundryWhisperSurface` (outbound)** with `whisperTo: [foundryUserId]`. Same bridge dep.
 5. **`FoundryGmChatSurface` (outbound)** with `gm` mode. Same bridge dep. Operator-escalation routing (`meta.escalation: true` → also whisper-to-operator-Foundry-user) lands here.
-6. **Chat-event subscription on `FoundryClient`** (new `subscribeChatEvents(handler)` method on the interface; `McpFoundryClient` implementation wired to TDD 0037's `chat-command` listener bridge capability). Buildable only after that bridge cap exists.
+6. **Chat-event subscription on `FoundryClient`** (`subscribeChatEvents`; TDD 0041 add-on `evt chat`).
 7. **`FoundryPublicChatSurface` (inbound)** consuming the subscription; parses IC/OOC convention markers; emits `chat.public` events.
 8. **`FoundryWhisperSurface` (inbound)** filtering whisper-to-AI events from the same subscription.
 9. **`FoundryChatCommandSurface` (inbound)** parsing `/skeinkeeper <verb> <args>` from the same subscription; verb-to-`ConsoleControl` table; inline error responses via `FoundryGmChatSurface`.
@@ -264,7 +264,7 @@ Foundry-side state writes (chat messages, whispers, GM chat) are mechanical stat
 - **Operator command parse failure.** The parser emits a `surface.command.parsed { ok: false }` event and writes an inline error message back to the invoker via `FoundryGmChatSurface` whisper. The orchestrator does not see a `chat.command` event for malformed commands; behavior of the operator-control layer (TDD 0040) is unaffected.
 - **A `/skeinkeeper`-prefixed message from a non-operator Foundry user.** The parser emits the event with the Foundry user ID; TDD 0040's control handler rejects it at the authorization layer (per ADR-0016 the operator-control write path validates the actor). Non-operator commands fail closed; the inline error explains.
 - **Player whispers the bot in Discord (not Foundry) post-narrowing.** Discord DM listener for non-consent messages emits a one-time response: "Side-channels moved to Foundry — whisper the DM there." The behavior is in the `DiscordConsentSurface` adapter (it has the only Discord DM listener); it is the sole exception to "Discord DM = consent only" and is a courtesy, not a side-channel transport. Behavior-spec'd, not a routing path.
-- **A chat-event subscription drop** (bridge reconnect, Foundry reload). The bridge driver re-subscribes on reconnect; events during the gap are lost but no orchestrator state is corrupted (the dialogue store is the system-of-record, written when the orchestrator processes the event — not when the surface receives it). TDD 0039 covers the lifecycle aspect.
+- **A chat-event subscription drop** (bridge reconnect, Foundry reload). The Foundry adapter re-subscribes on reconnect; events during the gap are lost but no orchestrator state is corrupted (the dialogue store is the system-of-record, written when the orchestrator processes the event — not when the surface receives it). TDD 0039 covers the lifecycle aspect.
 
 ## Verification plan
 
@@ -291,20 +291,18 @@ The router and the parser are pure-ish (input event in → output events + emits
 | 4.1                                      | Text input via Foundry public chat, not a parallel Discord text channel                                                             | `FoundryPublicChatSurface` inbound adapter (§5) parses Foundry chat events into `chat.public` events the orchestrator turn loop consumes                                                           |
 | 4.1                                      | Mirrored text transcript in Foundry public chat                                                                                     | The audience → surface map (§2): `table`-audience outputs fan to both `DiscordVoiceSurface` (audio) AND `FoundryPublicChatSurface` (text)                                                          |
 | 4.1                                      | IC vs OOC disambiguation by convention — applies to voice and Foundry-chat text alike                                               | Inbound `chat.public` and `voice.utterance` events both carry a `convention` field; per-surface parsing in §3                                                                                      |
-| 4.2 (Critical bridge dep)                | `post-chat-message` with audience targeting (`table` → public; `whisperTo: [userId]` → whisper; `gm` → GM-only)                     | All three Foundry-chat outbound adapters (`FoundryPublicChatSurface`, `FoundryWhisperSurface`, `FoundryGmChatSurface`) consume the new bridge capability; TDD 0037 carries the upstream proposal   |
-| 4.2 (Critical bridge dep)                | `chat-command` listener (bridge → Skeinkeeper subscription on Foundry chat events)                                                  | `FoundryClient.subscribeChatEvents` (§Components) backed by the bridge capability; consumed by `FoundryPublicChatSurface` + `FoundryWhisperSurface` + `FoundryChatCommandSurface` inbound adapters |
+| 4.2 (table-text outbound)                | AI text in the right Foundry chat                                                                                                   | `FoundryPublicChatSurface` / `FoundryWhisperSurface` / `FoundryGmChatSurface` via TDD 0041 `postChatMessage` |
+| 4.2 (table-text inbound)                 | Player and operator Foundry chat reach Skeinkeeper                                                                                  | `FoundryClient.subscribeChatEvents` (TDD 0041); consumed by `FoundryPublicChatSurface` + `FoundryWhisperSurface` + `FoundryChatCommandSurface` |
 | 4.2 (Operator escalation channel)        | Operator escalations delivered as GM-only chat or whisper to the operator's Foundry user                                            | `FoundryGmChatSurface` consumes `meta.escalation: true` to add `whisperTo: operatorFoundryUserId` when known; falls back to broadcast GM-chat when unknown                                         |
-| 4.2 (Operator commands)                  | Operator commands typed as Foundry chat commands surfaced through the bridge                                                        | `FoundryChatCommandSurface` (§6) parses `/skeinkeeper <verb> <args>` from the chat-event subscription                                                                                              |
+| 4.2 (Operator commands)                  | Operator commands typed as Foundry chat commands surfaced through the add-on                                                        | `FoundryChatCommandSurface` (§6) parses `/skeinkeeper <verb> <args>` from the chat-event subscription                                                                                              |
 | 4.3                                      | "Whisper — targeted private text, delivered via Foundry whisper to the target player; the same mechanism as the §4.7 side-channel"  | The `whisper` tool's outbound path emits `{ audience: { kind: "player", playerId } }`; the router routes to `FoundryWhisperSurface` per §2                                                         |
 | 4.7                                      | Audience model maps directly onto Foundry's chat surfaces: `table` → public, `player:<id>` → whisper to that player, `gm` → GM-only | §2's audience-to-surface map IS this requirement, expressed in code                                                                                                                                |
 | 4.8                                      | `notify_operator` content delivered as GM-only chat (or whisper to operator's Foundry user)                                         | `meta.escalation: true` flag (§2 / §4); operator-Foundry-user resolution via TDD 0036's 3-way identity                                                                                             |
-| 5.8                                      | If Foundry or the bridge disconnects, the session pauses with state preserved — no "voice-only" continuation mode                   | The router surfaces emit failures via the `EmitReport`; TDD 0039 implements the session-lifecycle response. This TDD does NOT add a voice-only fallback                                            |
+| 5.8                                      | If Foundry becomes unreachable, the session pauses with state preserved — no "voice-only" continuation mode                   | The router surfaces emit failures via the `EmitReport`; TDD 0039 implements the session-lifecycle response. This TDD does NOT add a voice-only fallback                                            |
 
 ## Dependencies considered
 
-No new third-party dependencies. The router is in-process TypeScript; surface adapters reuse existing transports (`discord.js`, `@discordjs/voice`, the MCP bridge via TDD 0014's `FoundryClient`).
-
-A single load-bearing **bridge-side** dependency is added by this design: `chat-command` listener / chat-event subscription (TDD 0037). This is upstream to `adambdooley/foundry-vtt-mcp` (or, per ADR-0011's fork-as-Plan-B clause, to a Skeinkeeper fork) — see TDD 0037 for the alternative analysis (own-Foundry-module path considered and declined in this design pass; bridge-fork retained as Plan B if upstream stalls).
+No new third-party dependencies. The router is in-process TypeScript; surface adapters reuse existing transports (`discord.js`, `@discordjs/voice`, `FoundryClient` from TDD 0041). Chat subscribe is not a third-party connector capability.
 
 Two alternative routing-layer shapes were considered:
 
@@ -317,7 +315,7 @@ Two alternative routing-layer shapes were considered:
 
 2. **Discord-DM-as-courtesy reply when a player whispers the bot on Discord post-narrowing.** PRD §4 hard rule says "Consent stays on Discord DM (one-time exception)" — strictly that's one outbound message. A one-time courtesy redirect ("side-channels moved to Foundry") is technically a second use. **Resolution:** include as an explicit exception in this TDD §Failure modes; the rule is intent-preserving (one-time per-player; redirect-only; never the side-channel transport). If this becomes a privacy/scope concern at the design-PR gate, the alternative is to send no reply and rely on operator/onboarding-DM language to set expectations — accept the small UX cost.
 
-3. **No `chat-command` listener bridge cap means no operator-command surface and no Foundry-side player text input.** The PRD names both as v0.5 capabilities. **Resolution:** TDD 0037 elevates the bridge cap to v0.5-blocking; this TDD's affected adapters (§6 + §5 inbound) are non-functional until that lands. The design pass's `/loop` decision is to accept this block rather than ship a Discord-only operator surface or a brittle full-chat-stream poll.
+3. **No connected add-on means no operator-command surface and no Foundry-side player text input.** **Resolution:** TDD 0041 fail-closed Start (FR-F6). This TDD does not invent a Discord-only fallback.
 
 ## Decisions to promote (ADR candidates)
 
@@ -349,9 +347,20 @@ No new personal data is processed. The router sees content that the orchestrator
 
 - **Unit-testable (the bulk):** router fan-out and unhandled-audience hard-error (§Verification plan), the `/skeinkeeper` parser (verb table + argument shapes), the IC/OOC convention parsers per surface, per-surface adapter mappings to `FoundryClient.postChatMessage` calls (mocked).
 - **`eval:live` fixtures (behavior-spec interplay):** the operator-escalation routing flag (`meta.escalation: true`) — that escalations land in GM chat with whisper-to-operator when known, GM-broadcast otherwise. One fixture each for the two paths.
-- **Operator-validated (live):** chat-event subscription end-to-end against a real Foundry + bridge (gated on TDD 0037's `chat-command` listener cap); the operator-command-to-state-change round-trip in §Verification plan.
+- **Operator-validated (live):** chat-event subscription end-to-end against a real Foundry + first-party add-on (TDD 0041); the operator-command-to-state-change round-trip in §Verification plan.
 
 ## Open questions
 
 - **Whisper-from-bot-on-Discord courtesy reply UX (PRD-conflict #2 above).** Final form — a one-time reply per player on a Discord DM that isn't the consent prompt? Or strict no-reply with onboarding-DM language? Recommendation in this TDD: one-time courtesy reply, behavior-spec'd; revisit at the design-PR gate if the privacy-scope reading objects.
 - **Per-surface emit timeouts vs. PRD §5.3 latency budget.** The `EmitReport` shape allows per-surface failures, but the per-emit timeout (a slow Foundry-side response stalling the table-voice path) is unspecified. PRD §5.3 sets ≤3s p95 / ≤6s p99 for voice round-trip, of which LLM inference and TTS already consume most of the budget — a per-surface emit that takes seconds would blow it. **Resolution:** per-surface emit timeout defaults to 1.5s (leaves room for the rest of the round-trip), with two exceptions: (a) the voice-narration surface itself is not timeout-bounded by the router (its budget IS the round-trip budget); (b) `gm`-audience escalations are not on the voice critical path and can tolerate the full 5s. The defaults are session-config-tunable for operators with slow Foundry instances who accept the latency cost. The router emits `surface.emit.failed` with `reason: "timeout"` distinct from other failures so operators can tune from telemetry.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

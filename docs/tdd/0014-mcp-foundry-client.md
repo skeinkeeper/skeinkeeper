@@ -1,5 +1,5 @@
 # TDD 0014: McpFoundryClient (Phase 3)
-Status: implemented
+Status: superseded by [0041](./0041-first-party-foundry-addon.md)
 PRD refs: 4.2
 PRD-rev: 10391ba
 ADR constraints: 0004, 0011, 0012

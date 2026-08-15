@@ -2,11 +2,11 @@
 
 Status: draft
 PRD refs: 4.8, 5.1
-PRD-rev: 59a0fda
-ADR constraints: 0002, 0003, 0008, 0010, 0011, 0017, 0018, 0023, 0024
+PRD-rev: 5c3a198
+ADR constraints: 0002, 0003, 0008, 0010, 0017, 0018, 0023, 0024, 0029, 0030
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md)
+Related TDDs: [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md)
 
 ## Approach
 
@@ -159,15 +159,15 @@ export async function readWorldActorItems(
   0021). Returns `{id, name, text, pages?, folder?, _modifiedAt?}` parsed from the bridge.
 - **Scenes** via `list-scenes` (bridge tool). The bridge's scene metadata includes name +
   scene `folder` (often used by operators as a location/region label) + active state.
-- **Creatures** via `list-creatures-by-criteria` (per TDD 0037, which supersedes TDD 0027).
+- **Creatures** via FoundryClient / add-on compendium search (TDD 0041 / existing TDD 0021).
 - **Actor items** via `get-character-entity` per actor. World-level item discovery is
   constrained — the bridge has no `list-items` tool — so v0.5 indexes only items in the
   party actors' inventories. Compendium items remain covered by TDD 0021. The gap (no
-  world-level item walk) is named in "PRD conflicts surfaced" and added to TDD 0037's
+  world-level item walk) is named in "PRD conflicts surfaced" and deferred (not a TDD 0042 write)
   Band B upstream batch (carried forward from TDD 0027).
 
 All four parse the bridge response and return typed entries; parsing is unit-tested with
-`FakeMcpToolCaller` per TDD 0021's pattern. No live MCP traffic in unit tests.
+`MockFoundryClient` per TDD 0021's pattern. No live MCP traffic in unit tests.
 
 #### 3b. Metadata extraction (the keys for retrieval)
 
@@ -464,7 +464,7 @@ second tier would split retrieval surface for no benefit.
 2. **World-level item discovery gap.** The bridge has no `list-items` or `search-items`
    tool. The §4.8 ask "items" is interpreted as actor-inventory items + compendium items at
    v0.5. Resolution: name the gap, scope §3a accordingly; the upstream batch is carried
-   forward into [TDD 0037](./0037-bridge-dependencies-surface-model-critical-batch.md) as
+   left out of TDD 0042 as
    a Band B item (deferred, not v0.5-blocking).
 3. **`last_modified` field availability across sources.** TDD 0021's journal parse uses
    `_modifiedAt`; scenes/items aren't yet verified. Resolution: the incremental refresh
@@ -476,8 +476,8 @@ second tier would split retrieval surface for no benefit.
    (e.g., `no-foundry-user`, `foundry-user-not-owning-actor`) over the Foundry GM chat
    surface. This TDD inherits the operator-as-host posture (silence-is-success per
    ADR-0024) but no longer carries the ownership-write degradation path.
-5. **`list-users` bridge tool.** Now a Band A v0.5-blocking dependency in
-   [TDD 0037](./0037-bridge-dependencies-surface-model-critical-batch.md) (which
+5. **`list-users` bridge tool.** Provided by TDD 0041; see
+   [TDD 0041](./0041-first-party-foundry-addon.md) (which
    supersedes TDD 0027); needed by TDD 0036's pre-flight verifier and by TDD 0034's
    audience-targeting `post-chat-message` resolution. v0.5 cannot ship without it
    landing upstream or in the fork.
@@ -546,6 +546,17 @@ Scenario fixtures required before this ships:
    all sources); vector similarity ranks within the filter.
 
 The classifiers + extractors are pure and unit-tested; the indexing + ownership + scene
-paths are exercised via integration tests using `MockFoundryClient` + `FakeMcpToolCaller`.
+paths are exercised via integration tests using `MockFoundryClient` + `MockFoundryClient`.
 The live indexing run is operator-validated against a real Foundry world (same pattern as
 TDD 0021).
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

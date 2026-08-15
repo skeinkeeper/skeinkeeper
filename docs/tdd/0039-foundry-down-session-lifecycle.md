@@ -2,12 +2,12 @@
 
 Status: draft
 PRD refs: 5.8
-PRD-rev: 59a0fda
-ADR constraints: 0003, 0008, 0011, 0016, 0018, 0023, 0024, 0025, 0027
+PRD-rev: 5c3a198
+ADR constraints: 0003, 0008, 0016, 0018, 0023, 0024, 0025, 0027, 0029, 0030
 Supersedes: [TDD 0011](./0011-orchestrator-turn-loop.md) (narrowly — failure-mode model only; `runTurn` design carries forward unchanged)
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0020 (operator app)](./0020-operator-app.md), [0025 (operator control parity)](./0025-operator-control-parity.md), [0028 (real-time voice latency)](./0028-real-time-voice-latency.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
+Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0020 (operator app)](./0020-operator-app.md), [0025 (operator control parity)](./0025-operator-control-parity.md), [0028 (real-time voice latency)](./0028-real-time-voice-latency.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
 
 ## Carries forward / supersedes (read first)
 
@@ -19,7 +19,7 @@ This TDD supersedes [TDD 0011](./0011-orchestrator-turn-loop.md) **narrowly — 
 
 It now reads:
 
-> If Foundry or the bridge disconnects, the session pauses with state preserved — there is no "voice-only" continuation mode, because under the Surface model the player text surface lives in Foundry; the operator restarts the session when Foundry is back.
+> If Foundry becomes unreachable (add-on `evt gone`, TDD 0041), the session pauses with state preserved — there is no "voice-only" continuation mode, because under the Surface model the player text surface lives in Foundry; the operator restarts the session when Foundry is back.
 
 That's the entire substantive delta. This TDD codifies the new behavior, names the lifecycle transitions and the operator-visible signals, and explicitly **deletes the prior chat-only-narration fallback path.**
 
@@ -75,7 +75,7 @@ Two signals, fused, drive the transition to `paused-foundry-down`:
 
 **(a) `surface.emit.failed` storms.** When TDD 0034's router reports an emit failure to ANY Foundry-side surface (`FoundryPublicChatSurface`, `FoundryWhisperSurface`, `FoundryGmChatSurface`), the detector counts it. **Threshold:** ≥3 consecutive emit failures (any combination of Foundry surfaces) within a 30-second window. A single transient failure doesn't trigger; a sustained failure does.
 
-**(b) Periodic heartbeat.** A background timer calls `FoundryClient.listUsers()` (a lightweight read that TDD 0037 Band A makes available; pre-Band-A it falls back to `get-world-info` from TDD 0014) every 30 seconds. On consecutive heartbeat failure (≥2 in a row, ~60s of bridge unreachability), transitions immediately.
+**(b) Periodic heartbeat.** A background timer calls `FoundryClient.listUsers()` (TDD 0041) every 30 seconds. On consecutive heartbeat failure (≥2 in a row, ~60s of Foundry unreachability), transitions immediately.
 
 Signal (a) catches active-traffic failures fast (you'd see them within a turn or two); signal (b) catches silent failures during a quiet session (the operator has stepped away from the table; no traffic is being attempted; bridge died; we'd otherwise not notice until traffic resumed).
 
@@ -237,7 +237,7 @@ No new SQL tables; no new columns. The audit-log row format is rich enough alrea
 
 | PRD ref            | Requirement                                                                                                                                                                                                                                                    | Satisfied by                                                                                                                                                                                                                                                                                      |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.8                | "If Foundry or the bridge disconnects, the session pauses with state preserved — there is no 'voice-only' continuation mode, because under the Surface model the player text surface lives in Foundry; the operator restarts the session when Foundry is back" | §1 lifecycle states + §3 pause behavior + §4 resume behavior; §5 deletes the prior chat-only-narration fallback; the dispatcher + surface-adapter short-circuits guarantee no Foundry-side state is mutated while paused                                                                          |
+| 5.8                | "If Foundry becomes unreachable, the session pauses with state preserved — there is no 'voice-only' continuation mode, because under the Surface model the player text surface lives in Foundry; the operator restarts the session when Foundry is back" | §1 lifecycle states + §3 pause behavior + §4 resume behavior; §5 deletes the prior chat-only-narration fallback; the dispatcher + surface-adapter short-circuits guarantee no Foundry-side state is mutated while paused                                                                          |
 | 5.8 (graceful TTS) | "if TTS provider fails, fall back to text-only narration in Foundry chat" (the OTHER graceful-degradation path in §5.8; orthogonal to Foundry-down)                                                                                                            | Out of scope of this TDD; carried forward as-is from existing voice-IO design (TDD 0012); referenced for completeness                                                                                                                                                                             |
 | 5.8 (graceful LLM) | "If primary LLM fails, surface a warning + pause"                                                                                                                                                                                                              | Out of scope of this TDD; carried forward as-is from TDD 0008's LLM-provider failure handling; referenced for completeness. The same `paused-*` lifecycle pattern COULD be extended to LLM-down in a future TDD (the LifecycleController's design admits other pause causes); not pursued at v0.5 |
 
@@ -304,3 +304,14 @@ The TDD does not change the existing erasure paths (TDD 0038); pause state is pe
 - **Operator DM consent UX at first run.** The pause-notification DM requires a separate operator consent (vs. player consent). Recommendation: at first session-start (or operator-first-claim per TDD 0024), surface a one-time prompt: "Do you want pause notifications via Discord DM (operator-only, on Foundry/bridge disconnect)?" Y/N persists per-installation; CONTRIBUTING.md captures.
 - **LLM-down case** (PRD §5.8 "If primary LLM fails, surface a warning + pause"). Could the same lifecycle machine extend to `paused-llm-down`? Yes, additively (`SessionLifecycleState`'s discriminated union extends; detectors extend; same operator-resume path). Not in scope for this TDD; tracked as a future enhancement.
 - **Voice-down case.** If Discord voice disconnects, what's the lifecycle response? Currently: not pause-causing; voice-IO has its own reconnect logic; STT just stops capturing during the gap. If voice-down should also pause (parity with Foundry-down), that's a future extension — same LifecycleController design.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

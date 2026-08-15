@@ -52,7 +52,7 @@ All docs below are `Status: implemented` unless the Notes column says otherwise.
 | [0011](./0011-orchestrator-turn-loop.md) | Orchestrator Turn Loop | |
 | [0012](./0012-voice-io.md) | Voice IO — Interface, Consent, Session Loop | |
 | [0013](./0013-dialogue-persistence-session-lifecycle.md) | Dialogue Persistence + Session Lifecycle | |
-| [0014](./0014-mcp-foundry-client.md) | McpFoundryClient | |
+| [0014](./0014-mcp-foundry-client.md) | McpFoundryClient | superseded by [0041](./0041-first-party-foundry-addon.md) |
 | [0015](./0015-always-listening-voice-loop.md) | Always-Listening Voice Loop | |
 | [0016](./0016-player-character-identity-mapping.md) | Player↔Character Identity Mapping | |
 | [0017](./0017-voice-assignment.md) | DM + NPC Voice Assignment | |
@@ -65,7 +65,19 @@ All docs below are `Status: implemented` unless the Notes column says otherwise.
 | [0024](./0024-operator-self-designation.md) | Operator Self-Designation (Console + Slash Command) | supersedes §4 of [0023](./0023-session-onboarding-presence-operator-channel.md) |
 | [0025](./0025-operator-control-parity.md) | Operator Control Parity (Console ↔ Slash) + Live State Sync | |
 | [0026](./0026-player-dm-side-channels.md) | 1:1 Player↔DM Side-Channels (private Q&A + private actions) | single-scene invariant → [ADR-0020](../adr/0020-single-scene-invariant.md) |
-| [0027](./0027-mcp-bridge-gap-reaudit-upstream-proposal.md) | MCP Bridge Gap Re-Audit + Upstream Proposal (extends [0022](./0022-dm-action-coverage-audit.md)) | |
+| [0027](./0027-mcp-bridge-gap-reaudit-upstream-proposal.md) | MCP Bridge Gap Re-Audit + Upstream Proposal (extends [0022](./0022-dm-action-coverage-audit.md)) | superseded by [0037](./0037-bridge-dependencies-surface-model-critical-batch.md) |
 | [0028](./0028-real-time-voice-latency.md) | Real-Time Voice Latency (streaming, barge-in, latency masking) | cascade-not-S2S decision → [ADR-0021](../adr/0021-cascaded-voice-not-s2s.md) |
 | [0029](./0029-sealed-credential-store.md) | Sealed Credential Store | store lives in `server` (not `app`) — dep-cycle |
 | [0030](./0030-pii-column-encryption.md) | Per-Column PII Encryption | supersedes ADR-0019 → [0022](../adr/0022-pii-encryption-node-crypto.md) |
+| [0031](./0031-session-intake-and-intake-report.md) | Session Intake & Intake Report | draft |
+| [0032](./0032-autonomous-pre-game-setup-actions.md) | Autonomous Pre-Game Setup Actions | draft |
+| [0033](./0033-live-state-perception-and-triggered-actions.md) | Live State Perception & Triggered Actions | draft |
+| [0034](./0034-surface-routing-and-io-abstraction.md) | Surface Routing & I/O Abstraction | draft |
+| [0035](./0035-side-channels-via-foundry-whisper.md) | Side-Channels via Foundry Whisper | draft; supersedes [0026](./0026-player-dm-side-channels.md) |
+| [0036](./0036-onboarding-and-foundry-user-preflight.md) | Onboarding & Foundry-User Pre-Flight | draft; supersedes [0023](./0023-session-onboarding-presence-operator-channel.md) + [0016](./0016-player-character-identity-mapping.md) |
+| [0037](./0037-bridge-dependencies-surface-model-critical-batch.md) | MCP Bridge Dependencies | superseded by [0041](./0041-first-party-foundry-addon.md) |
+| [0038](./0038-per-audience-erasure-cascade-to-foundry.md) | Per-Audience Erasure Cascade to Foundry | draft |
+| [0039](./0039-foundry-down-session-lifecycle.md) | Foundry-Down Session Lifecycle | draft |
+| [0040](./0040-operator-control-parity-foundry-chat-commands.md) | Operator Control Parity — Foundry Chat Commands | draft; supersedes [0025](./0025-operator-control-parity.md) |
+| [0041](./0041-first-party-foundry-addon.md) | First-party Foundry add-on, gateway, and table-text client | draft; supersedes [0014](./0014-mcp-foundry-client.md) + [0037](./0037-bridge-dependencies-surface-model-critical-batch.md) |
+| [0042](./0042-foundry-mechanical-writes.md) | Foundry mechanical writes (combat, damage, fog, tokens) | draft |
