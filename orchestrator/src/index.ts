@@ -39,6 +39,8 @@ export {
 export { buildWarmStateSnapshot, summarizeWarmStateForOperator } from "./warm_state.js";
 export {
   type FoundryClient,
+  type FoundryChatEvent,
+  type PostChatMessageArgs,
   type FoundryActor,
   type FoundryScene,
   type FoundrySceneToken,
@@ -257,3 +259,22 @@ export {
   type AlwaysListeningConfig,
   type AlwaysListeningResult,
 } from "./always_listening_session.js";
+export {
+  audienceKind,
+  AsyncQueue,
+  FakeInboundSurface,
+  FakeOutboundSurface,
+  isInboundSurface,
+  isOutboundSurface,
+  NoHandlingSurfaceError,
+  SurfaceRouter,
+  type Audience as SurfaceAudience,
+  type ConsoleControl,
+  type EmitReport,
+  type InboundSurface,
+  type OutboundSurface,
+  type SurfaceInputEvent,
+  type SurfaceOutput,
+  type SurfaceRouterOptions,
+  type TtsStream,
+} from "./surfaces/index.js";
