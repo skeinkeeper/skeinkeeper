@@ -94,10 +94,14 @@ export {
   InMemoryMemoryStore,
   cosineSimilarity,
   effectiveAudience,
+  matchesMetadataFilter,
   type MemoryStore,
   type MemoryRecord,
   type MemoryKind,
+  type MemorySource,
+  type MemoryMetadataFilter,
   type MemoryQueryOptions,
+  type ByMetadataOptions,
 } from "./memory/store.js";
 export { allowedAudiencesFor, audienceVisibleInConversation } from "./audience.js";
 export { Mutex } from "./util/mutex.js";

@@ -16,6 +16,12 @@ export interface ColdEntry {
   text: string;
   /** Structured fields preserved alongside the prose (pack, type, system, …). */
   deltas?: Record<string, unknown>;
+  source?: MemoryRecord["metadata"]["source"];
+  foundry_id?: string;
+  last_modified?: string;
+  location?: string;
+  quest?: string;
+  keywords?: string[];
 }
 
 export async function ingestColdEntries(
@@ -48,6 +54,12 @@ export async function ingestColdEntries(
           createdAt: now,
           embedModel: embed.name,
           ...(entry.deltas !== undefined ? { deltas: entry.deltas } : {}),
+          ...(entry.source !== undefined ? { source: entry.source } : {}),
+          ...(entry.foundry_id !== undefined ? { foundry_id: entry.foundry_id } : {}),
+          ...(entry.last_modified !== undefined ? { last_modified: entry.last_modified } : {}),
+          ...(entry.location !== undefined ? { location: entry.location } : {}),
+          ...(entry.quest !== undefined ? { quest: entry.quest } : {}),
+          ...(entry.keywords !== undefined ? { keywords: entry.keywords } : {}),
         },
       });
     }
