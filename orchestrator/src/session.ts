@@ -667,14 +667,20 @@ export async function runTurn(
       Date.now(),
     );
     // Table-audience narration goes through the router (voice + Foundry public
-    // chat). Side-channel turns keep their existing conversation scope; TDD 0035
-    // wires player-audience emit.
-    if (cfg.surfaces !== undefined && options.conversation === undefined) {
-      await cfg.surfaces.emit({
-        audience: { kind: "table" },
-        text: narration,
-        ...(options.audio !== undefined ? { audio: options.audio } : {}),
-      });
+    // chat). Player-audience side-channel replies whisper via Foundry (TDD 0035).
+    if (cfg.surfaces !== undefined) {
+      if (options.conversation === undefined) {
+        await cfg.surfaces.emit({
+          audience: { kind: "table" },
+          text: narration,
+          ...(options.audio !== undefined ? { audio: options.audio } : {}),
+        });
+      } else if (audience.startsWith("player:")) {
+        await cfg.surfaces.emit({
+          audience: { kind: "player", playerId: input.speaker },
+          text: narration,
+        });
+      }
     }
   }
 

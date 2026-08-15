@@ -56,6 +56,7 @@ describe("ToolRegistry", () => {
         "notify_operator",
         "place_hidden_token",
         "record_player_character",
+        "resolve_action",
         "reveal_token",
         "roll",
         "set_quest_flag",

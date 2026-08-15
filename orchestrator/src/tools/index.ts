@@ -305,12 +305,29 @@ const notifyOperatorDef = defineTool({
   },
 });
 
+const resolveActionDef = defineTool({
+  name: "resolve_action",
+  description:
+    "Commit a privately initiated in-scene action. The narration becomes table-visible (Foundry public chat and Discord voice). Call only when the action lands — never for private Q&A.",
+  inputSchema: z.object({ narration: z.string().min(1) }),
+  outputSchema: z.object({ resolved: z.boolean() }),
+  async handle(input, ctx) {
+    if (ctx.surfaces !== undefined) {
+      await ctx.surfaces.emit({ audience: { kind: "table" }, text: input.narration });
+    } else if (ctx.notifyTable !== undefined) {
+      await ctx.notifyTable(input.narration);
+    }
+    return { resolved: true };
+  },
+});
+
 export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   rollDef,
   setQuestFlagDef,
   movePartyDef,
   advanceTimeDef,
   whisperDef,
+  resolveActionDef,
   fudgeRollDef,
   recordPlayerCharacterDef,
   notifyOperatorDef,

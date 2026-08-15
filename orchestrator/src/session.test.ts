@@ -665,8 +665,10 @@ describe("runTurn — SurfaceRouter table emit (TDD 0034)", () => {
 
   it("does not emit table narration for a side-channel turn", async () => {
     const table = new FakeOutboundSurface("foundry-public", ["table"]);
+    const player = new FakeOutboundSurface("foundry-whisper", ["player"]);
     const router = new SurfaceRouter();
     router.register(table);
+    router.register(player);
     const { session } = setupSession({
       surfaces: router,
       llm: fakeLlmFromEvents([
@@ -680,6 +682,8 @@ describe("runTurn — SurfaceRouter table emit (TDD 0034)", () => {
       { conversation: { id: "player:p", audience: "player:p" } },
     );
     expect(table.emits).toHaveLength(0);
+    expect(player.emits).toHaveLength(1);
+    expect(player.emits[0]?.audience).toEqual({ kind: "player", playerId: "p" });
   });
 });
 
