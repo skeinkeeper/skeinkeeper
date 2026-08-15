@@ -46,6 +46,7 @@ import {
   type PerceptionKind,
   type Unsubscribe,
 } from "./perception/event-stream.js";
+import type { SideChannelIdentityMap } from "./side_channel/identity_map.js";
 import type { SurfaceRouter } from "./surfaces/router.js";
 import type { TtsStream } from "./surfaces/events.js";
 import type { Eagerness } from "./voice/eagerness.js";
@@ -111,6 +112,8 @@ export interface SessionConfig {
   whisperPlayer?: (playerId: string, message: string) => Promise<void>;
   /** TDD 0034: table narration fans out through this instead of VoiceIO. */
   surfaces?: SurfaceRouter;
+  /** TDD 0035 ephemeral 3-way identity (persisted by TDD 0036). */
+  identity?: SideChannelIdentityMap;
 }
 
 export class Session {
@@ -511,6 +514,9 @@ async function runLlmIterations(
       ...(cfg.notifyTable !== undefined ? { notifyTable: cfg.notifyTable } : {}),
       ...(cfg.whisperPlayer !== undefined ? { whisperPlayer: cfg.whisperPlayer } : {}),
       ...(cfg.surfaces !== undefined ? { surfaces: cfg.surfaces } : {}),
+      ...(cfg.identity !== undefined
+        ? { resolveFoundryUserId: (id) => cfg.identity?.foundryUserIdForDiscord(id) }
+        : {}),
     };
     for (const tc of iterationToolCalls) {
       const result = await cfg.dispatcher.dispatch({ name: tc.name, input: tc.input }, ctx);

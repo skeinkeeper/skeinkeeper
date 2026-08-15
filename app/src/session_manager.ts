@@ -642,6 +642,7 @@ export class SessionManager {
         await surfaces.emit({ audience: { kind: "player", playerId }, text });
       },
       surfaces,
+      identity: this.identity,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     this.coordinator = new SideChannelCoordinator({

@@ -35,37 +35,88 @@ import {
 const rollDef = defineTool({
   name: "roll",
   description:
-    "Roll dice. The active Foundry system's roller handles formula interpretation and outcome — D&D 5e parses d20+modifier vs DC; Fate handles 4dF+skill; PbtA games handle 2d6+stat with 6-/7-9/10+ thresholds. Set secret=true for GM-only rolls.",
+    "Roll dice. The active Foundry system's roller handles formula interpretation and outcome — D&D 5e parses d20+modifier vs DC; Fate handles 4dF+skill; PbtA games handle 2d6+stat with 6-/7-9/10+ thresholds. Set secret=true for a hidden roll; pass audience { kind: player, playerId } to whisper the roll to one player, otherwise it is GM-only.",
   inputSchema: z.object({
     formula: z.string(),
     speaker: z.string().optional(),
     secret: z.boolean().optional(),
+    audience: z
+      .object({
+        kind: z.enum(["table", "gm", "player"]),
+        playerId: z.string().optional(),
+      })
+      .optional(),
   }),
   outputSchema: z.object({
     total: z.number(),
     rolls: z.array(z.number()),
     formula: z.string(),
     secret: z.boolean(),
+    source: z.enum(["foundry", "local"]),
   }),
   async handle(input, ctx) {
     const secret = input.secret ?? false;
+    let mode: "public" | "gm" | "blind" | "whisperTo" | undefined;
+    let whisperTo: ReadonlyArray<string> | undefined;
+    if (secret) {
+      if (input.audience?.kind === "player") {
+        const foundryUserId =
+          input.audience.playerId !== undefined
+            ? ctx.resolveFoundryUserId?.(input.audience.playerId)
+            : undefined;
+        if (foundryUserId === undefined) {
+          ctx.analytics?.track("error.captured", {
+            errorClass: "unresolved-foundry-user",
+            module: "orchestrator:roll",
+          });
+          const local = rollFormula(input.formula);
+          return {
+            total: local.total,
+            rolls: local.rolls,
+            formula: input.formula,
+            secret,
+            source: "local",
+          };
+        }
+        mode = "whisperTo";
+        whisperTo = [foundryUserId];
+      } else {
+        mode = "gm";
+      }
+    }
     // Prefer the active VTT's roller so dice land in Foundry's chat log. The
     // OSS bridge can't roll server-side yet (design doc 0014 mutation gap) and
     // throws, so fall back to the local crypto roller. Either way the result
     // has the same {total, rolls, formula} shape.
     if (ctx.foundry !== undefined) {
       try {
-        const r = await ctx.foundry.rollDice(
-          input.formula,
-          input.speaker !== undefined ? { speaker: input.speaker } : undefined,
-        );
-        return { total: r.total, rolls: [...r.rolls], formula: r.formula, secret };
+        const r = await ctx.foundry.rollDice(input.formula, {
+          ...(input.speaker !== undefined ? { speaker: input.speaker } : {}),
+          ...(mode !== undefined ? { mode } : {}),
+          ...(whisperTo !== undefined ? { whisperTo } : {}),
+        });
+        return {
+          total: r.total,
+          rolls: [...r.rolls],
+          formula: r.formula,
+          secret,
+          source: "foundry",
+        };
       } catch {
-        // fall through to the local roller
+        ctx.analytics?.track("error.captured", {
+          errorClass: "rollDice",
+          module: "orchestrator:roll",
+        });
       }
     }
     const local = rollFormula(input.formula);
-    return { total: local.total, rolls: local.rolls, formula: input.formula, secret };
+    return {
+      total: local.total,
+      rolls: local.rolls,
+      formula: input.formula,
+      secret,
+      source: "local",
+    };
   },
 });
 

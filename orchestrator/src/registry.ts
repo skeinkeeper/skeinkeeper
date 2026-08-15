@@ -44,6 +44,8 @@ export interface ToolHandlerContext {
   whisperPlayer?: (playerId: string, message: string) => Promise<void>;
   /** TDD 0035: whisper / resolve_action emit through the surface router. */
   surfaces?: SurfaceRouter;
+  /** TDD 0035 / 0036: Discord player id → Foundry user id. */
+  resolveFoundryUserId?: (playerId: string) => string | undefined;
 }
 
 /** Typed 0034/0035 seam used by share_journal_to_audience. */

@@ -72,8 +72,12 @@ export class MockFoundryClient implements FoundryClient {
   private journalHits: ReadonlyArray<FoundrySearchHit>;
   private journalsById = new Map<string, FoundryJournal>();
   readonly updates: Array<{ actorId: string; update: Record<string, unknown> }> = [];
-  readonly rolls: Array<{ formula: string; speaker?: string; whisperTo?: ReadonlyArray<string> }> =
-    [];
+  readonly rolls: Array<{
+    formula: string;
+    speaker?: string;
+    whisperTo?: ReadonlyArray<string>;
+    mode?: "public" | "gm" | "blind" | "whisperTo";
+  }> = [];
   /** setActiveScene invocations (TDD 0032 activateScene idempotency). */
   readonly sceneSwitches: string[] = [];
   /** updateToken invocations (TDD 0033). */
@@ -471,12 +475,17 @@ export class MockFoundryClient implements FoundryClient {
 
   async rollDice(
     formula: string,
-    opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> },
+    opts?: {
+      speaker?: string;
+      whisperTo?: ReadonlyArray<string>;
+      mode?: "public" | "gm" | "blind" | "whisperTo";
+    },
   ): Promise<RollResult> {
     this.rolls.push({
       formula,
       ...(opts?.speaker !== undefined ? { speaker: opts.speaker } : {}),
       ...(opts?.whisperTo !== undefined ? { whisperTo: opts.whisperTo } : {}),
+      ...(opts?.mode !== undefined ? { mode: opts.mode } : {}),
     });
     return this.rollResultFor(formula);
   }

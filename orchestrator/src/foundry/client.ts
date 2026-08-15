@@ -184,7 +184,11 @@ export interface FoundryClient {
   createActorFromCompendium(args: { packId: string; itemId: string }): Promise<FoundryActor>;
   rollDice(
     formula: string,
-    opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> },
+    opts?: {
+      speaker?: string;
+      whisperTo?: ReadonlyArray<string>;
+      mode?: "public" | "gm" | "blind" | "whisperTo";
+    },
   ): Promise<RollResult>;
   /** Activate a scene by id or name — an in-play DM action (ADR-0015). */
   setActiveScene(sceneIdOrName: string): Promise<void>;
