@@ -75,7 +75,7 @@ const rollDef = defineTool({
             rolls: local.rolls,
             formula: input.formula,
             secret,
-            source: "local",
+            source: "local" as const,
           };
         }
         mode = "whisperTo";
@@ -100,7 +100,7 @@ const rollDef = defineTool({
           rolls: [...r.rolls],
           formula: r.formula,
           secret,
-          source: "foundry",
+          source: "foundry" as const,
         };
       } catch {
         ctx.analytics?.track("error.captured", {
@@ -115,7 +115,7 @@ const rollDef = defineTool({
       rolls: local.rolls,
       formula: input.formula,
       secret,
-      source: "local",
+      source: "local" as const,
     };
   },
 });

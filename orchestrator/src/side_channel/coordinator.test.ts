@@ -115,7 +115,7 @@ describe("SideChannelCoordinator inbound (TDD 0035)", () => {
     });
 
     expect(result.dispatched).toBe(false);
-    expect(result.reason).toBe("unmapped");
+    if (!result.dispatched) expect(result.reason).toBe("unmapped");
     expect(tenantDb.dialogue.listBySession("sess-1")).toHaveLength(0);
     expect(warn.mock.calls.some((c) => String(c[0]).toLowerCase().includes("unmapped"))).toBe(true);
   });

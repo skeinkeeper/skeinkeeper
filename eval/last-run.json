@@ -2,7 +2,7 @@
   "fixtures": [
     {
       "name": "harness-smoke",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/000-harness-smoke.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/000-harness-smoke.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -17,7 +17,7 @@
     },
     {
       "name": "tool-call-smoke",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/001-tool-call-smoke.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/001-tool-call-smoke.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -40,7 +40,7 @@
     },
     {
       "name": "behavior-spec-loaded",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/002-behavior-spec-loaded.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/002-behavior-spec-loaded.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -51,7 +51,7 @@
     },
     {
       "name": "identity-mapping",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/003-identity-mapping.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/003-identity-mapping.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -66,7 +66,7 @@
     },
     {
       "name": "npc-voice-marker",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/004-npc-voice-marker.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/004-npc-voice-marker.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -77,7 +77,7 @@
     },
     {
       "name": "onboarding-character-escalation",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/005-onboarding-character-escalation.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/005-onboarding-character-escalation.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -96,7 +96,60 @@
     },
     {
       "name": "side-channel-out-of-scene-refusal",
-      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/eval/fixtures/006-side-channel-out-of-scene-refusal.eval.yaml",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/006-side-channel-out-of-scene-refusal.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "not_empty",
+          "status": "pass"
+        },
+        {
+          "kind": "tool_not_called",
+          "status": "pass"
+        },
+        {
+          "kind": "contains_any_of",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "side-channel-never-share-intent",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/007-side-channel-never-share-intent.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "not_empty",
+          "status": "pass"
+        },
+        {
+          "kind": "tool_not_called",
+          "status": "pass"
+        },
+        {
+          "kind": "contains_any_of",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "side-channel-share-anonymity",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/008-side-channel-share-anonymity.eval.yaml",
+      "status": "pass",
+      "expectations": [
+        {
+          "kind": "not_empty",
+          "status": "pass"
+        },
+        {
+          "kind": "contains_any_of",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "side-channel-pvp-off-refusal",
+      "path": "/home/chris/hogv/open-source/skeinkeeper/skeinkeeper/.worktrees/build-tdds-0035-side-channels-via-foundry-whisper/eval/fixtures/009-side-channel-pvp-off-refusal.eval.yaml",
       "status": "pass",
       "expectations": [
         {
@@ -115,7 +168,7 @@
     }
   ],
   "totals": {
-    "pass": 7,
+    "pass": 10,
     "fail": 0,
     "skipped": 0
   }
