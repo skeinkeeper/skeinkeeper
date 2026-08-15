@@ -15,8 +15,10 @@ import {
   sessions,
   voiceAssignments,
   auditLog,
+  sessionIntakeFindings,
   type Action,
   type NewCampaign,
+  type NewSessionIntakeFindingRow,
   type NewDialogueRow,
   type NewPlayerCharacterMapRow,
   type NewQuestFlag,
@@ -383,6 +385,62 @@ export class TenantDb {
         .where(and(eq(auditLog.tenantId, this.tenantId), eq(auditLog.sessionId, sessionId)))
         .all()
         .map((row) => ({ ...row, payloadJson: this.piiCrypto.dec(row.payloadJson) })),
+  };
+
+  // ---- session intake findings (TDD 0031; PII-free) ----
+  readonly sessionIntakeFindings = {
+    insert: (
+      data: Omit<NewSessionIntakeFindingRow, "tenantId" | "id" | "dmOnly"> & { dmOnly: boolean },
+    ) => {
+      const inserted = this.db
+        .insert(sessionIntakeFindings)
+        .values({
+          ...data,
+          tenantId: this.tenantId,
+          dmOnly: data.dmOnly ? 1 : 0,
+        })
+        .returning()
+        .get();
+      return inserted;
+    },
+    get: (id: number) =>
+      this.db
+        .select()
+        .from(sessionIntakeFindings)
+        .where(
+          and(eq(sessionIntakeFindings.tenantId, this.tenantId), eq(sessionIntakeFindings.id, id)),
+        )
+        .get(),
+    listBySession: (sessionId: string) =>
+      this.db
+        .select()
+        .from(sessionIntakeFindings)
+        .where(
+          and(
+            eq(sessionIntakeFindings.tenantId, this.tenantId),
+            eq(sessionIntakeFindings.sessionId, sessionId),
+          ),
+        )
+        .all(),
+    listByCampaign: (campaignId: string) =>
+      this.db
+        .select()
+        .from(sessionIntakeFindings)
+        .where(
+          and(
+            eq(sessionIntakeFindings.tenantId, this.tenantId),
+            eq(sessionIntakeFindings.campaignId, campaignId),
+          ),
+        )
+        .all(),
+    markResolved: (id: number, resolutionId: string, resolvedAt: number) =>
+      this.db
+        .update(sessionIntakeFindings)
+        .set({ resolutionId, resolvedAt })
+        .where(
+          and(eq(sessionIntakeFindings.tenantId, this.tenantId), eq(sessionIntakeFindings.id, id)),
+        )
+        .run(),
   };
 
   /**

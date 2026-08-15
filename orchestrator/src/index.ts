@@ -63,6 +63,14 @@ export {
   type IntakeResolutionHooks,
 } from "./intake/resolve.js";
 export { DM_ONLY_MARKER } from "./intake/summary.js";
+export {
+  INTAKE_SETTING_KEY,
+  emptyIntakeConfig,
+  loadIntakeConfig,
+  saveIntakeConfig,
+  persistSurfacedFindings,
+  persistFindingResolution,
+} from "./intake/persist.js";
 export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
 export { renderActorState } from "./foundry/render.js";
 export { resolveCharacterName, type NameResolution } from "./identity.js";

@@ -21,6 +21,7 @@ export { CampaignAdapter } from "./adapters/campaign-adapter.js";
 export { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 export { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 export { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
+export { SessionIntakeFindingAdapter } from "./adapters/session-intake-finding-adapter.js";
 export { loadOrCreateSalt } from "./salt.js";
 export { seal, open, SecretOpenError } from "./secrets.js";
 export {

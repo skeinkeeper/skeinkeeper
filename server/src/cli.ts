@@ -14,6 +14,7 @@ import { CampaignAdapter } from "./adapters/campaign-adapter.js";
 import { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 import { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
+import { SessionIntakeFindingAdapter } from "./adapters/session-intake-finding-adapter.js";
 import { loadOrCreateSalt } from "./salt.js";
 import { runSecretsCli } from "./secrets_cli.js";
 import { EnvKeySource } from "./secret_store.js";
@@ -137,12 +138,14 @@ export async function runCli(
     const auditLogAdapter = new AuditLogAdapter(db);
     const dialogueAdapter = new DialogueAdapter(db, piiCrypto);
     const pcMapAdapter = new PlayerCharacterMapAdapter(db, piiCrypto);
+    const intakeAdapter = new SessionIntakeFindingAdapter(db);
     for (const a of [
       consentsAdapter,
       campaignAdapter,
       auditLogAdapter,
       dialogueAdapter,
       pcMapAdapter,
+      intakeAdapter,
     ]) {
       erasure.register(a);
     }
@@ -155,6 +158,7 @@ export async function runCli(
     exporter.register(consentsAdapter);
     exporter.register(dialogueAdapter);
     exporter.register(pcMapAdapter);
+    exporter.register(intakeAdapter);
 
     const scope = scopeFromArgs(command, values);
     if (!scope) {

@@ -33,6 +33,10 @@ import {
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
   createIntakeResolutionState,
+  loadIntakeConfig,
+  persistFindingResolution,
+  persistSurfacedFindings,
+  saveIntakeConfig,
   endSession,
   findDefaultBehaviorSpec,
   loadBehaviorSpec,
@@ -193,6 +197,10 @@ export class SessionManager {
       deps.campaignId,
       deps.config.discord.operatorUserId,
     );
+    this.intakeState = createIntakeResolutionState(
+      [],
+      loadIntakeConfig(deps.tenantDb, deps.campaignId),
+    );
   }
 
   get eagerness(): Eagerness {
@@ -237,14 +245,25 @@ export class SessionManager {
       ...(this.session !== null ? { foundry: this.session.config.foundry } : {}),
     });
     if (this.session !== null) this.session.config.intake = this.intakeState.intake;
+    saveIntakeConfig(this.deps.tenantDb, this.deps.campaignId, this.intakeState.intake);
+    if (result.status === "resolved") {
+      persistFindingResolution(this.deps.tenantDb, findingId, optionId);
+    }
     this.emitIntakeEvent();
     return result;
   }
 
   /** Replace the live intake findings after a minimum/extended run. */
-  installIntakeFindings(findings: ReadonlyArray<IntakeFinding>): void {
+  installIntakeFindings(findings: ReadonlyArray<IntakeFinding>, sessionId?: string): void {
     const prior = this.intakeState.intake;
-    this.intakeState = createIntakeResolutionState(findings, prior);
+    const sid = sessionId ?? this.session?.config.sessionId ?? "pending";
+    const persisted = persistSurfacedFindings(
+      this.deps.tenantDb,
+      this.deps.campaignId,
+      sid,
+      findings,
+    );
+    this.intakeState = createIntakeResolutionState(persisted, prior);
     this.emitIntakeEvent();
   }
 
