@@ -110,3 +110,26 @@ describe("MockFoundryClient — scenes (ADR-0015)", () => {
     expect((await f.getActiveScene())?.id).toBe("scene-tavern");
   });
 });
+
+describe("MockFoundryClient — token visibility (TDD 0033)", () => {
+  it("updateToken toggles hidden and getTokenDetails reflects it", async () => {
+    const f = new MockFoundryClient({
+      system: "dnd5e",
+      actors: [sildar],
+      scenes: [
+        {
+          id: "scene-tavern",
+          name: "Stonehill Inn",
+          active: true,
+          tokens: [{ id: "tok-sildar", actorId: sildar.id, name: sildar.name, hidden: true }],
+        },
+      ],
+      activeSceneId: "scene-tavern",
+    });
+    expect((await f.getTokenDetails("tok-sildar"))?.hidden).toBe(true);
+    await f.updateToken({ tokenId: "tok-sildar", hidden: false });
+    expect((await f.getTokenDetails("tok-sildar"))?.hidden).toBe(false);
+    await f.updateToken({ tokenId: "tok-sildar", hidden: true });
+    expect((await f.getTokenDetails("tok-sildar"))?.hidden).toBe(true);
+  });
+});
