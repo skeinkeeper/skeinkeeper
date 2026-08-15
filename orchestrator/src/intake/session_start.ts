@@ -112,6 +112,8 @@ export async function kickExtendedIntake(
   const started = Date.now();
   const minimum = await runMinimumIntake(ctx, foundry, memory, tenantDb);
   const extended = await runExtendedIntake(ctx, foundry, memory, minimum, tenantDb);
+  const party = await foundry.listPartyActors();
+  const partyActorIds = party.map((a) => a.id);
   const dispatched = await dispatchPostIntakeAutosetup({
     intake: extended,
     sessionConfig: ctx.sessionConfig,
@@ -119,6 +121,7 @@ export async function kickExtendedIntake(
     campaignId: ctx.campaignId,
     sessionId: ctx.sessionId,
     memory,
+    partyActorIds,
     ...(deps.embed !== undefined ? { embed: deps.embed } : {}),
     ...(deps.worldContent !== undefined ? { worldContent: deps.worldContent } : {}),
     ...(deps.runState !== undefined ? { runState: deps.runState } : {}),

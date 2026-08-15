@@ -72,8 +72,13 @@ export async function dispatchPostIntakeAutosetup(
         if (args.runState !== undefined) args.runState.coldIndexReady = true;
         return report;
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (args.runState !== undefined) args.runState.coldIndexReady = true;
+        args.onTelemetry?.("index.run.source_failed", {
+          campaignId: args.campaignId,
+          source: "world-journal",
+          reason: err instanceof Error ? err.message : String(err),
+        });
         return undefined;
       });
   }

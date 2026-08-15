@@ -99,7 +99,7 @@ async function runRefresh(
       journalByFolder.set(j.folder, keys);
   }
 
-  await syncSource(
+  await syncOne(
     store,
     embed,
     ctx,
@@ -114,7 +114,7 @@ async function runRefresh(
     ),
     report,
   );
-  await syncSource(
+  await syncOne(
     store,
     embed,
     ctx,
@@ -129,7 +129,7 @@ async function runRefresh(
     ),
     report,
   );
-  await syncSource(
+  await syncOne(
     store,
     embed,
     ctx,
@@ -149,7 +149,7 @@ async function runRefresh(
     }),
     report,
   );
-  await syncSource(
+  await syncOne(
     store,
     embed,
     ctx,
@@ -241,6 +241,27 @@ function currentEntry(
     keys,
     ...(lastModified !== undefined ? { lastModified } : {}),
   };
+}
+
+async function syncOne(
+  store: MemoryStore,
+  embed: EmbeddingProvider,
+  ctx: RefreshIndexContext,
+  source: IndexSource,
+  current: ReadonlyArray<CurrentEntry>,
+  report: RefreshReport,
+): Promise<void> {
+  try {
+    await syncSource(store, embed, ctx, source, current, report);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    report.errors.push({ source, error });
+    ctx.onTelemetry?.("index.run.source_failed", {
+      campaignId: ctx.campaignId,
+      source,
+      reason: error,
+    });
+  }
 }
 
 async function syncSource(

@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { MockFoundryClient, type FoundryClient } from "@skeinkeeper/orchestrator";
-import { McpFoundryClient, StdioMcpToolCaller } from "@skeinkeeper/vtt-foundry";
+import {
+  foundryWorldContentReader,
+  MockFoundryClient,
+  type FoundryClient,
+  type WorldContentReader,
+} from "@skeinkeeper/orchestrator";
+import {
+  mcpWorldContentReader,
+  McpFoundryClient,
+  StdioMcpToolCaller,
+  type McpToolCaller,
+} from "@skeinkeeper/vtt-foundry";
 import type { AppConfig } from "./config.js";
 
 /**
@@ -14,7 +24,20 @@ import type { AppConfig } from "./config.js";
  */
 export interface FoundrySource {
   connect(): Promise<FoundryClient>;
+  /** Full world-content reader. MCP sessions use list-journals / get-character-entity;
+   *  mock / disconnected sessions fall back to FoundryClient searches. */
+  worldContent(): WorldContentReader;
   close(): Promise<void>;
+}
+
+/** Prefer the MCP world-content reader when a live caller is in hand (TDD 0032 §3a). */
+export function resolveWorldContent(opts: {
+  caller?: McpToolCaller | null;
+  client: FoundryClient;
+}): WorldContentReader {
+  return opts.caller != null
+    ? mcpWorldContentReader(opts.caller)
+    : foundryWorldContentReader(opts.client);
 }
 
 function envRecord(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -27,10 +50,15 @@ export function createFoundrySource(config: AppConfig, env: NodeJS.ProcessEnv): 
   const cmd = config.foundry.mcpCommand;
   if (cmd === undefined || cmd.length === 0) {
     const mock = new MockFoundryClient({ system: "dnd5e" });
-    return { connect: () => Promise.resolve(mock), close: () => Promise.resolve() };
+    return {
+      connect: () => Promise.resolve(mock),
+      worldContent: () => foundryWorldContentReader(mock),
+      close: () => Promise.resolve(),
+    };
   }
 
   let caller: StdioMcpToolCaller | null = null;
+  let lastClient: FoundryClient | null = null;
   return {
     connect: async () => {
       const c = new StdioMcpToolCaller({
@@ -41,18 +69,27 @@ export function createFoundrySource(config: AppConfig, env: NodeJS.ProcessEnv): 
       try {
         const client = await McpFoundryClient.connect(c);
         caller = c;
+        lastClient = client;
         return client;
       } catch (err) {
         await c.close().catch(() => undefined);
+        caller = null;
         console.warn(
           `Foundry MCP bridge unavailable (${err instanceof Error ? err.message : String(err)}); intake will report FOUNDRY_NOT_CONNECTED.`,
         );
-        return new MockFoundryClient({ system: "", connected: false });
+        lastClient = new MockFoundryClient({ system: "", connected: false });
+        return lastClient;
       }
     },
+    worldContent: () =>
+      resolveWorldContent({
+        caller,
+        client: lastClient ?? new MockFoundryClient({ system: "dnd5e" }),
+      }),
     close: async () => {
       await caller?.close().catch(() => undefined);
       caller = null;
+      lastClient = null;
     },
   };
 }

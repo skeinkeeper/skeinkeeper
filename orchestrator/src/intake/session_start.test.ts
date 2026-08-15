@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import { InMemoryMemoryStore } from "../memory/store.js";
 import { MockFoundryClient } from "../foundry/mock.js";
@@ -163,6 +163,8 @@ describe("runSessionStartIntake", () => {
       worldContent: world,
     });
     await result.extended;
-    expect(seen[0]).toEqual(["a1"]);
+    await vi.waitFor(() => {
+      expect(seen[0]).toEqual(["a1"]);
+    });
   });
 });

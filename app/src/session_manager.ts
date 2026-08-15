@@ -32,7 +32,6 @@ import {
   announceReadyAllowed,
   applyIntakeResolution,
   createSessionRunState,
-  foundryWorldContentReader,
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
   createIntakeResolutionState,
@@ -318,7 +317,7 @@ export class SessionManager {
       memory: this.deps.memoryStore,
       tenantDb: this.deps.tenantDb,
       embed: this.deps.providers.embed,
-      worldContent: foundryWorldContentReader(session.config.foundry),
+      worldContent: this.deps.foundry.worldContent(),
       runState: this.runState,
       onTelemetry: (name: string, props?: Record<string, unknown>) => this.trackIntake(name, props),
     };
