@@ -119,6 +119,7 @@ export {
   type EpisodicSummary,
 } from "./memory/summarize.js";
 export { ingestColdEntries, type ColdEntry } from "./memory/ingest.js";
+export { extractKeys, type ExtractedKeys, type WorldEntrySource } from "./memory/world-metadata.js";
 export type {
   CreatureCriteria,
   IndexSource,
