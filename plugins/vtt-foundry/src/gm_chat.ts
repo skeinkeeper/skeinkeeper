@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Skeinkeeper Contributors
+
+import type { FoundryClient, OutboundSurface, SurfaceOutput } from "@skeinkeeper/orchestrator";
+
+export interface FoundryGmChatSurfaceOptions {
+  client: FoundryClient;
+  /** When known, escalations also whisper this Foundry user (TDD 0034 §2). */
+  operatorFoundryUserId?: string;
+}
+
+export class FoundryGmChatSurface implements OutboundSurface {
+  readonly name = "foundry-gm";
+  readonly handles = ["gm"] as const;
+
+  constructor(private readonly opts: FoundryGmChatSurfaceOptions) {}
+
+  async emit(output: SurfaceOutput): Promise<void> {
+    const content = output.text ?? "";
+    if (content.length === 0) return;
+    const replyTo = output.meta?.replyTo;
+    if (replyTo !== undefined) {
+      await this.opts.client.postChatMessage({
+        content,
+        mode: "whisper",
+        whisperTo: [replyTo],
+      });
+      return;
+    }
+    await this.opts.client.postChatMessage({ content, mode: "gm" });
+    const operatorId = this.opts.operatorFoundryUserId;
+    if (output.meta?.escalation === true && operatorId !== undefined) {
+      await this.opts.client.postChatMessage({
+        content,
+        mode: "whisper",
+        whisperTo: [operatorId],
+      });
+    }
+  }
+}
