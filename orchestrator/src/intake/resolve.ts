@@ -19,9 +19,15 @@ export function createIntakeResolutionState(
   findings: ReadonlyArray<IntakeFinding>,
   intake: SessionIntakeConfig = { resolvedFindings: {} },
 ): IntakeResolutionState {
+  const resolvedIds = new Set<number>();
+  for (const finding of findings) {
+    if (finding.id !== undefined && intake.resolvedFindings[finding.code] !== undefined) {
+      resolvedIds.add(finding.id);
+    }
+  }
   return {
     findings: [...findings],
-    resolvedIds: new Set(),
+    resolvedIds,
     intake: {
       resolvedFindings: { ...intake.resolvedFindings },
       ...(intake.chosenStartingSceneId !== undefined

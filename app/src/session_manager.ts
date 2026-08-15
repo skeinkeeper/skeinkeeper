@@ -353,6 +353,7 @@ export class SessionManager {
     );
     const merged = [...this.intakeState.findings, ...persisted.filter((f) => f.id !== undefined)];
     this.intakeState = createIntakeResolutionState(merged, this.intakeState.intake);
+    this.intakeReadyFlag = announceReadyAllowed(this.intakeState);
     this.emitIntakeEvent();
     const report = formatIntakeReportForOperator(persisted);
     if (report.text.length > 0) {
