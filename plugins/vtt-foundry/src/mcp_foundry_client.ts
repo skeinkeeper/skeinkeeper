@@ -12,6 +12,7 @@ import type {
   FoundrySearchHit,
   FoundryUser,
   FoundryWorldInfo,
+  FoundryModuleRef,
   FoundryRollResult,
 } from "@skeinkeeper/orchestrator";
 import type { McpToolCaller } from "./mcp_tool_caller.js";
@@ -273,11 +274,11 @@ function unwrapActorRecord(res: unknown): Record<string, unknown> | null {
   return asRecord(unwrap(res, ["character", "actor", "data"]));
 }
 
-function parseModules(info: Record<string, unknown> | null): FoundryWorldInfo["modules"] {
+function parseModules(info: Record<string, unknown> | null): FoundryModuleRef[] {
   if (!info) return [];
   const fromArray = toArray(info, ["modules", "activeModules"]);
   if (fromArray.length > 0) {
-    const out: FoundryWorldInfo["modules"] = [];
+    const out: FoundryModuleRef[] = [];
     for (const item of fromArray) {
       if (typeof item === "string") {
         out.push({ id: item, title: item });

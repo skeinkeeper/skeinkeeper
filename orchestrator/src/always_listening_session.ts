@@ -63,6 +63,12 @@ export interface AlwaysListeningConfig {
     getNpcVoice: (npcKey: string) => string | undefined;
     assignNpcVoice: (npcKey: string) => Promise<string>;
   };
+  /**
+   * Minimum-intake gate (TDD 0031). When false, do not announce ready or
+   * begin the onboarding ritual — unresolved critical findings block Start.
+   * Defaults to ready (tests / sessions without intake).
+   */
+  intakeReady?: () => boolean;
   /** Invoked after each respond-decision (for telemetry / operator UI). */
   onDecision?: (decision: RespondDecision, fragments: ReadonlyArray<BufferFragment>) => void;
   /** Invoked after each turn the DM actually takes. */
@@ -196,6 +202,12 @@ export async function runAlwaysListeningSession(
       mapped,
       greeted,
     });
+
+    // Minimum-intake gate: do not announce ready or start the onboarding
+    // ritual while critical findings are unresolved (TDD 0031).
+    if (config.intakeReady !== undefined && !config.intakeReady()) {
+      continue;
+    }
 
     // Onboarding is a deliberate ritual, not a judgment call — when someone
     // present still needs a character mapping, run an onboarding turn and skip

@@ -33,9 +33,13 @@ import {
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
   createIntakeResolutionState,
+  formatIntakeReportForOperator,
+  kickExtendedIntake,
   loadIntakeConfig,
+  MockFoundryClient,
   persistFindingResolution,
   persistSurfacedFindings,
+  runSessionStartIntake,
   saveIntakeConfig,
   endSession,
   findDefaultBehaviorSpec,
@@ -46,6 +50,7 @@ import {
   startSession,
   VOICE_CONSENT_TEXT,
   type Eagerness,
+  type ExtendedIntakeResult,
   type IntakeFinding,
   type IntakeResolutionState,
   type IntakeResolveResult,
@@ -182,6 +187,8 @@ export class SessionManager {
   } | null = null;
   /** In-memory intake findings + resolutions for the live session (TDD 0031). */
   private intakeState: IntakeResolutionState = createIntakeResolutionState([]);
+  private intakeReadyFlag = true;
+  private extendedStarted = false;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -248,6 +255,19 @@ export class SessionManager {
     saveIntakeConfig(this.deps.tenantDb, this.deps.campaignId, this.intakeState.intake);
     if (result.status === "resolved") {
       persistFindingResolution(this.deps.tenantDb, findingId, optionId);
+      const row = this.deps.tenantDb.sessionIntakeFindings.get(findingId);
+      this.deps.analytics?.track("intake.finding.resolved", {
+        campaignId: this.deps.campaignId,
+        sessionId: this.session?.config.sessionId ?? "none",
+        findingCode: result.finding?.code ?? "unknown",
+        resolutionId: optionId,
+        latencyMs: row !== undefined ? Math.max(0, Date.now() - row.createdAt) : 0,
+      });
+    }
+    const nowReady = announceReadyAllowed(this.intakeState);
+    if (!this.intakeReadyFlag && nowReady) {
+      this.intakeReadyFlag = true;
+      this.startExtendedIfNeeded();
     }
     this.emitIntakeEvent();
     return result;
@@ -270,6 +290,74 @@ export class SessionManager {
   private emitIntakeEvent(): void {
     const view = this.getIntakeView();
     this.deps.onEvent?.({ kind: "intake", ready: view.ready, findings: view.findings });
+  }
+
+  private trackIntake(name: string, props?: Record<string, unknown>): void {
+    if (this.deps.analytics === undefined || props === undefined) return;
+    // Event names are registered in telemetry/src/events.ts (TDD 0031).
+    (this.deps.analytics.track as (n: string, p: Record<string, unknown>) => void)(name, props);
+  }
+
+  private intakeDeps() {
+    const session = this.session;
+    if (session === null) return null;
+    return {
+      ctx: {
+        campaignId: this.deps.campaignId,
+        sessionId: session.config.sessionId,
+        sessionConfig: { intake: this.intakeState.intake },
+      },
+      foundry: session.config.foundry,
+      memory: this.deps.memoryStore,
+      tenantDb: this.deps.tenantDb,
+      onTelemetry: (name: string, props?: Record<string, unknown>) => this.trackIntake(name, props),
+    };
+  }
+
+  private async runIntakeAtStart(): Promise<void> {
+    const deps = this.intakeDeps();
+    if (deps === null) return;
+    const result = await runSessionStartIntake(deps);
+    this.intakeState = result.state;
+    this.intakeReadyFlag = result.ready;
+    this.emitIntakeEvent();
+    if (result.report.text.length > 0) {
+      try {
+        await this.dmOperator(result.report.text);
+      } catch {
+        // notify_operator reports undelivered; gate still blocks
+      }
+    }
+    if (result.extended !== undefined) {
+      this.extendedStarted = true;
+      void result.extended.then((ext) => this.onExtendedDone(ext));
+    }
+  }
+
+  private startExtendedIfNeeded(): void {
+    if (this.extendedStarted) return;
+    const deps = this.intakeDeps();
+    if (deps === null) return;
+    this.extendedStarted = true;
+    void kickExtendedIntake(deps).then((ext) => this.onExtendedDone(ext));
+  }
+
+  private onExtendedDone(extended: ExtendedIntakeResult): void {
+    const session = this.session;
+    if (session === null) return;
+    const persisted = persistSurfacedFindings(
+      this.deps.tenantDb,
+      this.deps.campaignId,
+      session.config.sessionId,
+      extended.findings,
+    );
+    const merged = [...this.intakeState.findings, ...persisted.filter((f) => f.id !== undefined)];
+    this.intakeState = createIntakeResolutionState(merged, this.intakeState.intake);
+    this.emitIntakeEvent();
+    const report = formatIntakeReportForOperator(persisted);
+    if (report.text.length > 0) {
+      void this.dmOperator(report.text).catch(() => undefined);
+    }
   }
 
   get dmVoiceId(): string {
@@ -462,7 +550,13 @@ export class SessionManager {
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     const behaviorSpec = loadBehaviorSpec(findDefaultBehaviorSpec(import.meta.dirname));
-    const foundry = await this.deps.foundry.connect();
+    let foundry;
+    try {
+      foundry = await this.deps.foundry.connect();
+    } catch {
+      // Minimum intake fails fast as FOUNDRY_NOT_CONNECTED (TDD 0031).
+      foundry = new MockFoundryClient({ system: "", connected: false });
+    }
     // Operator escalations reach the human via Discord DM (design docs 0023,
     // 0024). The closure reads the operator live, so a designation set/changed
     // mid-session (console or slash command) takes effect immediately.
@@ -477,8 +571,10 @@ export class SessionManager {
       eagerness: this.controls.eagerness,
       memory: { embed: providers.embed, store: this.deps.memoryStore },
       notifyOperator: (message) => this.dmOperator(message),
+      intake: this.intakeState.intake,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
+    await this.runIntakeAtStart();
 
     // Resolve a username typed before the bot was online (design doc 0024 §1),
     // and surface the initial operator + voice roster to the console.
@@ -520,6 +616,7 @@ export class SessionManager {
       consentText: VOICE_CONSENT_TEXT,
       getEagerness: () => this.controls.eagerness,
       isConsented: (id) => this.deps.consent.isGranted(id),
+      intakeReady: () => this.intakeReadyFlag,
       voiceRouting: this.routing,
       onDecision: (d, frags) =>
         this.deps.onEvent?.({
@@ -560,6 +657,8 @@ export class SessionManager {
     this.presenceSource = null;
     this.guild = null;
     this.voiceChannel = null;
+    this.extendedStarted = false;
+    this.intakeReadyFlag = true;
     this.deps.onEvent?.({ kind: "status", status: "stopped" });
   }
 
