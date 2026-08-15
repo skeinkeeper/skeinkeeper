@@ -229,7 +229,7 @@ const recordPlayerCharacterDef = defineTool({
 const notifyOperatorDef = defineTool({
   name: "notify_operator",
   description:
-    "Privately message the human operator over Discord DM about a setup problem you can't resolve in-fiction — e.g., a player named a character you can't find in Foundry, or Foundry seems disconnected. Players never see this. Use sparingly; never for normal play or narration.",
+    "Privately message the human operator over Foundry GM chat about a setup problem you can't resolve in-fiction — e.g., a player named a character you can't find in Foundry, or Foundry seems disconnected. Players never see this. Use sparingly; never for normal play or narration.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ delivered: z.boolean() }),
   async handle(input, ctx) {

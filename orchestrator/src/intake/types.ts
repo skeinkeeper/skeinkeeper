@@ -137,9 +137,8 @@ export interface IntakeFinding {
 }
 
 /**
- * Structured operator-message payload. Today the text is handed to
- * `notify_operator` (Discord DM). TDD 0034 re-homes delivery to Foundry
- * GM chat via SurfaceRouter; keep this shape stable for that swap.
+ * Structured operator-message payload. Delivery is Foundry GM chat via
+ * SurfaceRouter (TDD 0034); keep this shape stable.
  */
 export interface IntakeOperatorPayload {
   text: string;

@@ -289,20 +289,25 @@ async function runTurnAndSpeak(
   roster: ReadonlyArray<PresentPlayer>,
 ): Promise<TurnOutput> {
   const routing = config.voiceRouting;
+  // When a SurfaceRouter is wired, runTurn emits table narration (voice +
+  // Foundry public chat). Don't also speak through VoiceIO — that would double.
+  const voiceViaRouter = config.session.config.surfaces !== undefined;
   // Barge-in (design doc 0028 P2): if a segment's playback is interrupted (the
   // player talks over the DM), abort the rest of the turn's generation so we
   // stop talking over them instead of finishing the monologue.
   const abort = new AbortController();
 
-  if (routing === undefined) {
+  if (routing === undefined || voiceViaRouter) {
     const turn = await runTurn(config.session, input, {
       presentPlayers: roster,
       signal: abort.signal,
     });
-    try {
-      await speakTurn(config, turn);
-    } catch (err) {
-      if (!(err instanceof InterruptedError)) throw err; // playback stopped — fine
+    if (!voiceViaRouter) {
+      try {
+        await speakTurn(config, turn);
+      } catch (err) {
+        if (!(err instanceof InterruptedError)) throw err; // playback stopped — fine
+      }
     }
     return turn;
   }

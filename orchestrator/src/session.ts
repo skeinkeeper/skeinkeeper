@@ -46,6 +46,8 @@ import {
   type PerceptionKind,
   type Unsubscribe,
 } from "./perception/event-stream.js";
+import type { SurfaceRouter } from "./surfaces/router.js";
+import type { TtsStream } from "./surfaces/events.js";
 import type { Eagerness } from "./voice/eagerness.js";
 import type { NarrationSegment } from "./voice/markers.js";
 import { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
@@ -107,6 +109,8 @@ export interface SessionConfig {
   journalShare?: JournalShareDelivery;
   notifyTable?: (message: string) => Promise<void>;
   whisperPlayer?: (playerId: string, message: string) => Promise<void>;
+  /** TDD 0034: table narration fans out through this instead of VoiceIO. */
+  surfaces?: SurfaceRouter;
 }
 
 export class Session {
@@ -302,6 +306,8 @@ export interface TurnOptions {
    * 0026 §6 "read-at-initiation").
    */
   systemNote?: string;
+  /** Optional TTS stream forwarded to DiscordVoiceSurface via the router. */
+  audio?: TtsStream;
 }
 
 export interface DispatchedToolCall {
@@ -653,6 +659,16 @@ export async function runTurn(
       { speaker: "narrator", text: narration, audience, conversationId },
       Date.now(),
     );
+    // Table-audience narration goes through the router (voice + Foundry public
+    // chat). Side-channel turns keep their existing conversation scope; TDD 0035
+    // wires player-audience emit.
+    if (cfg.surfaces !== undefined && options.conversation === undefined) {
+      await cfg.surfaces.emit({
+        audience: { kind: "table" },
+        text: narration,
+        ...(options.audio !== undefined ? { audio: options.audio } : {}),
+      });
+    }
   }
 
   // Tools may have mutated state — refresh for the output, but only if any

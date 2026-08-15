@@ -25,8 +25,8 @@ export interface ToolHandlerContext {
    *  (scene switch, token moves, …) per ADR-0015. Present in real sessions;
    *  optional so unit tests can dispatch state-only tools without a VTT. */
   foundry?: FoundryClient;
-  /** Send a private message to the human operator (Discord DM) for setup
-   *  escalations (design doc 0023). Present in real sessions. */
+  /** Send a private message to the human operator (Foundry GM chat via
+   *  SurfaceRouter, TDD 0034) for setup escalations. Present in real sessions. */
   notifyOperator?: (message: string) => Promise<void>;
   /** Opt-in product analytics (ADR-0009). */
   analytics?: AnalyticsClient;
@@ -37,7 +37,7 @@ export interface ToolHandlerContext {
    * Default delivery writes table-audience dialogue and notifyTable.
    */
   journalShare?: JournalShareDelivery;
-  /** Table-audience fallback until TDD 0034 SurfaceRouter lands. */
+  /** Table-audience delivery; SessionManager wires this to SurfaceRouter. */
   notifyTable?: (message: string) => Promise<void>;
   /** Player-audience fallback until TDD 0035 FoundryWhisperSurface lands. */
   whisperPlayer?: (playerId: string, message: string) => Promise<void>;

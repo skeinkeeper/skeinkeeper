@@ -24,6 +24,7 @@ import {
 import type { NarrationSegment } from "./voice/markers.js";
 import { z } from "zod";
 import { MockFoundryEventStream } from "./perception/event-stream.js";
+import { FakeOutboundSurface, SurfaceRouter } from "./surfaces/index.js";
 
 const SPEC: BehaviorSpec = {
   content: "You are the AI DM. Behavior spec content here.",
@@ -639,6 +640,46 @@ describe("runTurn — barge-in / abort (design doc 0028 P2)", () => {
     expect(out.stopReason).toBe("aborted");
     expect(out.narration).toBe(""); // bailed before the round-trip
     expect(llm.receivedRequests).toHaveLength(0);
+  });
+});
+
+describe("runTurn — SurfaceRouter table emit (TDD 0034)", () => {
+  it("emits table-audience narration through the router", async () => {
+    const table = new FakeOutboundSurface("foundry-public", ["table"]);
+    const voice = new FakeOutboundSurface("discord-voice", ["table"]);
+    const router = new SurfaceRouter();
+    router.register(table);
+    router.register(voice);
+    const { session } = setupSession({
+      surfaces: router,
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "The door creaks." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(session, { speaker: "p", text: "I open it." });
+    expect(table.emits.map((e) => e.text)).toEqual(["The door creaks."]);
+    expect(voice.emits.map((e) => e.text)).toEqual(["The door creaks."]);
+    expect(table.emits[0]?.audience).toEqual({ kind: "table" });
+  });
+
+  it("does not emit table narration for a side-channel turn", async () => {
+    const table = new FakeOutboundSurface("foundry-public", ["table"]);
+    const router = new SurfaceRouter();
+    router.register(table);
+    const { session } = setupSession({
+      surfaces: router,
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "Psst." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(
+      session,
+      { speaker: "p", text: "quietly" },
+      { conversation: { id: "player:p", audience: "player:p" } },
+    );
+    expect(table.emits).toHaveLength(0);
   });
 });
 
