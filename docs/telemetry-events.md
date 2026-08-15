@@ -69,3 +69,57 @@ Fires once per session when the Behavior Spec is loaded. Lets maintainers see wh
 
 - `version: string` — the spec's parsed version, e.g., `v0.1`. No content from the spec is sent — only the version label.
 - `sizeKbBucket: string` — coarse bucket (`<5`, `<15`, `<50`, `>=50`); guards against spec bloat without revealing content shape.
+
+### `intake.minimum.started` (v1)
+
+Fires when minimum session intake begins (TDD 0031).
+
+- `campaignId: string` — campaign identifier (not a name).
+- `sessionId: string` — session identifier.
+
+### `intake.minimum.completed` (v1)
+
+Fires when minimum session intake finishes.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `durationMs: number` — wall-clock duration of the minimum pass.
+- `criticalCount: number` — number of critical-gap findings.
+
+### `intake.extended.completed` (v1)
+
+Fires when extended session intake finishes.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `durationMs: number` — wall-clock duration of the extended pass.
+- `ambiguityCount: number` — ambiguity findings produced.
+- `recommendationCount: number` — recommendation findings produced.
+
+### `intake.finding.surfaced` (v1)
+
+Fires once per finding delivered to the operator.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `findingCode: string` — closed FindingCode (no names or Foundry IDs).
+- `kind: string` — `critical-gap` | `ambiguity` | `recommendation`.
+- `dmOnly: boolean` — whether the finding was framed as DM-only.
+
+### `intake.finding.resolved` (v1)
+
+Fires when the operator resolves a finding.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `findingCode: string` — closed FindingCode.
+- `resolutionId: string` — chosen option id (not a display name).
+- `latencyMs: number` — time from persist/create to resolve.
+
+### `intake.gate.blocked` (v1)
+
+Fires when `announceReady` is blocked by unresolved critical findings.
+
+- `campaignId: string` — as above.
+- `sessionId: string` — as above.
+- `blockingFindings: string[]` — FindingCode values that are still blocking.

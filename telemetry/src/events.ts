@@ -54,11 +54,65 @@ export const events = {
   },
   "behavior_spec.loaded": {
     v: 1,
-    description: "A Behavior Spec was loaded for a session. Reveals version + coarse size; no spec content.",
+    description:
+      "A Behavior Spec was loaded for a session. Reveals version + coarse size; no spec content.",
     props: {} as {
       version: string;
       sizeKbBucket: string;
     },
+  },
+  "intake.minimum.started": {
+    v: 1,
+    description: "Minimum session intake began.",
+    props: {} as { campaignId: string; sessionId: string },
+  },
+  "intake.minimum.completed": {
+    v: 1,
+    description: "Minimum session intake finished.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      durationMs: number;
+      criticalCount: number;
+    },
+  },
+  "intake.extended.completed": {
+    v: 1,
+    description: "Extended session intake finished.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      durationMs: number;
+      ambiguityCount: number;
+      recommendationCount: number;
+    },
+  },
+  "intake.finding.surfaced": {
+    v: 1,
+    description: "An intake finding was delivered to the operator.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      findingCode: string;
+      kind: string;
+      dmOnly: boolean;
+    },
+  },
+  "intake.finding.resolved": {
+    v: 1,
+    description: "The operator resolved an intake finding.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      findingCode: string;
+      resolutionId: string;
+      latencyMs: number;
+    },
+  },
+  "intake.gate.blocked": {
+    v: 1,
+    description: "announceReady was blocked by unresolved critical intake findings.",
+    props: {} as { campaignId: string; sessionId: string; blockingFindings: string[] },
   },
 } as const satisfies EventRegistry;
 
