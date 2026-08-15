@@ -36,6 +36,15 @@ export interface FoundrySceneToken {
   readonly y?: number;
 }
 
+/** Split `pack.entry` (or `system.pack.entry`) into packId + itemId. */
+export function parseCompendiumRef(ref: string): { packId: string; itemId: string } {
+  const parts = ref.split(".");
+  if (parts.length < 2) return { packId: "", itemId: ref };
+  const itemId = parts[parts.length - 1] ?? ref;
+  const packId = parts.slice(0, -1).join(".");
+  return { packId, itemId };
+}
+
 /** Token snapshot used by reveal/hide and place-hidden-token (TDD 0033). */
 export interface FoundryTokenDetails {
   readonly id: string;
@@ -164,6 +173,17 @@ export interface FoundryClient {
     sceneId?: string;
   }): Promise<void>;
   getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null>;
+  /** Place a token (TDD 0033 / TDD 0042). MCP: create-token or two-step fallback. */
+  createToken(args: {
+    actorId?: string;
+    compendiumRef?: string;
+    sceneId?: string;
+    x: number;
+    y: number;
+    hidden?: boolean;
+    disposition?: "hostile" | "neutral" | "friendly";
+  }): Promise<{ tokenId: string; actorId: string }>;
+  moveToken(args: { tokenId: string; x: number; y: number }): Promise<void>;
   /** Add items to an actor inventory (TDD 0033). MCP: add-actor-items. */
   addActorItems(args: {
     actorId: string;

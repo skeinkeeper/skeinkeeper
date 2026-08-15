@@ -213,6 +213,34 @@ export class McpFoundryClient implements FoundryClient {
     );
   }
 
+  async createToken(args: {
+    actorId?: string;
+    compendiumRef?: string;
+    sceneId?: string;
+    x: number;
+    y: number;
+    hidden?: boolean;
+    disposition?: "hostile" | "neutral" | "friendly";
+  }): Promise<{ tokenId: string; actorId: string }> {
+    const res = await this.caller.callTool("create-token", {
+      ...(args.actorId !== undefined ? { actorId: args.actorId } : {}),
+      ...(args.compendiumRef !== undefined ? { compendiumRef: args.compendiumRef } : {}),
+      ...(args.sceneId !== undefined ? { sceneId: args.sceneId } : {}),
+      x: args.x,
+      y: args.y,
+      ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
+      ...(args.disposition !== undefined ? { disposition: args.disposition } : {}),
+    });
+    const rec = asRecord(unwrap(res, ["token", "data"])) ?? asRecord(res);
+    const tokenId = str(rec?.["tokenId"]) ?? str(rec?.["id"]) ?? "";
+    const actorId = str(rec?.["actorId"]) ?? args.actorId ?? "";
+    return { tokenId, actorId };
+  }
+
+  async moveToken(args: { tokenId: string; x: number; y: number }): Promise<void> {
+    await this.caller.callTool("move-token", { tokenId: args.tokenId, x: args.x, y: args.y });
+  }
+
   async addActorItems(args: {
     actorId: string;
     items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;

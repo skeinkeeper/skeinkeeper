@@ -3,7 +3,8 @@
 
 import { z } from "zod";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
-import type { FoundryClient } from "../foundry/client.js";
+import type { FoundryActor, FoundryClient } from "../foundry/client.js";
+import { parseCompendiumRef } from "../foundry/client.js";
 import { defineTool, type ToolHandlerContext } from "../registry.js";
 
 export class TriggeredActionError extends Error {
@@ -194,3 +195,152 @@ export const hideTokenDef = defineTool({
     }
   },
 });
+
+const DISPOSITION = ["hostile", "neutral", "friendly"] as const;
+
+export const placeHiddenTokenDef = defineTool({
+  name: "place_hidden_token",
+  description:
+    "Place a creature/NPC on the active scene with a hidden token. Resolves a world actor or imports from compendium, then places at pixel coordinates (not grid indexes).",
+  mutatesWorld: true,
+  inputSchema: z.object({
+    actorRef: z
+      .object({
+        compendiumId: z.string().optional(),
+        actorId: z.string().optional(),
+        namePack: z.string().optional(),
+      })
+      .refine(
+        (r) => r.compendiumId !== undefined || r.actorId !== undefined || r.namePack !== undefined,
+        { message: "actorRef requires actorId, compendiumId, or namePack" },
+      ),
+    sceneId: z.string().min(1),
+    coords: z.object({ x: z.number(), y: z.number() }).optional(),
+    disposition: z.enum(DISPOSITION).optional(),
+  }),
+  outputSchema: z.object({ tokenId: z.string() }),
+  async handle(input, ctx) {
+    const campaignId = campaignIdOf(ctx);
+    const actorRefKind = actorRefKindOf(input.actorRef);
+    const sceneId = input.sceneId;
+    const emit = (success: boolean) =>
+      trackAction(ctx, "action.place_hidden_token", { campaignId, sceneId, actorRefKind, success });
+    try {
+      const foundry = requireFoundry(ctx);
+      const active = await foundry.getActiveScene();
+      if (active === null || active.id !== input.sceneId) {
+        throw new TriggeredActionError(
+          "scene-changed-mid-action",
+          "active scene does not match the requested sceneId",
+        );
+      }
+      const actorId = await resolveActorId(foundry, input.actorRef);
+      const x = input.coords?.x ?? 0;
+      const y = input.coords?.y ?? 0;
+      let tokenId = "";
+      try {
+        const placed = await foundry.createToken({
+          actorId,
+          sceneId: input.sceneId,
+          x,
+          y,
+          hidden: true,
+          ...(input.disposition !== undefined ? { disposition: input.disposition } : {}),
+        });
+        tokenId = placed.tokenId;
+      } catch {
+        tokenId = "";
+      }
+      let details = tokenId.length > 0 ? await foundry.getTokenDetails(tokenId) : null;
+      if (details === null) {
+        const latest = await foundry.getActiveScene();
+        const token = latest?.tokens.find((t) => t.actorId === actorId && t.id !== undefined);
+        if (token?.id !== undefined) {
+          tokenId = token.id;
+          details = await foundry.getTokenDetails(tokenId);
+        }
+      }
+      if (details === null || tokenId.length === 0) {
+        await ctx.notifyOperator?.(
+          "place_hidden_token failed: bridge-coverage-gap — actor created but no token spawned.",
+        );
+        throw new TriggeredActionError(
+          "bridge-coverage-gap",
+          "create-actor-from-compendium returned no token",
+        );
+      }
+      if (details.x !== x || details.y !== y) {
+        await foundry.moveToken({ tokenId, x, y });
+      }
+      if (details.hidden !== true) {
+        await foundry.updateToken({ tokenId, hidden: true });
+      }
+      emit(true);
+      return { tokenId };
+    } catch (err) {
+      emit(false);
+      if (err instanceof TriggeredActionError) throw err;
+      throw new TriggeredActionError(
+        "token-update-failed",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  },
+});
+
+function actorRefKindOf(ref: {
+  compendiumId?: string;
+  actorId?: string;
+  namePack?: string;
+}): "compendium" | "actor" | "name-pack" {
+  if (ref.actorId !== undefined) return "actor";
+  if (ref.compendiumId !== undefined) return "compendium";
+  return "name-pack";
+}
+
+async function resolveActorId(
+  foundry: FoundryClient,
+  ref: { compendiumId?: string; actorId?: string; namePack?: string },
+): Promise<string> {
+  if (ref.actorId !== undefined) {
+    const existing = await foundry.getActor(ref.actorId);
+    if (existing === null) {
+      throw new TriggeredActionError("not-found", `actor ${ref.actorId} is not in the world`);
+    }
+    return existing.id;
+  }
+  if (ref.compendiumId !== undefined) {
+    const { packId, itemId } = parseCompendiumRef(ref.compendiumId);
+    const sourceId = `Compendium.${packId}.${itemId}`;
+    const world = await foundry.listWorldActors();
+    const already = world.find((a) => actorFlagSourceId(a) === sourceId);
+    if (already !== undefined) return already.id;
+    const created = await foundry.createActorFromCompendium({ packId, itemId });
+    return created.id;
+  }
+  const name = ref.namePack ?? "";
+  const hits = await foundry.searchCompendium(name);
+  const hit = hits.find((h) => h.name.toLowerCase() === name.toLowerCase()) ?? hits[0];
+  if (hit === undefined) {
+    throw new TriggeredActionError("not-found", "no compendium actor matched namePack");
+  }
+  const packId = hit.packId ?? "";
+  const sourceId = `Compendium.${packId}.${hit.id}`;
+  const world = await foundry.listWorldActors();
+  const already = world.find((a) => actorFlagSourceId(a) === sourceId);
+  if (already !== undefined) return already.id;
+  const created = await foundry.createActorFromCompendium({ packId, itemId: hit.id });
+  return created.id;
+}
+
+function actorFlagSourceId(actor: FoundryActor): string | undefined {
+  const flags = actor.flags;
+  if (flags === undefined) return undefined;
+  const core = flags["core"];
+  if (core !== null && typeof core === "object" && !Array.isArray(core)) {
+    const sid = (core as Record<string, unknown>)["sourceId"];
+    if (typeof sid === "string") return sid;
+  }
+  const direct = flags["compendiumSource"];
+  return typeof direct === "string" ? direct : undefined;
+}

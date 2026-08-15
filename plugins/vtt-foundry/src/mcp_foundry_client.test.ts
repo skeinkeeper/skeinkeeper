@@ -248,6 +248,35 @@ describe("McpFoundryClient — intake reads (TDD 0031)", () => {
   });
 });
 
+describe("McpFoundryClient — create-token / move-token (TDD 0033)", () => {
+  it("createToken wraps create-token", async () => {
+    const caller = new FakeMcpToolCaller({
+      "create-token": { tokenId: "tok-9", actorId: "gob-1" },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const placed = await client.createToken({
+      actorId: "gob-1",
+      sceneId: "s1",
+      x: 10,
+      y: 20,
+      hidden: true,
+    });
+    expect(placed).toEqual({ tokenId: "tok-9", actorId: "gob-1" });
+    expect(caller.calls[0]?.name).toBe("create-token");
+    expect(caller.calls[0]?.args).toMatchObject({ hidden: true, x: 10, y: 20 });
+  });
+
+  it("moveToken wraps move-token", async () => {
+    const caller = new FakeMcpToolCaller({ "move-token": { ok: true } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await client.moveToken({ tokenId: "tok-9", x: 400, y: 300 });
+    expect(caller.calls[0]).toEqual({
+      name: "move-token",
+      args: { tokenId: "tok-9", x: 400, y: 300 },
+    });
+  });
+});
+
 describe("McpFoundryClient — add-actor-items (TDD 0033)", () => {
   it("addActorItems wraps add-actor-items per item payload", async () => {
     const caller = new FakeMcpToolCaller({ "add-actor-items": { ok: true } });

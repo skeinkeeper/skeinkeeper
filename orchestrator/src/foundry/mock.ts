@@ -16,6 +16,7 @@ import type {
   FoundryWorldInfo,
   RollResult,
 } from "./client.js";
+import { parseCompendiumRef } from "./client.js";
 
 interface MutableToken {
   id: string;
@@ -201,6 +202,19 @@ export class MockFoundryClient implements FoundryClient {
   }
 
   readonly createdFromCompendium: Array<{ packId: string; itemId: string }> = [];
+  readonly createdTokens: Array<{
+    tokenId: string;
+    actorId: string;
+    sceneId?: string;
+    x: number;
+    y: number;
+    hidden?: boolean;
+  }> = [];
+  readonly movedTokens: Array<{ tokenId: string; x: number; y: number }> = [];
+  /** When false, createToken does not spawn a token (bridge coverage-gap). */
+  spawnTokenOnCreate = true;
+  /** When true, createToken places at (0,0) so the handler must move-token. */
+  createTokenIgnoresCoords = false;
   readonly addedItems: Array<{
     actorId: string;
     items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
@@ -318,6 +332,83 @@ export class MockFoundryClient implements FoundryClient {
     if (scene !== undefined) this.activeSceneId = scene.id;
   }
 
+  async createToken(args: {
+    actorId?: string;
+    compendiumRef?: string;
+    sceneId?: string;
+    x: number;
+    y: number;
+    hidden?: boolean;
+    disposition?: "hostile" | "neutral" | "friendly";
+  }): Promise<{ tokenId: string; actorId: string }> {
+    let actorId = args.actorId;
+    if (actorId === undefined && args.compendiumRef !== undefined) {
+      const parsed = parseCompendiumRef(args.compendiumRef);
+      const existing = [...this.actorsById.values()].find(
+        (a) => actorSourceId(a) === `Compendium.${parsed.packId}.${parsed.itemId}`,
+      );
+      if (existing !== undefined) {
+        actorId = existing.id;
+      } else {
+        const created = await this.createActorFromCompendium(parsed);
+        actorId = created.id;
+      }
+    }
+    if (actorId === undefined) {
+      throw new Error("bad-args: actorId or compendiumRef required");
+    }
+    const sceneId = args.sceneId ?? this.activeSceneId;
+    if (sceneId === undefined) throw new Error("no active scene");
+    if (!this.spawnTokenOnCreate) {
+      this.createdTokens.push({
+        tokenId: "",
+        actorId,
+        sceneId,
+        x: args.x,
+        y: args.y,
+        ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
+      });
+      return { tokenId: "", actorId };
+    }
+    const x = this.createTokenIgnoresCoords ? 0 : args.x;
+    const y = this.createTokenIgnoresCoords ? 0 : args.y;
+    this.tokenSeq += 1;
+    const tokenId = `tok-placed-${this.tokenSeq}`;
+    const actor = this.actorsById.get(actorId);
+    const token: MutableToken = {
+      id: tokenId,
+      actorId,
+      name: actor?.name ?? actorId,
+      hidden: args.hidden === true,
+      x,
+      y,
+    };
+    if (args.disposition !== undefined) {
+      token.disposition =
+        args.disposition === "hostile" ? -1 : args.disposition === "friendly" ? 1 : 0;
+    }
+    const list = this.tokensByScene.get(sceneId) ?? [];
+    list.push(token);
+    this.tokensByScene.set(sceneId, list);
+    this.createdTokens.push({
+      tokenId,
+      actorId,
+      sceneId,
+      x,
+      y,
+      ...(args.hidden !== undefined ? { hidden: args.hidden } : {}),
+    });
+    return { tokenId, actorId };
+  }
+
+  async moveToken(args: { tokenId: string; x: number; y: number }): Promise<void> {
+    this.movedTokens.push(args);
+    const found = this.findToken(args.tokenId);
+    if (found === undefined) throw new Error("token-update-failed: token not found");
+    found.token.x = args.x;
+    found.token.y = args.y;
+  }
+
   async addActorItems(args: {
     actorId: string;
     items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
@@ -381,4 +472,16 @@ export class MockFoundryClient implements FoundryClient {
     });
     return this.rollResultFor(formula);
   }
+}
+
+function actorSourceId(actor: FoundryActor): string | undefined {
+  const flags = actor.flags;
+  if (flags === undefined) return undefined;
+  const core = flags["core"];
+  if (core !== null && typeof core === "object" && !Array.isArray(core)) {
+    const sid = (core as Record<string, unknown>)["sourceId"];
+    if (typeof sid === "string") return sid;
+  }
+  const direct = flags["compendiumSource"];
+  return typeof direct === "string" ? direct : undefined;
 }
