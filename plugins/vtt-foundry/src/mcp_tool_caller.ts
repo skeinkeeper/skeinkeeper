@@ -16,11 +16,17 @@ export interface McpToolCaller {
    *  returned (the caller is responsible for extracting and JSON-parsing
    *  the MCP content blocks). Rejects on tool error or transport failure. */
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  /**
+   * Optional notification subscription (TDD 0034 chat events). Absent when
+   * the transport has no notification surface — subscribeChatEvents no-ops.
+   */
+  subscribe?(event: string, handler: (payload: unknown) => void): () => void;
 }
 
 /** Scripted MCP caller for tests. Maps tool name → response (or a function). */
 export class FakeMcpToolCaller implements McpToolCaller {
   readonly calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  private readonly subscribers = new Map<string, Set<(payload: unknown) => void>>();
 
   constructor(
     private readonly responses: Record<
@@ -36,5 +42,21 @@ export class FakeMcpToolCaller implements McpToolCaller {
     }
     const r = this.responses[name];
     return typeof r === "function" ? (r as (a: Record<string, unknown>) => unknown)(args) : r;
+  }
+
+  subscribe(event: string, handler: (payload: unknown) => void): () => void {
+    let set = this.subscribers.get(event);
+    if (set === undefined) {
+      set = new Set();
+      this.subscribers.set(event, set);
+    }
+    set.add(handler);
+    return () => {
+      set?.delete(handler);
+    };
+  }
+
+  emitNotification(event: string, payload: unknown): void {
+    for (const handler of this.subscribers.get(event) ?? []) handler(payload);
   }
 }

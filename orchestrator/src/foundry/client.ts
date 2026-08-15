@@ -127,6 +127,22 @@ export interface FoundryJournal {
   readonly pages?: ReadonlyArray<{ id: string; name?: string; text: string }>;
 }
 
+/** Chat event from TDD 0041 `subscribeChatEvents` / add-on `evt chat`. */
+export interface FoundryChatEvent {
+  readonly foundryUserId: string;
+  readonly text: string;
+  readonly isWhisper: boolean;
+  readonly recipients?: ReadonlyArray<string>;
+  readonly timestamp: string;
+}
+
+export interface PostChatMessageArgs {
+  content: string;
+  mode: "public" | "gm" | "whisper";
+  whisperTo?: ReadonlyArray<string>;
+  speaker?: { actor?: string; alias?: string };
+}
+
 export interface FoundryClient {
   /** Identifier of the active Foundry system for the connected world,
    *  e.g., "dnd5e", "fate-core", "dungeon-world". */
@@ -197,4 +213,12 @@ export interface FoundryClient {
     actorId: string;
     items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
   }): Promise<void>;
+
+  /** Table-text write (TDD 0034 / 0041). Public, GM-only, or whisper. */
+  postChatMessage(args: PostChatMessageArgs): Promise<{ messageId: string }>;
+  /**
+   * All public-chat and whisper events. Not only `/`-prefixed commands.
+   * Returns an unsubscribe. No WebSocket gateway here — TDD 0041 owns that.
+   */
+  subscribeChatEvents(handler: (event: FoundryChatEvent) => void): () => void;
 }

@@ -79,7 +79,12 @@ describe("MockFoundryClient", () => {
 });
 
 describe("MockFoundryClient — scenes (ADR-0015)", () => {
-  const cragmaw: FoundryScene = { id: "scene-cragmaw", name: "Cragmaw Hideout", active: false, tokens: [] };
+  const cragmaw: FoundryScene = {
+    id: "scene-cragmaw",
+    name: "Cragmaw Hideout",
+    active: false,
+    tokens: [],
+  };
 
   it("lists scenes with the active flag and switches by id or name", async () => {
     const f = new MockFoundryClient({
@@ -105,9 +110,49 @@ describe("MockFoundryClient — scenes (ADR-0015)", () => {
   });
 
   it("ignores a switch to an unknown scene", async () => {
-    const f = new MockFoundryClient({ system: "dnd5e", scenes: [tavern], activeSceneId: "scene-tavern" });
+    const f = new MockFoundryClient({
+      system: "dnd5e",
+      scenes: [tavern],
+      activeSceneId: "scene-tavern",
+    });
     await f.setActiveScene("nonexistent");
     expect((await f.getActiveScene())?.id).toBe("scene-tavern");
+  });
+});
+
+describe("MockFoundryClient — table-text (TDD 0034)", () => {
+  it("records postChatMessage and returns a message id", async () => {
+    const f = new MockFoundryClient({ system: "dnd5e" });
+    const r = await f.postChatMessage({
+      content: "The door creaks.",
+      mode: "public",
+    });
+    expect(r.messageId).toBe("msg-1");
+    expect(f.chatPosts).toEqual([{ content: "The door creaks.", mode: "public" }]);
+  });
+
+  it("delivers subscribeChatEvents to every handler and unsubscribes", () => {
+    const f = new MockFoundryClient({ system: "dnd5e" });
+    const a: string[] = [];
+    const b: string[] = [];
+    const unsubA = f.subscribeChatEvents((e) => a.push(e.text));
+    const unsubB = f.subscribeChatEvents((e) => b.push(e.text));
+    f.emitChatEvent({
+      foundryUserId: "u1",
+      text: "hello",
+      isWhisper: false,
+      timestamp: "t0",
+    });
+    unsubA();
+    f.emitChatEvent({
+      foundryUserId: "u1",
+      text: "again",
+      isWhisper: false,
+      timestamp: "t1",
+    });
+    unsubB();
+    expect(a).toEqual(["hello"]);
+    expect(b).toEqual(["hello", "again"]);
   });
 });
 

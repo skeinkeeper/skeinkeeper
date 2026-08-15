@@ -15,6 +15,8 @@ import type {
   FoundryUser,
   FoundryWorldInfo,
   FoundryJournal,
+  FoundryChatEvent,
+  PostChatMessageArgs,
   RollResult,
 } from "./client.js";
 import { parseCompendiumRef } from "./client.js";
@@ -477,6 +479,28 @@ export class MockFoundryClient implements FoundryClient {
       ...(opts?.whisperTo !== undefined ? { whisperTo: opts.whisperTo } : {}),
     });
     return this.rollResultFor(formula);
+  }
+
+  readonly chatPosts: PostChatMessageArgs[] = [];
+  private chatSeq = 0;
+  private readonly chatHandlers = new Set<(event: FoundryChatEvent) => void>();
+
+  async postChatMessage(args: PostChatMessageArgs): Promise<{ messageId: string }> {
+    this.chatPosts.push(args);
+    this.chatSeq += 1;
+    return { messageId: `msg-${this.chatSeq}` };
+  }
+
+  subscribeChatEvents(handler: (event: FoundryChatEvent) => void): () => void {
+    this.chatHandlers.add(handler);
+    return () => {
+      this.chatHandlers.delete(handler);
+    };
+  }
+
+  /** Test helper: deliver a chat event to every subscriber. */
+  emitChatEvent(event: FoundryChatEvent): void {
+    for (const handler of this.chatHandlers) handler(event);
   }
 }
 

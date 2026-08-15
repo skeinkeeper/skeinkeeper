@@ -16,6 +16,8 @@ import type {
   FoundryWorldInfo,
   FoundryModuleRef,
   FoundryRollResult,
+  FoundryChatEvent,
+  PostChatMessageArgs,
 } from "@skeinkeeper/orchestrator";
 import type { McpToolCaller } from "./mcp_tool_caller.js";
 import { asRecord, num, str, toArray, unwrap } from "./mcp_parse.js";
@@ -295,6 +297,41 @@ export class McpFoundryClient implements FoundryClient {
   async getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null> {
     const res = await this.caller.callTool("get-token-details", { tokenId });
     return parseTokenDetails(res, tokenId);
+  }
+
+  async postChatMessage(args: PostChatMessageArgs): Promise<{ messageId: string }> {
+    const res = await this.caller.callTool("post-chat-message", {
+      content: args.content,
+      mode: args.mode,
+      ...(args.whisperTo !== undefined ? { whisperTo: [...args.whisperTo] } : {}),
+      ...(args.speaker !== undefined ? { speaker: args.speaker } : {}),
+    });
+    const rec = asRecord(res);
+    return { messageId: str(rec?.["messageId"]) ?? str(rec?.["id"]) ?? "" };
+  }
+
+  subscribeChatEvents(handler: (event: FoundryChatEvent) => void): () => void {
+    if (this.caller.subscribe === undefined) return () => {};
+    return this.caller.subscribe("chat", (payload) => {
+      const rec = asRecord(payload);
+      if (!rec) return;
+      const foundryUserId = str(rec["foundryUserId"]);
+      const text = str(rec["text"]);
+      if (foundryUserId === undefined || text === undefined) return;
+      const event: FoundryChatEvent = {
+        foundryUserId,
+        text,
+        isWhisper: rec["isWhisper"] === true,
+        timestamp: str(rec["timestamp"]) ?? "",
+      };
+      const recipientsRaw = rec["recipients"];
+      if (Array.isArray(recipientsRaw)) {
+        const recipients = recipientsRaw.filter((r): r is string => typeof r === "string");
+        handler({ ...event, recipients });
+        return;
+      }
+      handler(event);
+    });
   }
 
   async rollDice(): Promise<FoundryRollResult> {

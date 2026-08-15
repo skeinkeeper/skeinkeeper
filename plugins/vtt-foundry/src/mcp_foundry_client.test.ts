@@ -323,3 +323,53 @@ describe("McpFoundryClient — token visibility (TDD 0033)", () => {
     expect(tok).toEqual({ id: "tok-1", actorId: "a1", name: "Goblin", hidden: true });
   });
 });
+
+describe("McpFoundryClient — table-text (TDD 0034)", () => {
+  it("postChatMessage maps to post-chat-message including whisperTo", async () => {
+    const caller = new FakeMcpToolCaller({ "post-chat-message": { messageId: "m1" } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const r = await client.postChatMessage({
+      content: "x",
+      mode: "whisper",
+      whisperTo: ["u1"],
+    });
+    expect(r.messageId).toBe("m1");
+    expect(caller.calls[0]).toEqual({
+      name: "post-chat-message",
+      args: { content: "x", mode: "whisper", whisperTo: ["u1"] },
+    });
+  });
+
+  it("subscribeChatEvents delivers public and whisper notifications", () => {
+    const caller = new FakeMcpToolCaller({});
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const received: Array<{ text: string; isWhisper: boolean }> = [];
+    const unsub = client.subscribeChatEvents((e) =>
+      received.push({ text: e.text, isWhisper: e.isWhisper }),
+    );
+    caller.emitNotification("chat", {
+      foundryUserId: "u1",
+      text: "I search the room",
+      isWhisper: false,
+      timestamp: "t0",
+    });
+    caller.emitNotification("chat", {
+      foundryUserId: "u2",
+      text: "psst",
+      isWhisper: true,
+      recipients: ["dm"],
+      timestamp: "t1",
+    });
+    unsub();
+    caller.emitNotification("chat", {
+      foundryUserId: "u1",
+      text: "ignored",
+      isWhisper: false,
+      timestamp: "t2",
+    });
+    expect(received).toEqual([
+      { text: "I search the room", isWhisper: false },
+      { text: "psst", isWhisper: true },
+    ]);
+  });
+});
