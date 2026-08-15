@@ -182,8 +182,8 @@ describe("telemetry emission (design doc 0009 / audit wave 3)", () => {
   it("wires the Foundry event stream and queues until session ready", () => {
     const { analytics, events } = recordingAnalytics();
     const stream = new MockFoundryEventStream();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
     const { session } = setupSession({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
       analytics: analytics as any,
       foundryEvents: stream,
       perceptionKind: "mock",

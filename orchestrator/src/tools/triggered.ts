@@ -144,7 +144,7 @@ export const distributeLootDef = defineTool({
     for (const dist of input.distributions) {
       for (const item of dist.items) {
         try {
-          await foundry.addActorItems({ actorId: dist.actorId, items: [item] });
+          await foundry.addActorItems({ actorId: dist.actorId, items: [lootItem(item)] });
           items.push({
             actorId: dist.actorId,
             ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
@@ -225,7 +225,7 @@ export const placeHiddenTokenDef = defineTool({
   outputSchema: z.object({ tokenId: z.string() }),
   async handle(input, ctx) {
     const campaignId = campaignIdOf(ctx);
-    const actorRefKind = actorRefKindOf(input.actorRef);
+    const actorRefKind = actorRefKindOf(compactActorRef(input.actorRef));
     const sceneId = input.sceneId;
     const emit = (success: boolean) =>
       trackAction(ctx, "action.place_hidden_token", { campaignId, sceneId, actorRefKind, success });
@@ -238,7 +238,7 @@ export const placeHiddenTokenDef = defineTool({
           "active scene does not match the requested sceneId",
         );
       }
-      const actorId = await resolveActorId(foundry, input.actorRef);
+      const actorId = await resolveActorId(foundry, compactActorRef(input.actorRef));
       const x = input.coords?.x ?? 0;
       const y = input.coords?.y ?? 0;
       let tokenId = "";
@@ -291,6 +291,34 @@ export const placeHiddenTokenDef = defineTool({
     }
   },
 });
+
+function lootItem(item: {
+  compendiumId?: string | undefined;
+  itemId?: string | undefined;
+  quantity: number;
+}): {
+  compendiumId?: string;
+  itemId?: string;
+  quantity: number;
+} {
+  return {
+    quantity: item.quantity,
+    ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+    ...(item.compendiumId !== undefined ? { compendiumId: item.compendiumId } : {}),
+  };
+}
+
+function compactActorRef(ref: {
+  compendiumId?: string | undefined;
+  actorId?: string | undefined;
+  namePack?: string | undefined;
+}): { compendiumId?: string; actorId?: string; namePack?: string } {
+  return {
+    ...(ref.actorId !== undefined ? { actorId: ref.actorId } : {}),
+    ...(ref.compendiumId !== undefined ? { compendiumId: ref.compendiumId } : {}),
+    ...(ref.namePack !== undefined ? { namePack: ref.namePack } : {}),
+  };
+}
 
 function actorRefKindOf(ref: {
   compendiumId?: string;
@@ -361,7 +389,7 @@ export const shareJournalToAudienceDef = defineTool({
   async handle(input, ctx) {
     const campaignId = campaignIdOf(ctx);
     const audienceKind = audienceKindOf(input.audience);
-    const path =
+    const path: "foundry-public-chat" | "foundry-whisper" | "gm-noop" =
       audienceKind === "table"
         ? "foundry-public-chat"
         : audienceKind === "player"

@@ -302,7 +302,8 @@ describe("place_hidden_token", () => {
       { tenantDb, sessionId: "s", turnId: "t", caller: "llm", foundry, campaignId: "c1" },
     );
     expect(result.ok).toBe(true);
-    if (result.ok) expect((result.output as { tokenId: string }).tokenId.length).toBeGreaterThan(0);
+    if (!result.ok) throw new Error("expected place_hidden_token to succeed");
+    expect((result.output as { tokenId: string }).tokenId.length).toBeGreaterThan(0);
     const created = foundry.createdTokens[0];
     expect(created?.hidden).toBe(true);
     expect(created?.x).toBe(400);
@@ -332,10 +333,11 @@ describe("place_hidden_token", () => {
       { tenantDb, sessionId: "s", turnId: "t", caller: "llm", foundry, campaignId: "c1" },
     );
     expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected place_hidden_token to succeed");
     const tokenId = (result.output as { tokenId: string }).tokenId;
-    expect(foundry.movedTokens.some((m) => m.tokenId === tokenId && m.x === 400 && m.y === 300)).toBe(
-      true,
-    );
+    expect(
+      foundry.movedTokens.some((m) => m.tokenId === tokenId && m.x === 400 && m.y === 300),
+    ).toBe(true);
     expect((await foundry.getTokenDetails(tokenId))?.hidden).toBe(true);
   });
 

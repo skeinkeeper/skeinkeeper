@@ -165,16 +165,15 @@ export class MockFoundryClient implements FoundryClient {
   }
 
   private toSceneToken(t: MutableToken): FoundrySceneToken {
-    const token: FoundrySceneToken = {
+    return {
       id: t.id,
       actorId: t.actorId,
       name: t.name,
       hidden: t.hidden,
       x: t.x,
       y: t.y,
+      ...(t.disposition !== undefined ? { disposition: t.disposition } : {}),
     };
-    if (t.disposition !== undefined) token.disposition = t.disposition;
-    return token;
   }
 
   private findToken(tokenId: string): { sceneId: string; token: MutableToken } | undefined {
@@ -186,14 +185,13 @@ export class MockFoundryClient implements FoundryClient {
   }
 
   private sceneSnapshot(scene: FoundryScene): FoundryScene {
-    const snap: FoundryScene = {
+    return {
       id: scene.id,
       name: scene.name,
       active: scene.id === this.activeSceneId,
       tokens: this.sceneTokens(scene.id),
+      ...(scene.description !== undefined ? { description: scene.description } : {}),
     };
-    if (scene.description !== undefined) snap.description = scene.description;
-    return snap;
   }
 
   setPartyActorIds(ids: ReadonlyArray<string>): void {
