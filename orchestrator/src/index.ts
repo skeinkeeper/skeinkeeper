@@ -128,6 +128,12 @@ export {
   type PrivateActionClassification,
   type GuardrailDecision,
 } from "./side_channel/guardrail.js";
+export {
+  SideChannelCoordinator,
+  SideChannelIdentityMap,
+  type SideChannelCoordinatorOptions,
+  type SideChannelDispatchResult,
+} from "./side_channel/coordinator.js";
 export { retrieveMemory, buildMemoryQuery, DEFAULT_RETRIEVAL_TOP_K } from "./memory/retrieval.js";
 export {
   generateEpisodicSummary,

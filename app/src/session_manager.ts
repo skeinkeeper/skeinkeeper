@@ -37,6 +37,8 @@ import {
 import {
   Mutex,
   PVP_SETTING_KEY,
+  SideChannelCoordinator,
+  SideChannelIdentityMap,
   SurfaceRouter,
   ToolDispatcher,
   activateScene,
@@ -207,6 +209,8 @@ export class SessionManager {
   private runState = createSessionRunState();
   private surfaces: SurfaceRouter | null = null;
   private consentSurface: DiscordConsentSurface | null = null;
+  private identity = new SideChannelIdentityMap();
+  private coordinator: SideChannelCoordinator | null = null;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -466,6 +470,8 @@ export class SessionManager {
     this.voiceChannel = null;
     this.client = null;
     this.connection = null;
+    this.coordinator?.stop();
+    this.coordinator = null;
     this.surfaces = null;
     this.consentSurface = null;
   }
@@ -638,6 +644,12 @@ export class SessionManager {
       surfaces,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
+    this.coordinator = new SideChannelCoordinator({
+      session: this.session,
+      router: surfaces,
+      identity: this.identity,
+    });
+    void this.coordinator.start();
     await this.runIntakeAtStart();
 
     // Resolve a username typed before the bot was online (design doc 0024 §1),
@@ -699,6 +711,8 @@ export class SessionManager {
     this.presenceSource = null;
     this.guild = null;
     this.voiceChannel = null;
+    this.coordinator?.stop();
+    this.coordinator = null;
     this.surfaces = null;
     this.consentSurface = null;
     this.extendedStarted = false;
@@ -922,7 +936,12 @@ export class SessionManager {
     router.register(new DiscordVoiceSurface(voiceIO, voiceRouting));
     router.register(consent);
     router.register(new FoundryPublicChatSurface({ client: foundry }));
-    router.register(new FoundryWhisperSurface({ client: foundry }));
+    router.register(
+      new FoundryWhisperSurface({
+        client: foundry,
+        resolveFoundryUserId: (id) => this.identity.foundryUserIdForDiscord(id),
+      }),
+    );
     router.register(gm);
     router.register(
       new FoundryChatCommandSurface({
