@@ -20,3 +20,9 @@ export {
   type DiscordVoiceIOOptions,
   type PresenceSource,
 } from "./discord_voice_io.js";
+export { DiscordVoiceSurface, type DiscordVoiceRouting } from "./discord_voice_surface.js";
+export {
+  DiscordConsentSurface,
+  SIDE_CHANNEL_MOVED_TEXT,
+  type DiscordConsentSurfaceOptions,
+} from "./discord_consent_surface.js";
