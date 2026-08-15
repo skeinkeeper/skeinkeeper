@@ -128,6 +128,7 @@ export {
   type ApplyInitialSceneResult,
   type SceneChoice,
 } from "./autosetup/initial-scene.js";
+export { preloadExpectedContent, type PreloadReport } from "./autosetup/preload.js";
 export {
   refreshIndex,
   resetIndexRefreshMutexForTests,

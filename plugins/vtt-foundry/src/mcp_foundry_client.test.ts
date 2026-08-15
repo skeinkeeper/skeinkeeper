@@ -171,6 +171,25 @@ describe("McpFoundryClient — scenes (ADR-0015)", () => {
     ]);
   });
 
+  it("createActorFromCompendium calls create-actor-from-compendium", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-world-info": { system: "dnd5e" },
+      "create-actor-from-compendium": {
+        actor: { id: "imp-1", name: "Goblin", type: "npc" },
+      },
+    });
+    const client = await McpFoundryClient.connect(caller);
+    const actor = await client.createActorFromCompendium({
+      packId: "dnd5e.monsters",
+      itemId: "goblin",
+    });
+    expect(actor.name).toBe("Goblin");
+    expect(caller.calls.find((c) => c.name === "create-actor-from-compendium")?.args).toEqual({
+      packId: "dnd5e.monsters",
+      itemId: "goblin",
+    });
+  });
+
   it("setActiveScene calls switch-scene with scene_identifier", async () => {
     const caller = new FakeMcpToolCaller({
       "get-world-info": { system: "dnd5e" },

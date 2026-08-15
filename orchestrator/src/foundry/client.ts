@@ -126,9 +126,13 @@ export interface FoundryClient {
     opts?: { packType?: string },
   ): Promise<ReadonlyArray<FoundrySearchHit>>;
   searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>>;
+  /** All world actors (party + NPCs already imported). Used by preload existence checks. */
+  listWorldActors(): Promise<ReadonlyArray<FoundryActor>>;
 
   // ---- writes (tool handlers route through these) ----
   applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void>;
+  /** Import a compendium actor into the world without placing a token (TDD 0032). */
+  createActorFromCompendium(args: { packId: string; itemId: string }): Promise<FoundryActor>;
   rollDice(
     formula: string,
     opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> },

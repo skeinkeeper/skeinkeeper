@@ -65,6 +65,13 @@ export function extractRaceFromSheet(sheet: Readonly<Record<string, unknown>>): 
   return namedValue(race);
 }
 
+export function extractBackgroundFromSheet(
+  sheet: Readonly<Record<string, unknown>>,
+): string | undefined {
+  const details = asRecord(sheet["details"]);
+  return namedValue(details?.["background"] ?? sheet["background"]);
+}
+
 export function extractClassFromSheet(
   sheet: Readonly<Record<string, unknown>>,
 ): string | undefined {

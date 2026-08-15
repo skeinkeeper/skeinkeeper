@@ -120,6 +120,28 @@ export class MockFoundryClient implements FoundryClient {
     this.activeSceneId = sceneId;
   }
 
+  readonly createdFromCompendium: Array<{ packId: string; itemId: string }> = [];
+
+  async listWorldActors(): Promise<ReadonlyArray<FoundryActor>> {
+    return [...this.actorsById.values()];
+  }
+
+  async createActorFromCompendium(args: { packId: string; itemId: string }): Promise<FoundryActor> {
+    this.createdFromCompendium.push({ packId: args.packId, itemId: args.itemId });
+    const hit = this.compendiumHits.find((h) => h.id === args.itemId);
+    const id = `imported-${args.packId}-${args.itemId}`;
+    const actor: FoundryActor = {
+      id,
+      name: hit?.name ?? args.itemId,
+      type: hit?.type ?? "npc",
+      system: this.system,
+      sheet: {},
+      flags: { core: { sourceId: `Compendium.${args.packId}.${args.itemId}` } },
+    };
+    this.actorsById.set(id, actor);
+    return actor;
+  }
+
   async listPartyActors(): Promise<ReadonlyArray<FoundryActor>> {
     return this.partyActorIds
       .map((id) => this.actorsById.get(id))

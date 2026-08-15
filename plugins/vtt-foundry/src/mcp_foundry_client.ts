@@ -158,6 +158,28 @@ export class McpFoundryClient implements FoundryClient {
     return parseSearchHits(res);
   }
 
+  async listWorldActors(): Promise<ReadonlyArray<FoundryActor>> {
+    const res = await this.caller.callTool("list-characters", {});
+    return this.parseActorList(res);
+  }
+
+  async createActorFromCompendium(args: { packId: string; itemId: string }): Promise<FoundryActor> {
+    const res = await this.caller.callTool("create-actor-from-compendium", {
+      packId: args.packId,
+      itemId: args.itemId,
+    });
+    const rec = asRecord(unwrap(res, ["actor", "character", "data"]));
+    if (rec) return this.parseActor(rec);
+    return {
+      id: args.itemId,
+      name: args.itemId,
+      type: "npc",
+      system: this.system,
+      sheet: {},
+      flags: { core: { sourceId: `Compendium.${args.packId}.${args.itemId}` } },
+    };
+  }
+
   // ---- writes ----
 
   async setActiveScene(sceneIdOrName: string): Promise<void> {
