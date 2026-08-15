@@ -2,6 +2,7 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { isKnownFoundrySystem } from "./foundry_reads.js";
+import { buildFindingSummary } from "./summary.js";
 import type {
   ActorSummary,
   ExtendedIntakeResult,
@@ -316,7 +317,18 @@ function resolvedSet(ctx: IntakeContext): ReadonlySet<FindingCode> {
 
 function push(out: IntakeFinding[], skip: ReadonlySet<FindingCode>, finding: IntakeFinding): void {
   if (skip.has(finding.code)) return;
-  out.push(finding);
+  const framed = buildFindingSummary(finding.code, {
+    label: finding.summary,
+    namesCreatureOrLocation: finding.dmOnly,
+  });
+  // Classifier drafts carry the choice; buildFindingSummary is the single
+  // spoiler-framing site (TDD 0031). Keep the draft summary when it's more
+  // specific (option labels, race/class names) and adopt dmOnly from the table.
+  out.push({
+    ...finding,
+    dmOnly: framed.dmOnly,
+    ...(framed.detail !== undefined ? { detail: framed.detail } : {}),
+  });
 }
 
 function proceedAnyway(prompt: string): ResolutionOptions {
