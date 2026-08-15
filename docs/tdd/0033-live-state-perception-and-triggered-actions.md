@@ -2,11 +2,11 @@
 
 Status: draft
 PRD refs: 4.8
-PRD-rev: 59a0fda
-ADR constraints: 0003, 0008, 0010, 0011, 0017, 0018, 0023, 0024
+PRD-rev: 5c3a198
+ADR constraints: 0003, 0008, 0010, 0017, 0018, 0023, 0024, 0029, 0030
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0022 (DM-action coverage audit)](./0022-dm-action-coverage-audit.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0032 (autonomous setup actions)](./0032-autonomous-pre-game-setup-actions.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0037 (bridge dependencies — surface-model critical batch)](./0037-bridge-dependencies-surface-model-critical-batch.md)
+Related TDDs: [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0022 (DM-action coverage audit)](./0022-dm-action-coverage-audit.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0032 (autonomous setup actions)](./0032-autonomous-pre-game-setup-actions.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md)
 
 ## Approach
 
@@ -17,29 +17,20 @@ events, actor-sheet updates, journal access — and to Discord voice presence) a
 audience, distribute loot to actor inventories). This TDD designs _the AI's side of both_
 — but with an explicit asymmetry.
 
-**Perception is blocked on upstream.** TDD 0014 established that the current Foundry MCP
-bridge is request/response only; there is no event-push channel. Per ADR-0011 ("prefer
-fully-OSS Foundry MCP bridges") the right response to a platform gap is an upstream
-proposal, not an orchestrator polyfill. A polling overlay would solidify a workaround into
-the orchestrator's perception model and the layer would be wrong: ADR-0018 places mechanical
-state in Foundry, and perception of that state belongs to the bridge, not the consumer. This
-TDD therefore designs the _consumer-side contract_ the orchestrator will implement when
-upstream events land (so wiring is drop-in), drafts the **upstream proposal** for the bridge
-feature, and ships a `null` event-stream wiring as the v0.5 default. The Discord-voice
-presence half of §4.8's perception is already shipped (originally TDD 0023, now carried
-forward by TDD 0036 which supersedes 0023) and is not re-designed here.
+**Perception is push from the first-party add-on, not a third-party connector.**
+[TDD 0041](./0041-first-party-foundry-addon.md) defines the `evt` channel and
+ships `chat` and `gone`. This TDD extends that union with `scene`, `token`,
+`combat`, `actor`, and `journal` (Foundry `Hooks.on` in `main.mjs`) and is
+the orchestrator consumer of those events, plus Discord voice presence
+(already shipped; carried by TDD 0036). Polling Foundry is forbidden
+(ADR-0018). There is no the live add-on stream default and no upstream
+MCP proposal.
 
-**Triggered actions ship now, against the present bridge surface, with one gap accepted.**
-Token reveal/hide, hidden-token placement, and loot distribution all map cleanly to existing
-bridge tools (`update-token`, `create-actor-from-compendium`, `move-token`,
-`add-actor-items`). Per-audience journal share is a known bridge gap (now tracked by
-[TDD 0037](./0037-bridge-dependencies-surface-model-critical-batch.md)); v0.5 ships a
-**Foundry-whisper fallback** that delivers the journal content as a private chat message
-to the targeted player's Foundry user via TDD 0035's `FoundryWhisperSurface` and links to
-the Foundry entry by name — behaviorally equivalent from the player's perspective; not
-equivalent from the operator-spectator's perspective (the bridge never reveals the entry
-to the audience). The fallback is explicitly time-limited: it goes away when the upstream
-proposal lands.
+**Triggered actions ship against the first-party add-on.** Token reveal/hide and
+hidden-token placement use TDD 0041 `applyActorUpdate` and TDD 0042 `createToken`.
+Loot uses existing inventory writes. Per-audience journal share still uses TDD 0035's
+`FoundryWhisperSurface` as the player-visible delivery; a native Foundry "show to
+players" reveal is out of this TDD (not in TDD 0042's write set).
 
 This TDD designs the _capability surface_ and the orchestrator wiring; the per-action
 policy (when to reveal a hidden token, what journals to share with whom, when to distribute
@@ -50,7 +41,7 @@ loot) lives in the behavior spec per ADR-0006.
 ### Triggered actions — orchestrator tools
 
 New tools in the orchestrator tool registry (TDD 0006 / 0003 — tool-call-only state
-mutation), each with a typed schema and an `McpFoundryClient` call beneath:
+mutation), each with a typed schema and an `ModuleFoundryClient` call beneath:
 
 ```ts
 // orchestrator/tools/triggered.ts
@@ -113,7 +104,7 @@ Each tool's handler:
 
 1. Validates inputs against its schema (no audience mis-targeting; no token-action against
    a token outside the active scene without explicit `sceneId`).
-2. Calls one or more `McpFoundryClient` methods (or, for the journal-share player path,
+2. Calls one or more `ModuleFoundryClient` methods (or, for the journal-share player path,
    the `FoundryWhisperSurface` of TDD 0035 via TDD 0034's SurfaceRouter).
 3. Returns the structured result to the orchestrator turn loop; failures bubble as tool-
    call errors and route through `notify_operator` (which dispatches to the Foundry GM
@@ -121,31 +112,16 @@ Each tool's handler:
 
 ### Detailed wiring per action
 
-**`place_hidden_token`.** Resolve `actorRef` to a Foundry actor:
+**`place_hidden_token`.** Resolve `actorRef` to a Foundry actor id (direct id, or
+compendium/name via TDD 0021 search + TDD 0032 preload). Then one call:
 
-- If `actorId` present → use it directly.
-- If `compendiumId` present → ensure the actor exists in the world; if not, call
-  `create-actor-from-compendium` (idempotent existence check via `list-characters` first;
-  matches TDD 0032's preload pattern).
-- If only `namePack` present → resolve via `search-compendium` to a compendium id, then
-  the above.
+`createToken({ actorId, x, y, hidden: true, sceneId })` (TDD 0042).
 
-Then place the token on the active scene. The bridge's `create-actor-from-compendium` may
-implicitly spawn a token (per TDD 0022's "create-actor-from-compendium creates the actor;
-placing a token at coords on the active scene is unclear"); the handler treats explicit
-placement defensively:
+If the actor is not in the world, pass `compendiumRef` instead of `actorId`.
+No two-step place-then-move. No third-party connector tools.
 
-- If a token for the actor already exists on the scene (read `get-token-details` /
-  `list-tokens`-equivalent), use it.
-- Otherwise, the create implicitly spawned one — read its position and adjust via
-  `move-token` to the requested coords (if provided).
-- Set `hidden: true` via `update-token`. Set `disposition` if provided.
-
-The known token-placement-at-coords gap (TDD 0022 item 5) means this path is two
-round-trips at v0.5; that's acceptable performance for a low-frequency action. When
-upstream lands a first-class place-at-coords tool, the handler collapses to one call.
-
-**`reveal_token` / `hide_token`.** Single `update-token` call with `hidden: false`/`true`.
+**`reveal_token` / `hide_token`.** `applyActorUpdate` / token update with
+`hidden: false`/`true` (TDD 0041).
 Trivial. Returns success on bridge ack.
 
 **`share_journal_to_audience`.** Branch on audience tag (under the PRD-rev `59a0fda`
@@ -201,49 +177,23 @@ export type FoundryEvent =
   | { type: "journal-accessed"; journalId: string; byUserId?: string };
 ```
 
-The orchestrator wires `FoundryEventStream` exactly once at session start (parallel to the
-existing Foundry client wiring in TDD 0014). v0.5 default: a `NullFoundryEventStream` that
-subscribes successfully and never emits — the orchestrator runs correctly without
-perception; behaviors that depend on it (e.g., "react when a player moves a token") are
-no-ops until upstream lands. A `MockFoundryEventStream` is provided for tests that exercise
-event-handling logic.
+The orchestrator wires `FoundryEventStream` exactly once at session start (parallel to
+TDD 0041 `ModuleFoundryClient`). The v0.5 default is the live add-on stream. A
+`MockFoundryEventStream` is provided for tests.
 
-`McpFoundryClient` will gain an event-stream implementation when the upstream bridge
-supports it — the typed contract above is the consumer-side spec the upstream proposal
-should target.
+`ModuleFoundryClient` (TDD 0041) delivers these as `evt` frames on the same
+socket as `chat`/`gone`. This TDD adds `evt` kinds `scene`, `token`, `combat`,
+`actor`, and `journal` (Foundry hooks in `modules/skeinkeeper/scripts/main.mjs`).
+Payloads carry entity id + changed-fields patch. GM-session only (the add-on
+does not run for players).
 
-### Upstream proposal — bridge events feature
+### Per-audience journal share
 
-Drafted here for the next batch upstream (joining the Band B items in TDD 0037):
-
-> **Feature: server-pushed events from the Foundry MCP bridge to the MCP client.**
-> The bridge already maintains a websocket to the Foundry-side module to drive its own
-> request/response tools. Surface a subset of Foundry-side events to the MCP client over
-> the MCP server's notification channel:
->
-> - `scene-activated` (Foundry's `updateScene` with `active: true`)
-> - `token-moved` (Foundry's `updateToken` on `x`/`y`)
-> - `combat-started` / `combat-ended` / `combat-turn` (Foundry's `Combat` lifecycle)
-> - `actor-updated` (Foundry's `updateActor` filtered to mechanical fields)
-> - `journal-accessed` (Foundry's journal-page render hook, opt-in only since it can be
->   noisy)
->
-> Event payloads should carry the entity id + the changed-fields patch, so consumers can
-> avoid a round-trip read after each event.
->
-> Privacy: events are GM-only by default (the bridge is already GM-scoped). No
-> per-player filtering required at the bridge level.
-
-This proposal is added to TDD 0037's upstream batch (Band B) on the next iteration.
-
-### Per-audience journal-share upstream piggyback
-
-The audience-targeted journal share is already in TDD 0037's upstream batch ("per-player
-content reveal" — currently in Band B). This TDD's Foundry-whisper fallback (via TDD
-0035's `FoundryWhisperSurface`) is explicitly the v0.5 implementation; when the upstream
-lands, `share_journal_to_audience` adds a first-class bridge-side branch for
-`audience: 'player:<id>'` and the player still gets the bridge-side reveal _plus_ the
-whisper narration (the whisper layer is the "you found a note" framing; the bridge-side
+v0.5 delivery is TDD 0035 `FoundryWhisperSurface` (journal content as a
+whisper plus the entry name). A native Foundry "show to players" reveal is
+out of TDD 0042 and not required for this TDD. `share_journal_to_audience`
+for `audience: 'player:<id>'` uses the whisper path. The "you found a note"
+framing is the whisper; there is no third-party connector reveal.
 reveal makes the entry visible in the player's Foundry UI).
 
 ## Data & state
@@ -269,10 +219,8 @@ state introduced by this TDD.
 4. `share_journal_to_audience` — Foundry-whisper fallback (TDD 0035) for player audience;
    SurfaceRouter dispatch to `FoundryPublicChat` + `DiscordVoice` (TDD 0034) for table
    audience; no-op for GM audience.
-5. `FoundryEventStream` interface + `NullFoundryEventStream` + `MockFoundryEventStream`.
-6. Orchestrator wiring of the null stream; orchestrator tool registry adds the four
-   tools.
-7. Upstream proposal text added to TDD 0037's Band B batch.
+5. `FoundryEventStream` interface + live add-on adapter + `MockFoundryEventStream`.
+6. Orchestrator wiring of the live stream; tool registry adds the four tools.
 
 ## Failure modes & edge cases
 
@@ -298,7 +246,7 @@ state introduced by this TDD.
   flip in TDD 0035.)
 - **Foundry event arrives before the orchestrator has finished session-start init**
   (when upstream lands). The contract specifies events are queued behind the
-  session-start barrier; `NullFoundryEventStream` makes this moot at v0.5.
+  session-start barrier; the live add-on stream makes this moot at v0.5.
 - **The bridge starts pushing events that the consumer didn't expect** (new event types
   added upstream). The `FoundryEvent` union is closed; unknown event types are logged-and-
   ignored, not crash.
@@ -310,43 +258,31 @@ state introduced by this TDD.
 
 | PRD ref                                     | Requirement                                                                                                                          | Satisfied by                                                                                                                                                                                              |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 4.8 (place tokens with `hidden` visibility) | "The AI can place tokens with `hidden` visibility"                                                                                   | `place_hidden_token` tool; `update-token hidden:true`                                                                                                                                                     |
+| 4.8 (place tokens with `hidden` visibility) | "The AI can place tokens with `hidden` visibility"                                                                                   | `place_hidden_token` → TDD 0042 `createToken({ hidden: true })` |
 | 4.8 (reveal tokens)                         | "reveal them when narratively appropriate"                                                                                           | `reveal_token` tool; `update-token hidden:false`                                                                                                                                                          |
 | 4.8 (share journals to audience)            | "share journal entries with a specified audience (`table` / `player:<id>`, per §4.7)"                                                | `share_journal_to_audience` tool with per-audience branching; Foundry-whisper fallback (TDD 0035) for player audience until the upstream lands                                                            |
 | 4.8 (distribute loot)                       | "distribute loot to actor inventories"                                                                                               | `distribute_loot` tool; `add-actor-items` per item                                                                                                                                                        |
-| 4.8 (live state perception)                 | "subscribes to Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access" | `FoundryEventStream` consumer-side contract; `NullFoundryEventStream` v0.5 wiring; upstream proposal section; **real implementation blocked on upstream** (per the approved design decision for this TDD) |
+| 4.8 (live state perception)                 | "subscribes to Foundry state changes — scene activation, token movement, combat-tracker events, actor-sheet updates, journal access" | TDD 0041 `evt` channel extended by this TDD with `scene`/`token`/`combat`/`actor`/`journal`; no third-party connector |
 | 4.8 (Discord voice presence)                | "and to Discord voice presence"                                                                                                      | Voice presence shipped in the legacy onboarding TDD (`VoiceIO.presence`); the responsibility now lives in TDD 0036 (which supersedes TDD 0023); not re-designed here                                      |
 | 4.8 (behavior policy separation)            | "behavior spec's job (per §4.3)" — trigger _policy_ lives in the behavior spec                                                       | Tools are platform capabilities; per-action policy is out of scope per ADR-0006                                                                                                                           |
 
 ## Dependencies considered
 
-None. All four tools route through existing `FoundryClient` + `McpFoundryClient` (TDD 0014),
+None. All four tools route through `FoundryClient` + `ModuleFoundryClient` (TDD 0041),
 TDD 0034's SurfaceRouter, and TDD 0035's `FoundryWhisperSurface`. No new third-party
-libraries.
-
-A separate event-bus library was evaluated for `FoundryEventStream` (e.g., `mitt`,
-`eventemitter3`) and rejected — the consumer-side contract is a one-method `subscribe`;
-adding a dependency for one method is over-engineered. `NullFoundryEventStream` is a
-single file; the real implementation, when upstream lands, can use a simple internal
-fanout off the MCP SDK's notification handler.
+libraries. `FoundryEventStream` is a one-method `subscribe` over TDD 0041 `evt`;
+no extra event-bus library.
 
 ## PRD conflicts surfaced (and resolution)
 
-1. **Live state perception is unfeasible against the current bridge wire.** §4.8's
-   perception spec assumes server push; TDD 0014 shows the bridge is request/response
-   only. **Resolution (approved):** block real perception on an upstream proposal;
-   design the consumer-side contract; ship a `NullFoundryEventStream` v0.5 wiring.
-   Behaviors that depend on perception are no-ops until upstream lands. This is named in
-   the PRD's traceability above as a known gap, not a silent omission.
-2. **Per-audience journal share is unfeasible against the current bridge surface.**
-   TDD 0037 (which supersedes TDD 0027) carries this gap as a Band B upstream item.
-   **Resolution:** v0.5 Foundry-whisper fallback via TDD 0035's `FoundryWhisperSurface`;
-   upstream piggyback in TDD 0037's batch; tool surface is forward-compatible (the
-   bridge-side "show to players" branch lights up additively when upstream lands).
+1. **Live state perception needed a push channel.** **Resolution:** TDD 0041 `evt`
+   plus this TDD's scene/token/combat/actor/journal kinds. Not a third-party connector.
+2. **Per-audience journal share has no native Foundry "show to players" in TDD 0042.**
+   **Resolution:** v0.5 Foundry-whisper delivery via TDD 0035.
 3. **Token placement at explicit coords is constrained.** TDD 0022 item 5 named this
    gap. **Resolution:** v0.5 uses the two-step create-then-`move-token` fallback in
    `place_hidden_token`; performance is acceptable for the action's frequency. Upstream
-   proposal for a first-class place-at-coords parameter is in TDD 0037's batch
+   proposal for a first-class place-at-coords parameter is out of this TDD
    (carried forward from TDD 0027, Band B).
 4. **Behavior policy vs. capability separation.** §4.8 lists triggered actions and live
    perception together. Per ADR-0006, _trigger policy_ (when to reveal, when to share,
@@ -355,15 +291,8 @@ fanout off the MCP SDK's notification handler.
 
 ## Decisions to promote (ADR candidates)
 
-- **Platform gaps are upstream proposals, not orchestrator workarounds — optional
-  recommend.** The discipline of refusing to polyfill in the orchestrator what should be
-  fixed in the bridge (the explicit design decision behind blocking perception on
-  upstream events) is a posture that affects every future bridge-coverage gap. It's a
-  refinement of ADR-0011 ("prefer fully-OSS Foundry MCP bridges") rather than a wholly
-  new principle; worth evaluating at step 6 whether to record it as a refining ADR or
-  leave it as a captured-in-TDD design note.
-- The other §4.8 ADR candidates (operator-as-host supersession; silence-is-success)
-  originate in TDD 0031; no new candidates from this TDD beyond the optional one above.
+None. ADR-0029 already covers first-party Foundry support. Perception events
+are an `evt` extension, not a new integration decision.
 
 ## Telemetry implications
 
@@ -421,7 +350,7 @@ Scenario fixtures required before this ships:
    `partialFailure: true` reported with the offending entry.
 8. **Loot distribution, partial item failure.** One item's `add-actor-items` fails; the
    others succeed; report flags `partialFailure: true`; no rollback.
-9. **`NullFoundryEventStream` no-op.** `subscribe` returns a no-op unsubscribe; no events
+9. **the live add-on stream no-op.** `subscribe` returns a no-op unsubscribe; no events
    emitted; behaviors depending on events log a "perception not yet available" notice
    on first attempt (not per call).
 10. **`MockFoundryEventStream` happy path.** Test-only stream emits a scripted sequence
@@ -435,10 +364,21 @@ Scenario fixtures required before this ships:
   tools but the exact "show to all players" affordance needs live verification. The v0.5
   implementation falls back to the `notify_table` Discord narration if the bridge
   affordance proves missing; flagged for implementer verification against the live
-  bridge. This is a smaller version of the per-player gap (now tracked in TDD 0037 Band
+  bridge. This is a smaller version of the per-player gap (not in TDD 0042; tracked as later
   B, carried forward from TDD 0027) and folds into the same upstream proposal.
 - **Combat-tracker control** (start/end/initiative/next-turn) is a known bridge gap
-  (TDD 0022 #1; carried forward into TDD 0037's Band B). It's not in §4.8's enumerated
+  (TDD 0022 #1; combat writes are TDD 0042). It's not in §4.8's enumerated
   triggered actions but is needed to drive combat. Out of scope for this TDD; tracked in
-  TDD 0022 + TDD 0037's upstream batch. When the upstream lands, a follow-up TDD adds the
+  TDD 0022. A follow-up TDD may add the
   combat control tools.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

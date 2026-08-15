@@ -2,12 +2,12 @@
 
 Status: draft
 PRD refs: 4.3, 4.4
-PRD-rev: 59a0fda
-ADR constraints: 0010, 0016, 0017, 0018, 0023, 0024, 0025
+PRD-rev: 5c3a198
+ADR constraints: 0010, 0016, 0017, 0018, 0023, 0024, 0025, 0029, 0030
 Supersedes: [TDD 0025](./0025-operator-control-parity.md)
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0020 (operator app)](./0020-operator-app.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0037 (bridge dependencies — surface-model critical batch)](./0037-bridge-dependencies-surface-model-critical-batch.md), [0039 (Foundry-down session lifecycle)](./0039-foundry-down-session-lifecycle.md)
+Related TDDs: [0020 (operator app)](./0020-operator-app.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0039 (Foundry-down session lifecycle)](./0039-foundry-down-session-lifecycle.md)
 
 ## Carries forward / supersedes (read first)
 
@@ -24,7 +24,7 @@ This TDD supersedes [TDD 0025](./0025-operator-control-parity.md) (operator cont
 
 **Substantively changed in this TDD:**
 
-- **Second surface: Discord slash commands → Foundry chat commands.** Operator commands are typed as `/skeinkeeper <verb> <args>` in Foundry's public chat; the bridge driver's `FoundryChatCommandSurface` (TDD 0034 §6) parses + dispatches. Verb taxonomy carries forward verbatim from TDD 0025 — operators who learned the Discord-slash surface don't relearn. The `/skeinkeeper` prefix gives us a pseudo-namespace inside Foundry's global slash space (collision-safe against Foundry core's `/r`, `/w`, `/gm`, `/em` and module-registered commands).
+- **Second surface: Discord slash commands → Foundry chat commands.** Operator commands are typed as `/skeinkeeper <verb> <args>` in Foundry's public chat; `FoundryChatCommandSurface` (TDD 0034 §6) parses events from TDD 0041 `subscribeChatEvents` and dispatches. Verb taxonomy carries forward verbatim from TDD 0025 — operators who learned the Discord-slash surface don't relearn. The `/skeinkeeper` prefix gives us a pseudo-namespace inside Foundry's global slash space (collision-safe against Foundry core's `/r`, `/w`, `/gm`, `/em` and module-registered commands).
 - **New operator controls added by the surface-model TDDs in this design pass:**
   - `/skeinkeeper preflight verify` and `/skeinkeeper preflight verify @<discord-user>` (TDD 0036 §4 — re-run identity pre-flight verifier).
   - `/skeinkeeper session action:resume` (TDD 0039 — resume after Foundry-down pause).
@@ -87,7 +87,7 @@ The web console's existing API handlers (`web/api.ts`) call the same methods. Th
 
 ### 3. The Foundry chat-command handler
 
-The bridge driver's `FoundryChatCommandSurface` (TDD 0034 §6) delivers `chat.command` events with parsed verb + args + the invoker's Foundry user ID. The handler:
+The Foundry adapter's `FoundryChatCommandSurface` (TDD 0034 §6) delivers `chat.command` events with parsed verb + args + the invoker's Foundry user ID. The handler:
 
 ```ts
 // plugins/vtt-foundry/operator-command-handler.ts
@@ -210,7 +210,7 @@ export interface IdentityResolver {
 }
 ```
 
-`HandlerContext` carries `sessionManager`, `identity`, `router`, plus session-scoped capabilities (`BridgeCapabilities` from TDD 0037 — some commands like `/skeinkeeper pvp` are no-ops if the underlying capability hasn't shipped).
+`HandlerContext` carries `sessionManager`, `identity`, `router`, plus session-scoped capabilities (live `FoundryClient` from TDD 0041; Start has already failed closed if the add-on is missing).
 
 ## Data & state
 
@@ -223,7 +223,7 @@ The operator-designation data model from TDD 0024 is extended _by reference_ —
 1. **Extend `SessionManager`** with the new methods listed in §2 (`pause`, `resume`, `setPvp`, `verifyPreflight`, `mapPlayerCharacter`, `resolveIntakeFinding`). Each is a thin wrapper around the existing store + the existing `AppEvent` bus emit.
 2. **`OperatorCommandVerb` table and `dispatchVerb`** in `plugins/vtt-foundry/operator-command-handler.ts`. Unit tests per verb.
 3. **`handleOperatorCommand`** wiring: subscribes to TDD 0034's `chat.command` events; dispatches; emits inline ack via the router.
-4. **Authorization check:** `FoundryClient.listUsers()` lookup of the invoker's role per command. Caches per-session (re-fetched on a `listUsers()`-driven role-change signal). Reuses TDD 0037's `list-users` cap.
+4. **Authorization check:** `FoundryClient.listUsers()` lookup of the invoker's role per command. Caches per-session (re-fetched on a `listUsers()`-driven role-change signal). Reuses TDD 0041 `listUsers`.
 5. **Console-side write-path methods** added to `web/api.ts` for new controls (`/api/session/pause`, `/api/session/resume`, `/api/pvp`, `/api/preflight/verify`, `/api/map/override`, `/api/intake/resolve`). Each calls the SessionManager method 1:1.
 6. **Web console UI controls** for the new actions (Pause/Resume buttons; PvP checkbox; pre-flight Verify button in the intake pane; intake findings render as resolvable items; map-override table extension). The existing console code-style (vanilla `app.js` per TDD 0020) covers these.
 7. **`AppEvent` bus events** introduced (per §4) plumbed through the SSE stream.
@@ -266,7 +266,7 @@ The operator-designation data model from TDD 0024 is extended _by reference_ —
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 4.3 (override controls)                  | "Override any AI decision via the web UI's live-session view (§4.3)"                                                                              | The web-console-side write paths in §2; the Override actions appear as console controls + Foundry chat commands per §1 parity table                     |
 | 4.4 (operator control surfaces)          | Web console + a second surface; live cross-surface sync                                                                                           | §1 parity table; §2 single-write-path; §4 SSE bus echo; carries forward TDD 0025's discipline                                                           |
-| 4.2 (Operator commands via Foundry chat) | "Operator commands — operator-side resolutions, overrides, and toggles … are typed as Foundry chat commands surfaced through the bridge"          | §3 chat-command handler; TDD 0034's `FoundryChatCommandSurface` delivers events                                                                         |
+| 4.2 (Operator commands via Foundry chat) | "Operator commands — operator-side resolutions, overrides, and toggles … are typed as Foundry chat commands surfaced through the add-on"          | §3 chat-command handler; TDD 0034's `FoundryChatCommandSurface` delivers events                                                                         |
 | ADR-0016                                 | Operator controls have parity across console and a second surface, via one write path                                                             | §1 + §2; the invariant is preserved with the second surface changed but the property unchanged                                                          |
 | ADR-0023                                 | Operator-as-host; operator does host work; controls are accessible without leaving the operator's primary surfaces (Foundry GM view, web console) | §1 + §5; the GM-role authorization gate plus the Foundry chat-command surface mean the operator never needs to alt-tab to Discord for operator controls |
 
@@ -276,13 +276,13 @@ No new third-party Skeinkeeper-side dependencies. Reuses:
 
 - `SessionManager` (TDD 0025, extended).
 - `SurfaceRouter` + `FoundryChatCommandSurface` (TDD 0034).
-- `FoundryClient.listUsers()` (TDD 0037 Band A cap #5, v0.5-blocking).
+- `FoundryClient.listUsers()` (TDD 0041).
 - TDD 0024's operator-designation data model (carried forward unchanged; extended with a `foundryUserId` field per §2).
 - SSE bus + `AppEvent` shape (TDD 0020 / 0025).
 
 Alternatives considered:
 
-- **Drop Foundry chat-command operator surface; web-console-only operator controls at v0.5.** Considered; rejected per the prior interview decision to block v0.5 on the chat-command listener bridge cap rather than relax the parity invariant.
+- **Drop Foundry chat-command operator surface; web-console-only operator controls at v0.5.** Considered; rejected per the prior interview decision to require TDD 0041 subscribeChatEvents (fail-closed Start) rather than relax the parity invariant.
 - **Keep Discord slash commands alongside Foundry chat commands** (three surfaces). Rejected — violates the PRD §4 surface model's hard rule "Discord DM = consent only." Slash commands aren't DMs but they're another Discord text path the surface model rules out.
 - **Subset the parity table** (some controls Foundry-chat-only, others console-only). Rejected — breaks the parity invariant, which is ADR-0016's load-bearing claim.
 
@@ -334,3 +334,14 @@ The Discord-slash-command-registration code removal removes one persistent Disco
 - **Inline-ack-as-whisper vs. inline-ack-in-public-chat.** Whisper to the invoker keeps GM-chat clean; public-chat ack would be visible to all GM-role users (the operator's GM assistants) which might be desirable for shared awareness. Recommendation: whisper to invoker for v0.5 (least noisy); revisit if multi-GM-assistant configurations need shared visibility.
 - **Migration: how does the operator know slash commands moved?** The v0.5 changelog + a one-time operator DM at first v0.5 startup explaining the move. Captured in the v0.5 release-notes follow-up.
 - **The standing-gateway-client work** (TDD 0025 §4 open item) — still open. When it lands, `session action:start` becomes a Foundry-chat-command-able action; the parity table updates; the asymmetry closes. Tracked.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

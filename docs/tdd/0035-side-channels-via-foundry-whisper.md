@@ -2,12 +2,12 @@
 
 Status: draft
 PRD refs: 4.1, 4.3, 4.7, 5.5
-PRD-rev: 59a0fda
-ADR constraints: 0003, 0008, 0010, 0014, 0016, 0017, 0018, 0020, 0023, 0025, 0026
+PRD-rev: 5c3a198
+ADR constraints: 0003, 0008, 0010, 0014, 0016, 0017, 0018, 0020, 0023, 0025, 0026, 0029, 0030
 Supersedes: [TDD 0026](./0026-player-dm-side-channels.md)
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0013 (dialogue persistence)](./0013-dialogue-persistence-session-lifecycle.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0037 (bridge dependencies — surface-model critical batch)](./0037-bridge-dependencies-surface-model-critical-batch.md), [0038 (per-audience erasure cascade)](./0038-per-audience-erasure-cascade-to-foundry.md)
+Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0013 (dialogue persistence)](./0013-dialogue-persistence-session-lifecycle.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0038 (per-audience erasure cascade)](./0038-per-audience-erasure-cascade-to-foundry.md)
 
 ## Carries forward / supersedes (read first)
 
@@ -27,7 +27,7 @@ This TDD supersedes [TDD 0026](./0026-player-dm-side-channels.md) because the PR
 
 **Substantively changed in this TDD:**
 
-- **Transport: Discord DM threads → Foundry whisper.** All player-initiation and DM-response paths run over Foundry whisper, accessed via TDD 0034's `FoundryWhisperSurface` (which consumes TDD 0037's `post-chat-message` + `subscribeChatEvents` bridge capabilities).
+- **Transport: Discord DM threads → Foundry whisper.** All player-initiation and DM-response paths run over Foundry whisper, accessed via TDD 0034's `FoundryWhisperSurface` (which consumes TDD 0041 `postChatMessage` + `subscribeChatEvents`).
 - **Two-layer anti-leak made explicit** (PRD §5.5). The Skeinkeeper-side hot-context composition (carried forward from 0026 §10) is now the FIRST layer; Foundry's whisper render (per-recipient visibility enforced on delivery) is the SECOND layer. Both are load-bearing; the design relies on neither alone.
 - **Per-player erasure cascades to Foundry whisper history** via TDD 0038. The PRD §5.5 obligation extends erasure beyond Skeinkeeper's audience-tagged dialogue store to also remove the corresponding Foundry whisper messages for that player. Failure-mode policy (partial-success with explicit "Foundry-side cleanup required" entries in the deletion report) lives in TDD 0038.
 - **Operator visibility surface change.** Operator no longer reviews side-channels via a Skeinkeeper-only audit pane — Foundry's standard GM view of whispers IS the review surface (operators see all whispers natively when running as a GM-role Foundry user). The Skeinkeeper-side audience-tagged dialogue store still exists for export, erasure, and replay-any-session.
@@ -97,7 +97,7 @@ The 0026 §5 design carries forward end-to-end with one wiring change:
 
 - **Private deliberation.** The audience-tagged `player:<id>` reasoning happens against the player's Foundry-whisper-initiated input, identical in shape to 0026 except the transport is Foundry whisper.
 - **Audience flip on resolution.** When the AI commits the resolved action, the audience flips to `table`. The orchestrator emits the resolved-action narration via `router.emit({ audience: { kind: "table" }, text, audio })`, which fans out to `DiscordVoiceSurface` (TTS narration) AND `FoundryPublicChatSurface` (text mirror). The audience flip is the boundary; once flipped, both transport surfaces light up simultaneously.
-- **Secret rolls until resolution.** The 0026 design used Skeinkeeper's local crypto roller to keep a private action's roll out of Foundry's _shared_ chat log. Under TDD 0037's Band A cap #2 (server-side `roll-dice` with roll modes), the design _can_ use the bridge's `roll-dice` with `mode: "gm"` or `mode: "whisperTo: [playerFoundryUserId]"` to land the roll in Foundry's chat with the right audience semantics — the roll appears in Foundry's chat log scoped to the player + operator's GM view, never broadcast. This is preferable to the local-roller fallback (rolls land in Foundry's chat log + are auditable + are visible to the operator in their GM view), AND it doesn't leak: Foundry's roll-mode rendering enforces audience at the same boundary as whispers. The local crypto roller remains the fallback path if `roll-dice` is unavailable (TDD 0014 / pre-Band-A bridge), but with Band A v0.5-blocking (TDD 0037), the bridge path is the v0.5 default.
+- **Secret rolls until resolution.** The 0026 design used Skeinkeeper's local crypto roller to keep a private action's roll out of Foundry's _shared_ chat log. Secret-action rolls use TDD 0041 `rollDice(formula, { mode: "whisperTo" | "gm", whisperTo })`. The roll lands in Foundry chat with the right audience. The local crypto roller is only a fallback if that call throws; then emit `error.captured` and do not post a public roll.
 - **Two-test allow/deny** (geographic + social PvP) carries forward unchanged.
 - **Timing — serialized under the hood, surprising on the surface** — carried forward unchanged. The serialization seam is the ToolDispatcher, same as 0026.
 
@@ -142,7 +142,7 @@ Anti-abuse remains primarily structural (layer 1: a `player:<id>` context exclud
 | --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Side-channel inbound  | Discord DM listener → Coordinator routes to player conversation | TDD 0034's `FoundryWhisperSurface` inbound; Coordinator subscribes to `router.events()` filtered for `chat.whisper.player-to-dm`                        |
 | Side-channel outbound | `whisper`-tool → bot DM via discord.js                          | `whisper`-tool emits `{ audience: { kind: "player", playerId } }`; router fans to `FoundryWhisperSurface`                                               |
-| Secret roll           | Local crypto roller (fallback per 0026 §5)                      | Bridge `roll-dice` with `mode: "whisperTo"` or `mode: "gm"` (v0.5 default per TDD 0037 Band A); local crypto roller stays as Pre-A bridge fallback only |
+| Secret roll           | Local crypto roller (fallback per 0026 §5)                      | TDD 0041 `rollDice(formula, { mode: "whisperTo" \| "gm", whisperTo })`; local roller only if that call throws |
 | Per-player erasure    | DialogueAdapter delete (Skeinkeeper-only)                       | DialogueAdapter delete + bridge `delete-chat-messages` filtered by recipient (TDD 0038 implementation)                                                  |
 | Operator visibility   | Skeinkeeper console replay pane (only)                          | Foundry-native GM-view whispers (default + free) + Skeinkeeper console replay pane (preserved for export/erasure)                                       |
 | Audio additive        | Planned Discord DM audio attachment (0026 §8)                   | Dropped from scope                                                                                                                                      |
@@ -174,10 +174,10 @@ A small per-session ephemeral cache: the 3-way identity map (`foundryUserId ↔ 
 
 ## Sequencing / implementation plan
 
-1. **Confirm Band A bridge caps are present.** TDD 0037's refuse-to-start gate guarantees this; if the gate fires, this TDD's path is non-functional and the session refuses to start.
+1. **Confirm the Foundry add-on is connected.** TDD 0041 fail-closed Start (FR-F6) guarantees this; if the gate fires, this TDD's path is non-functional and the session refuses to start.
 2. **Wire the Coordinator's inbound source to `router.events()`** (TDD 0034). Filter for `chat.whisper.player-to-dm`; route each event to the matching player conversation (existing 0026 dispatch logic; replace the Discord-DM-event source).
 3. **Wire the `whisper`-tool handler to emit through the router.** Audience: `{ kind: "player", playerId }`. The router resolves to `FoundryWhisperSurface`; the local discord.js DM path is removed.
-4. **Replace the secret-roll fallback with `FoundryClient.rollDice({ mode: "whisperTo", whisperTo: [playerFoundryUserId] })`** for the private-action secret-roll path. Keep the local crypto roller as a defensive fallback if the bridge call fails; emit `error.captured` on the fallback path so the operator sees it.
+4. **Replace the secret-roll fallback with `FoundryClient.rollDice(formula, { mode: "whisperTo", whisperTo: [playerFoundryUserId] })`** for the private-action secret-roll path. Keep the local crypto roller as a defensive fallback if rollDice throws; emit `error.captured` on the fallback path so the operator sees it.
 5. **Remove the Discord-DM listener for non-consent traffic.** The `DiscordConsentSurface` (TDD 0034) carries the one-time courtesy redirect; nothing else listens to Discord DMs. Delete the prior side-channel dispatch wiring.
 6. **PRIVACY.md update.** Co-shipped with TDD 0038's PRIVACY.md update for the erasure-cascade narrative. The side-channel passages move from "Discord DM" wording to "Foundry whisper"; the operator-visibility paragraph names both review surfaces.
 7. **Behavior-spec update** (`behavior/default.md`). Carries forward all behavior rules from 0026 §4 unchanged; only the transport name changes ("Discord DM" → "Foundry whisper"); fixture transport in `eval:live` similarly updates.
@@ -188,11 +188,11 @@ A small per-session ephemeral cache: the 3-way identity map (`foundryUserId ↔ 
 - **A Foundry whisper-to-bot from a player whose Foundry user isn't mapped to a Discord user yet.** TDD 0036's onboarding handles the mapping. While unresolved, the side-channel surface logs the inbound event but doesn't dispatch (no conversation key); the AI does not respond. The operator sees the unmapped event in TDD 0036's pre-flight pane. After mapping completes, future whispers dispatch normally; the prior unmapped events do not retroactively replay (they're treated as never-delivered).
 - **Player whispers the bot on Discord (not Foundry).** Handled by TDD 0034 §Failure modes — one-time courtesy reply directing to Foundry whisper. The side-channel path here doesn't run.
 - **Bridge `post-chat-message` fails on a `whisper` emit** (network blip, Foundry reload). The router's `EmitReport` names the failure; the orchestrator records the emit attempt in the dialogue store (the Skeinkeeper-side record is still the source-of-truth); the player sees no DM response that turn. The Coordinator surfaces the failure via `surface.emit.failed` telemetry; the operator console's error pane shows the missed delivery. The next turn proceeds normally.
-- **Bridge `roll-dice` fails on a secret-action roll.** Fall back to local crypto roller (preserves 0026 §5 behavior); the roll result is delivered in the whisper response narration; it does not land in Foundry's chat log. The audit log records both the bridge attempt + the local fallback. Operator sees `tool.called error.captured`.
+- **rollDice throws on a secret-action roll.** Fall back to local crypto roller (preserves 0026 §5 behavior); the roll result is delivered in the whisper response narration; it does not land in Foundry's chat log. The audit log records both the FoundryClient attempt + the local fallback. Operator sees `tool.called error.captured`.
 - **Coordinator semaphore saturated** (a player spams whispers). Existing per-conversation coalescing absorbs it; the explicit per-player rate-limit remains deferred per 0026 §10 (YAGNI given table-bounded scale). If it ever becomes a problem, the operator-control surface (TDD 0040) can land a `/skeinkeeper rate-limit player:<id>` knob.
 - **Operator is also a player and whispers the bot.** Same dispatch path; the audience-tag is the operator's `discordUserId`. The 0026 § "operator visibility" semantics still hold — the operator's own whispers are visible to themselves; the AI's response context for the operator-as-player is the operator's `player:<id>` context (not `gm`); spoiler-aware-escalation framing per PRD §4.8 applies on the AI's content side, not the routing side.
 - **A PvP private action initiation from player A targeting player B, mid-resolution operator-toggles PvP off.** Per 0026 §6's read-at-initiation semantics carried forward: the in-flight action completes under the PvP=on value that applied when it began; the next PvP private action sees the new off state. The Coordinator's serialized writes guarantee no race.
-- **Bridge cap missing at session start.** TDD 0037 refuse-to-start gate fires; this TDD's path doesn't run; no degraded operation.
+- **Add-on missing at session start.** TDD 0041 fail-closed Start fires; this TDD's path doesn't run; no degraded operation.
 
 ## Verification plan
 
@@ -227,7 +227,7 @@ The Layer-1 + Layer-2 unit tests and the audience-flip integration tests run in 
 
 No new third-party Skeinkeeper-side dependencies. The implementation reuses:
 
-- `FoundryClient` (TDD 0007 / 0014) + the Band A capabilities from TDD 0037 (`postChatMessage` with `whisperTo`; `subscribeChatEvents`; `rollDice` with roll modes).
+- `FoundryClient` (TDD 0007 / 0041): `postChatMessage`, `subscribeChatEvents`, `rollDice`.
 - The Coordinator design from TDD 0026 (this supersession preserves its shape; the wiring source changes).
 - TDD 0034's `SurfaceRouter` for emit + inbound multiplex.
 
@@ -267,7 +267,7 @@ The two-layer anti-leak is the privacy posture; §2 names both layers. PRIVACY.m
 
 - Transport: Foundry whisper.
 - Operator visibility: Foundry GM-view native + Skeinkeeper replay pane.
-- Per-player erasure: cascades to both stores (TDD 0038); partial-success failure-mode if bridge cap unavailable.
+- Per-player erasure: cascades to both stores (TDD 0038); partial-success if the add-on is unavailable.
 - Two-layer guarantee: composition + Foundry render.
 
 No new PII columns; the existing `discordUserId` / `foundryUserId` are already `PII<>`-marked per [ADR-0019](../adr/0019-per-column-pii-encryption.md) (superseded by [ADR-0022](../adr/0022-pii-encryption-node-crypto.md)).
@@ -285,3 +285,14 @@ Fixture transport updates: `FakeDiscordBot.dmUser` recordings → `FakeFoundryCl
 
 - **Default DM-Foundry-user identity.** If the operator hasn't explicitly designated a "DM Foundry user" for side-channel routing, fall back to the operator's own GM user (functional but degenerate in the operator-as-player case — see PRD-conflict #1). Recommendation: require explicit DM-Foundry-user designation in the operator config; surface the missing-config as a TDD 0036 pre-flight warning rather than a hard block (the operator-as-pure-host case has no degeneracy issue).
 - **Foundry whisper history persistence across Foundry sessions.** Foundry's whisper messages persist in the world's chat log by default; per-recipient visibility is preserved across reloads. Confirm against live Foundry that the Layer-2 guarantee holds across world saves/restores; operator-validated at Phase 3-live integration.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |

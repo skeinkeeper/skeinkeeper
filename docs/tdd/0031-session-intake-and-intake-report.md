@@ -2,11 +2,11 @@
 
 Status: draft
 PRD refs: 4.8, 3, 9.6, 9.7, 9.8
-PRD-rev: 59a0fda
-ADR constraints: 0008, 0010, 0016, 0018, 0023, 0024
+PRD-rev: 5c3a198
+ADR constraints: 0008, 0010, 0016, 0018, 0023, 0024, 0029, 0030
 Author: maintainers
 Date: 2026-05-26
-Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
+Related TDDs: [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
 
 ## Approach
 
@@ -144,7 +144,7 @@ Three pure functions, one per kind, each unit-tested against fixtures:
   TDD 0036's onboarding mapper + the 3-way identity pre-flight verifier), proposed
   primary source pack for a recurring creature.
 
-The rubric uses no LLM. It composes Foundry MCP reads (`get-world-info`, `list-characters`,
+The rubric uses no LLM. It composes FoundryClient reads (`get-world-info` / `listUsers` / `listPartyActors`,
 `list-scenes`, `list-compendium-packs`, `list-creatures-by-criteria`, `search-compendium`,
 `search-journals`) and warm-state reads (`player_character_map`, prior-session summaries,
 consents).
@@ -283,7 +283,7 @@ Foundry.
 
 ## Failure modes & edge cases
 
-- **Foundry MCP not connected on Start.** Minimum intake fails fast → emit
+- **Foundry add-on not connected on Start.** Minimum intake fails fast (TDD 0041 FR-F6) → emit
   `FOUNDRY_NOT_CONNECTED` critical → operator notified → Start blocked. Retry on bridge
   reconnect (operator runs `/skeinkeeper session start` again).
 - **`get-world-info` returns an unrecognized system.** Emit `UNKNOWN_FOUNDRY_SYSTEM`. The
@@ -445,4 +445,15 @@ Scenario fixtures required before this ships:
    first turn.
 
 Each classifier function gets unit tests per `FindingCode`. Integration tests cover the
-orchestrator gate behavior using `MockFoundryClient` and `FakeMcpToolCaller`.
+orchestrator gate behavior using `MockFoundryClient` and `MockFoundryClient`.
+
+## Evaluation rubric
+
+| Criterion | High-quality | Acceptable | Failing |
+| --- | --- | --- | --- |
+| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
+| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
+| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
+| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
