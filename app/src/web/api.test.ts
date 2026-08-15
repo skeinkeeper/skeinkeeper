@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { App } from "../bootstrap.js";
-import { getState, setEagerness, setDmVoice, setOperator, setPvp } from "./api.js";
+import { getState, resolveIntake, setEagerness, setDmVoice, setOperator, setPvp } from "./api.js";
 
 interface Upsert {
   subjectKind: string;
@@ -21,6 +21,10 @@ interface StubState {
   usernameCalls: string[];
   dmVoiceCalls: string[];
   dmVoiceResult: { ok: boolean; voiceId?: string; error?: string };
+  intakeReady: boolean;
+  intakeFindings: Array<{ id: number; code: string; summary: string }>;
+  resolveCalls: Array<{ findingId: number; optionId: string }>;
+  resolveResult: { status: string };
 }
 
 function stubApp(): { app: App; state: StubState } {
@@ -34,6 +38,10 @@ function stubApp(): { app: App; state: StubState } {
     usernameCalls: [],
     dmVoiceCalls: [],
     dmVoiceResult: { ok: true, voiceId: "v-resolved" },
+    intakeReady: true,
+    intakeFindings: [],
+    resolveCalls: [],
+    resolveResult: { status: "resolved" },
   };
   const app = {
     config: { campaignId: "c1" },
@@ -69,6 +77,13 @@ function stubApp(): { app: App; state: StubState } {
       },
       currentRoster() {
         return [];
+      },
+      getIntakeView() {
+        return { ready: state.intakeReady, findings: state.intakeFindings };
+      },
+      async resolveIntakeFinding(findingId: number, optionId: string) {
+        state.resolveCalls.push({ findingId, optionId });
+        return state.resolveResult;
       },
       setOperator(id: string) {
         state.operator = id;
@@ -181,5 +196,27 @@ describe("operator API", () => {
   it("setOperator: rejects an empty request", async () => {
     const { app } = stubApp();
     expect((await setOperator(app, {})).status).toBe(400);
+  });
+
+  it("getState includes intake ready + findings", () => {
+    const { app, state } = stubApp();
+    state.intakeReady = false;
+    state.intakeFindings = [{ id: 1, code: "NO_PARTY_ACTORS", summary: "No party" }];
+    const body = getState(app).body as {
+      intake: { ready: boolean; findings: Array<{ id: number }> };
+    };
+    expect(body.intake.ready).toBe(false);
+    expect(body.intake.findings[0]?.id).toBe(1);
+  });
+
+  it("resolveIntake validates ids and delegates to SessionManager", async () => {
+    const { app, state } = stubApp();
+    const r = await resolveIntake(app, { findingId: 1, optionId: "proceed-anyway" });
+    expect(r.status).toBe(200);
+    expect(state.resolveCalls).toEqual([{ findingId: 1, optionId: "proceed-anyway" }]);
+    expect(await resolveIntake(app, { findingId: "x", optionId: "a" })).toMatchObject({
+      status: 400,
+    });
+    expect(await resolveIntake(app, {})).toMatchObject({ status: 400 });
   });
 });
