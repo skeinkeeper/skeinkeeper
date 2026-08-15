@@ -248,6 +248,21 @@ describe("McpFoundryClient — intake reads (TDD 0031)", () => {
   });
 });
 
+describe("McpFoundryClient — add-actor-items (TDD 0033)", () => {
+  it("addActorItems wraps add-actor-items per item payload", async () => {
+    const caller = new FakeMcpToolCaller({ "add-actor-items": { ok: true } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await client.addActorItems({
+      actorId: "hero-1",
+      items: [{ itemId: "potion", quantity: 2 }],
+    });
+    expect(caller.calls[0]).toEqual({
+      name: "add-actor-items",
+      args: { actorId: "hero-1", items: [{ itemId: "potion", quantity: 2 }] },
+    });
+  });
+});
+
 describe("McpFoundryClient — token visibility (TDD 0033)", () => {
   it("updateToken wraps update-token", async () => {
     const caller = new FakeMcpToolCaller({ "update-token": { ok: true } });

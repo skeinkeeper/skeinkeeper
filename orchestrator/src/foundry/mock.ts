@@ -201,6 +201,10 @@ export class MockFoundryClient implements FoundryClient {
   }
 
   readonly createdFromCompendium: Array<{ packId: string; itemId: string }> = [];
+  readonly addedItems: Array<{
+    actorId: string;
+    items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
+  }> = [];
 
   async listWorldActors(): Promise<ReadonlyArray<FoundryActor>> {
     return [...this.actorsById.values()];
@@ -312,6 +316,13 @@ export class MockFoundryClient implements FoundryClient {
         (s) => s.name.toLowerCase() === sceneIdOrName.toLowerCase(),
       );
     if (scene !== undefined) this.activeSceneId = scene.id;
+  }
+
+  async addActorItems(args: {
+    actorId: string;
+    items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
+  }): Promise<void> {
+    this.addedItems.push({ actorId: args.actorId, items: args.items });
   }
 
   async updateToken(args: {

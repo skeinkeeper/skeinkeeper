@@ -164,4 +164,9 @@ export interface FoundryClient {
     sceneId?: string;
   }): Promise<void>;
   getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null>;
+  /** Add items to an actor inventory (TDD 0033). MCP: add-actor-items. */
+  addActorItems(args: {
+    actorId: string;
+    items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
+  }): Promise<void>;
 }

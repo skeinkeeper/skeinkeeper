@@ -213,6 +213,20 @@ export class McpFoundryClient implements FoundryClient {
     );
   }
 
+  async addActorItems(args: {
+    actorId: string;
+    items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
+  }): Promise<void> {
+    await this.caller.callTool("add-actor-items", {
+      actorId: args.actorId,
+      items: args.items.map((item) => ({
+        ...(item.compendiumId !== undefined ? { uuid: item.compendiumId } : {}),
+        ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+        quantity: item.quantity,
+      })),
+    });
+  }
+
   async updateToken(args: {
     tokenId: string;
     hidden?: boolean;

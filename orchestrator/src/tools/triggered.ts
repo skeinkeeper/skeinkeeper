@@ -60,6 +60,117 @@ export const revealTokenDef = defineTool({
   },
 });
 
+const lootItemSchema = z.object({
+  compendiumId: z.string().optional(),
+  itemId: z.string().optional(),
+  quantity: z.number().int().positive(),
+});
+
+export const distributeLootDef = defineTool({
+  name: "distribute_loot",
+  description:
+    "Distribute items from the compendium (or by template id) to one or more party actors. Non-party recipients are rejected; a failure on one item does not roll back earlier items.",
+  mutatesWorld: true,
+  inputSchema: z.object({
+    distributions: z
+      .array(
+        z.object({
+          actorId: z.string().min(1),
+          items: z.array(lootItemSchema).min(1),
+        }),
+      )
+      .min(1),
+  }),
+  outputSchema: z.object({
+    partialFailure: z.boolean(),
+    items: z.array(
+      z.object({
+        actorId: z.string(),
+        itemId: z.string().optional(),
+        compendiumId: z.string().optional(),
+        quantity: z.number(),
+        ok: z.boolean(),
+        error: z.string().optional(),
+      }),
+    ),
+  }),
+  async handle(input, ctx) {
+    const campaignId = campaignIdOf(ctx);
+    const foundry = requireFoundry(ctx);
+    const party = new Set((await foundry.listPartyActors()).map((a) => a.id));
+    const rejectedActors = new Set(
+      input.distributions.filter((d) => !party.has(d.actorId)).map((d) => d.actorId),
+    );
+
+    const items: Array<{
+      actorId: string;
+      itemId?: string;
+      compendiumId?: string;
+      quantity: number;
+      ok: boolean;
+      error?: string;
+    }> = [];
+
+    if (rejectedActors.size > 0) {
+      for (const dist of input.distributions) {
+        const error = rejectedActors.has(dist.actorId)
+          ? "not-party-actor"
+          : "batch-rejected-non-party";
+        for (const item of dist.items) {
+          items.push({
+            actorId: dist.actorId,
+            ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+            ...(item.compendiumId !== undefined ? { compendiumId: item.compendiumId } : {}),
+            quantity: item.quantity,
+            ok: false,
+            error,
+          });
+        }
+      }
+      trackAction(ctx, "action.distribute_loot", {
+        campaignId,
+        recipientCount: input.distributions.length,
+        itemCount: items.length,
+        partialFailure: true,
+      });
+      return { partialFailure: true, items };
+    }
+
+    for (const dist of input.distributions) {
+      for (const item of dist.items) {
+        try {
+          await foundry.addActorItems({ actorId: dist.actorId, items: [item] });
+          items.push({
+            actorId: dist.actorId,
+            ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+            ...(item.compendiumId !== undefined ? { compendiumId: item.compendiumId } : {}),
+            quantity: item.quantity,
+            ok: true,
+          });
+        } catch (err) {
+          items.push({
+            actorId: dist.actorId,
+            ...(item.itemId !== undefined ? { itemId: item.itemId } : {}),
+            ...(item.compendiumId !== undefined ? { compendiumId: item.compendiumId } : {}),
+            quantity: item.quantity,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    const partialFailure = items.some((i) => !i.ok);
+    trackAction(ctx, "action.distribute_loot", {
+      campaignId,
+      recipientCount: input.distributions.length,
+      itemCount: items.length,
+      partialFailure,
+    });
+    return { partialFailure, items };
+  },
+});
+
 export const hideTokenDef = defineTool({
   name: "hide_token",
   description: "Hide an existing visible token (Foundry token hidden flag → true).",
