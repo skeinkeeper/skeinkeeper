@@ -510,6 +510,7 @@ async function runLlmIterations(
       ...(cfg.journalShare !== undefined ? { journalShare: cfg.journalShare } : {}),
       ...(cfg.notifyTable !== undefined ? { notifyTable: cfg.notifyTable } : {}),
       ...(cfg.whisperPlayer !== undefined ? { whisperPlayer: cfg.whisperPlayer } : {}),
+      ...(cfg.surfaces !== undefined ? { surfaces: cfg.surfaces } : {}),
     };
     for (const tc of iterationToolCalls) {
       const result = await cfg.dispatcher.dispatch({ name: tc.name, input: tc.input }, ctx);

@@ -6,6 +6,7 @@ import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryClient } from "./foundry/client.js";
 import type { SessionRunState } from "./session/run-state.js";
+import type { SurfaceRouter } from "./surfaces/router.js";
 import type { Mutex } from "./util/mutex.js";
 
 export interface ToolHandlerContext {
@@ -39,8 +40,10 @@ export interface ToolHandlerContext {
   journalShare?: JournalShareDelivery;
   /** Table-audience delivery; SessionManager wires this to SurfaceRouter. */
   notifyTable?: (message: string) => Promise<void>;
-  /** Player-audience fallback until TDD 0035 FoundryWhisperSurface lands. */
+  /** Player-audience delivery; SessionManager wires this to SurfaceRouter. */
   whisperPlayer?: (playerId: string, message: string) => Promise<void>;
+  /** TDD 0035: whisper / resolve_action emit through the surface router. */
+  surfaces?: SurfaceRouter;
 }
 
 /** Typed 0034/0035 seam used by share_journal_to_audience. */

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   FakeOutboundSurface,
   MockFoundryClient,
+  SurfaceRouter,
   type SurfaceInputEvent,
 } from "@skeinkeeper/orchestrator";
 import { FoundryChatCommandSurface } from "./chat_command.js";
@@ -45,6 +46,47 @@ describe("FoundryWhisperSurface outbound", () => {
     expect(client.chatPosts).toEqual([
       { content: "psst", mode: "whisper", whisperTo: ["foundry-user-p1"] },
     ]);
+  });
+
+  it("router emit lands a single whisperTo for the mapped player (TDD 0035 Layer 2)", async () => {
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const router = new SurfaceRouter();
+    router.register(
+      new FoundryWhisperSurface({
+        client,
+        resolveFoundryUserId: (id) => (id === "discord-p1" ? "foundry-user-p1" : undefined),
+      }),
+    );
+    await router.emit({ audience: { kind: "player", playerId: "discord-p1" }, text: "psst" });
+    expect(client.chatPosts).toEqual([
+      { content: "psst", mode: "whisper", whisperTo: ["foundry-user-p1"] },
+    ]);
+  });
+
+  it("router emit for an unmapped player rejects with no Foundry write", async () => {
+    const events: Array<{ name: string; props: Record<string, unknown> }> = [];
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const router = new SurfaceRouter({
+      analytics: {
+        track: (name, props) => events.push({ name, props: props as Record<string, unknown> }),
+        flush: async () => undefined,
+      },
+    });
+    router.register(
+      new FoundryWhisperSurface({
+        client,
+        resolveFoundryUserId: () => undefined,
+      }),
+    );
+    const report = await router.emit({
+      audience: { kind: "player", playerId: "discord-unknown" },
+      text: "psst",
+    });
+    expect(client.chatPosts).toEqual([]);
+    expect(report.perSurface).toEqual([
+      { surface: "foundry-whisper", status: "failed", error: "unresolved-foundry-user" },
+    ]);
+    expect(events.some((e) => e.name === "surface.emit.failed")).toBe(true);
   });
 });
 

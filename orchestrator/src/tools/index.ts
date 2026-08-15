@@ -25,7 +25,7 @@ import {
  *    log, falling back to the local crypto roller when the bridge can't
  *    roll server-side (design doc 0014).
  *  - World state: quest flags, party movement, in-game time.
- *  - Player whisper: Discord side, not VTT side.
+ *  - Player whisper: Foundry whisper via SurfaceRouter (TDD 0035).
  *  - Fudge: meta-mechanic, not system-specific.
  *  - Triggered play actions (TDD 0033): reveal/hide/place tokens, journal
  *    share, loot distribution.
@@ -168,14 +168,25 @@ const advanceTimeDef = defineTool({
 const whisperDef = defineTool({
   name: "whisper",
   description:
-    "Send a private message to one player via Discord. The voice plugin picks this up from the audit log.",
+    "Send a private Foundry whisper to one player. Use the player's Discord user id; the surface router resolves their Foundry user.",
   inputSchema: z.object({
-    targetPlayerDiscordId: z.string(),
-    content: z.string().min(1),
+    playerId: z.string(),
+    text: z.string().min(1),
   }),
   outputSchema: z.object({ delivered: z.boolean() }),
-  async handle() {
-    return { delivered: true };
+  async handle(input, ctx) {
+    if (ctx.surfaces !== undefined) {
+      const report = await ctx.surfaces.emit({
+        audience: { kind: "player", playerId: input.playerId },
+        text: input.text,
+      });
+      return { delivered: report.perSurface.some((p) => p.status === "ok") };
+    }
+    if (ctx.whisperPlayer !== undefined) {
+      await ctx.whisperPlayer(input.playerId, input.text);
+      return { delivered: true };
+    }
+    return { delivered: false };
   },
 });
 
