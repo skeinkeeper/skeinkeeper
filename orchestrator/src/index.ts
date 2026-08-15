@@ -146,6 +146,19 @@ export {
 } from "./autosetup/identity-preflight.js";
 export { createSessionRunState, type SessionRunState } from "./session/run-state.js";
 export {
+  MockFoundryEventStream,
+  NullFoundryEventStream,
+  liveAddonEventStream,
+  parseFoundryEvent,
+  takePerceptionEvents,
+  wireFoundryEventStream,
+  type FoundryEvent,
+  type FoundryEventStream,
+  type PerceptionKind,
+  type PerceptionBuffer,
+  type Unsubscribe as PerceptionUnsubscribe,
+} from "./perception/event-stream.js";
+export {
   refreshIndex,
   resetIndexRefreshMutexForTests,
   type RefreshCounts,
