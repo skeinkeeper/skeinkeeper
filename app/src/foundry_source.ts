@@ -45,9 +45,9 @@ export function createFoundrySource(config: AppConfig, env: NodeJS.ProcessEnv): 
       } catch (err) {
         await c.close().catch(() => undefined);
         console.warn(
-          `Foundry MCP bridge unavailable (${err instanceof Error ? err.message : String(err)}); using mock Foundry.`,
+          `Foundry MCP bridge unavailable (${err instanceof Error ? err.message : String(err)}); intake will report FOUNDRY_NOT_CONNECTED.`,
         );
-        return new MockFoundryClient({ system: "dnd5e" });
+        return new MockFoundryClient({ system: "", connected: false });
       }
     },
     close: async () => {
