@@ -2,10 +2,14 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { z } from "zod";
+import { TABLE_AUDIENCE, TABLE_CONVERSATION, type Audience } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryActor, FoundryClient } from "../foundry/client.js";
 import { parseCompendiumRef } from "../foundry/client.js";
 import { defineTool, type ToolHandlerContext } from "../registry.js";
+
+export const JOURNAL_EXCERPT_DEFAULT = 1500;
+const PLAYER_NOTE_PREFIX = "*A note slips into your hand:*";
 
 export class TriggeredActionError extends Error {
   readonly code: string;
@@ -331,6 +335,141 @@ async function resolveActorId(
   if (already !== undefined) return already.id;
   const created = await foundry.createActorFromCompendium({ packId, itemId: hit.id });
   return created.id;
+}
+
+export const shareJournalToAudienceDef = defineTool({
+  name: "share_journal_to_audience",
+  description:
+    "Deliver a journal entry to table (public + voice excerpt), a single player (private note), or gm (no-op; already GM-visible). Long entries are excerpted.",
+  mutatesWorld: false,
+  inputSchema: z.object({
+    journalId: z.string().min(1),
+    audience: z.union([z.literal("table"), z.literal("gm"), z.string().regex(/^player:.+$/)]),
+    excerpt: z
+      .object({
+        pageId: z.string().optional(),
+        chars: z.number().int().positive().optional(),
+      })
+      .optional(),
+  }),
+  outputSchema: z.object({
+    journalId: z.string(),
+    audienceKind: z.enum(["table", "player", "gm"]),
+    path: z.enum(["foundry-public-chat", "foundry-whisper", "gm-noop"]),
+    excerpted: z.boolean(),
+  }),
+  async handle(input, ctx) {
+    const campaignId = campaignIdOf(ctx);
+    const audienceKind = audienceKindOf(input.audience);
+    const path =
+      audienceKind === "table"
+        ? "foundry-public-chat"
+        : audienceKind === "player"
+          ? "foundry-whisper"
+          : "gm-noop";
+    const emit = (success: boolean) =>
+      trackAction(ctx, "action.share_journal_to_audience", {
+        campaignId,
+        audienceKind,
+        path,
+        success,
+      });
+    try {
+      if (audienceKind === "gm") {
+        emit(true);
+        return { journalId: input.journalId, audienceKind, path, excerpted: false };
+      }
+      if (audienceKind === "player") {
+        const playerId = input.audience.slice("player:".length);
+        const consented =
+          ctx.isPlayerConsented?.(playerId) ??
+          ctx.tenantDb.consents.isGranted(playerId, "voice_processing");
+        if (!consented) {
+          throw new TriggeredActionError(
+            "consent-rejected",
+            "player has not granted consent for private delivery",
+          );
+        }
+      }
+      const foundry = requireFoundry(ctx);
+      const journal = await foundry.getJournal(input.journalId);
+      if (journal === null) {
+        throw new TriggeredActionError("journal-not-found", "journal entry is not in the world");
+      }
+      const sourceText = journalPageText(journal, input.excerpt?.pageId);
+      const cap = input.excerpt?.chars ?? JOURNAL_EXCERPT_DEFAULT;
+      const excerpted = sourceText.length > cap;
+      const excerpt = excerpted ? sourceText.slice(0, cap) : sourceText;
+      const framedText =
+        audienceKind === "player"
+          ? `${PLAYER_NOTE_PREFIX} ${journal.name}\n\n${excerpt}\n\n(full entry: ${journal.name} — ask your DM to share)`
+          : `${journal.name}\n\n${excerpt}`;
+      const payload = {
+        journalId: journal.id,
+        title: journal.name,
+        excerpt,
+        framedText,
+      };
+      if (audienceKind === "table") {
+        if (ctx.journalShare !== undefined) {
+          await ctx.journalShare.shareTable(payload);
+        } else {
+          persistShare(ctx, TABLE_AUDIENCE, TABLE_CONVERSATION, framedText);
+          await ctx.notifyTable?.(framedText);
+        }
+      } else {
+        const playerId = input.audience.slice("player:".length);
+        if (ctx.journalShare !== undefined) {
+          await ctx.journalShare.sharePlayer({ ...payload, playerId });
+        } else {
+          persistShare(ctx, input.audience as Audience, input.audience, framedText);
+          await ctx.whisperPlayer?.(playerId, framedText);
+        }
+      }
+      emit(true);
+      return { journalId: journal.id, audienceKind, path, excerpted };
+    } catch (err) {
+      emit(false);
+      if (err instanceof TriggeredActionError) throw err;
+      throw new TriggeredActionError(
+        "share-failed",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  },
+});
+
+function audienceKindOf(audience: string): "table" | "player" | "gm" {
+  if (audience === "table") return "table";
+  if (audience === "gm") return "gm";
+  return "player";
+}
+
+function journalPageText(
+  journal: { text: string; pages?: ReadonlyArray<{ id: string; text: string }> },
+  pageId?: string,
+): string {
+  if (pageId !== undefined) {
+    const page = journal.pages?.find((p) => p.id === pageId);
+    if (page !== undefined) return page.text;
+  }
+  return journal.text;
+}
+
+function persistShare(
+  ctx: ToolHandlerContext,
+  audience: Audience,
+  conversationId: string,
+  text: string,
+): void {
+  ctx.tenantDb.dialogue.append({
+    sessionId: ctx.sessionId,
+    speaker: "narrator",
+    text,
+    timestamp: Date.now(),
+    audience,
+    conversationId,
+  });
 }
 
 function actorFlagSourceId(actor: FoundryActor): string | undefined {

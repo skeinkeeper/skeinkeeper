@@ -10,6 +10,7 @@ import type {
   FoundrySceneRef,
   FoundrySceneToken,
   FoundrySearchHit,
+  FoundryJournal,
   FoundryTokenDetails,
   FoundryUser,
   FoundryWorldInfo,
@@ -157,6 +158,26 @@ export class McpFoundryClient implements FoundryClient {
   async searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>> {
     const res = await this.caller.callTool("search-journals", { query });
     return parseSearchHits(res);
+  }
+
+  async getJournal(journalId: string): Promise<FoundryJournal | null> {
+    try {
+      const res = await this.caller.callTool("get-quest-journal", { journalId });
+      const parsed = parseJournal(res, journalId);
+      if (parsed !== null) return parsed;
+    } catch {
+      // fall through to list-journals
+    }
+    try {
+      const listed = await this.caller.callTool("list-journals", {});
+      for (const item of toArray(listed, ["journals", "results", "data"])) {
+        const parsed = parseJournal(item, journalId);
+        if (parsed?.id === journalId) return parsed;
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   async listWorldActors(): Promise<ReadonlyArray<FoundryActor>> {
@@ -420,6 +441,29 @@ function parseTokenDetails(res: unknown, fallbackId: string): FoundryTokenDetail
     ...(sceneId !== undefined ? { sceneId } : {}),
     ...(disp !== undefined ? { disposition: disp } : {}),
   };
+}
+
+function parseJournal(res: unknown, fallbackId: string): FoundryJournal | null {
+  const rec = asRecord(unwrap(res, ["journal", "entry", "data"])) ?? asRecord(res);
+  if (!rec) return null;
+  const id = str(rec["id"]) ?? str(rec["_id"]) ?? fallbackId;
+  const name = str(rec["name"]);
+  if (name === undefined) return null;
+  const text = str(rec["text"]) ?? str(rec["content"]) ?? "";
+  const pagesRaw = toArray(rec["pages"], []);
+  const pages: Array<{ id: string; name?: string; text: string }> = [];
+  for (const p of pagesRaw) {
+    const pr = asRecord(p);
+    if (!pr) continue;
+    const pid = str(pr["id"]) ?? str(pr["_id"]);
+    const ptext = str(pr["text"]) ?? str(pr["content"]) ?? "";
+    if (pid === undefined) continue;
+    const pname = str(pr["name"]);
+    pages.push(
+      pname !== undefined ? { id: pid, name: pname, text: ptext } : { id: pid, text: ptext },
+    );
+  }
+  return pages.length > 0 ? { id, name, text, pages } : { id, name, text };
 }
 
 function parseSearchHits(res: unknown): FoundrySearchHit[] {

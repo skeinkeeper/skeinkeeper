@@ -30,6 +30,30 @@ export interface ToolHandlerContext {
   notifyOperator?: (message: string) => Promise<void>;
   /** Opt-in product analytics (ADR-0009). */
   analytics?: AnalyticsClient;
+  /** Voice/session consent check for player-audience journal share (TDD 0033). */
+  isPlayerConsented?: (playerId: string) => boolean;
+  /**
+   * TDD 0034 SurfaceRouter hook (FoundryPublicChat + DiscordVoice).
+   * Default delivery writes table-audience dialogue and notifyTable.
+   */
+  journalShare?: JournalShareDelivery;
+  /** Table-audience fallback until TDD 0034 SurfaceRouter lands. */
+  notifyTable?: (message: string) => Promise<void>;
+  /** Player-audience fallback until TDD 0035 FoundryWhisperSurface lands. */
+  whisperPlayer?: (playerId: string, message: string) => Promise<void>;
+}
+
+/** Typed 0034/0035 seam used by share_journal_to_audience. */
+export interface JournalSharePayload {
+  journalId: string;
+  title: string;
+  excerpt: string;
+  framedText: string;
+}
+
+export interface JournalShareDelivery {
+  shareTable(payload: JournalSharePayload): Promise<void>;
+  sharePlayer(payload: JournalSharePayload & { playerId: string }): Promise<void>;
 }
 
 export interface ToolDefinition<S extends z.ZodTypeAny, O extends z.ZodTypeAny> {

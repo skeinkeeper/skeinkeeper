@@ -14,6 +14,7 @@ import type {
   FoundryTokenDetails,
   FoundryUser,
   FoundryWorldInfo,
+  FoundryJournal,
   RollResult,
 } from "./client.js";
 import { parseCompendiumRef } from "./client.js";
@@ -43,6 +44,7 @@ export interface MockFoundryClientOptions {
   creatures?: ReadonlyArray<FoundryCreatureRef>;
   compendiumHits?: ReadonlyArray<FoundrySearchHit>;
   journalHits?: ReadonlyArray<FoundrySearchHit>;
+  journals?: ReadonlyArray<FoundryJournal>;
 }
 
 /**
@@ -66,6 +68,7 @@ export class MockFoundryClient implements FoundryClient {
   private creatures: ReadonlyArray<FoundryCreatureRef>;
   private compendiumHits: ReadonlyArray<FoundrySearchHit>;
   private journalHits: ReadonlyArray<FoundrySearchHit>;
+  private journalsById = new Map<string, FoundryJournal>();
   readonly updates: Array<{ actorId: string; update: Record<string, unknown> }> = [];
   readonly rolls: Array<{ formula: string; speaker?: string; whisperTo?: ReadonlyArray<string> }> =
     [];
@@ -100,6 +103,7 @@ export class MockFoundryClient implements FoundryClient {
     this.creatures = opts.creatures ?? [];
     this.compendiumHits = opts.compendiumHits ?? [];
     this.journalHits = opts.journalHits ?? [];
+    for (const j of opts.journals ?? []) this.journalsById.set(j.id, j);
   }
 
   seedModules(modules: ReadonlyArray<FoundryModuleRef>): void {
@@ -318,6 +322,10 @@ export class MockFoundryClient implements FoundryClient {
     return this.journalHits.filter(
       (h) => h.name.toLowerCase().includes(q) || h.id.toLowerCase().includes(q),
     );
+  }
+
+  async getJournal(journalId: string): Promise<FoundryJournal | null> {
+    return this.journalsById.get(journalId) ?? null;
   }
 
   /** Activate a scene by id or (case-insensitive) name (ADR-0015). */

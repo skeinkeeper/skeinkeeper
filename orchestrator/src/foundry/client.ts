@@ -120,6 +120,13 @@ export interface FoundrySearchHit {
   readonly type?: string;
 }
 
+export interface FoundryJournal {
+  readonly id: string;
+  readonly name: string;
+  readonly text: string;
+  readonly pages?: ReadonlyArray<{ id: string; name?: string; text: string }>;
+}
+
 export interface FoundryClient {
   /** Identifier of the active Foundry system for the connected world,
    *  e.g., "dnd5e", "fate-core", "dungeon-world". */
@@ -151,6 +158,7 @@ export interface FoundryClient {
     opts?: { packType?: string },
   ): Promise<ReadonlyArray<FoundrySearchHit>>;
   searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>>;
+  getJournal(journalId: string): Promise<FoundryJournal | null>;
   /** All world actors (party + NPCs already imported). Used by preload existence checks. */
   listWorldActors(): Promise<ReadonlyArray<FoundryActor>>;
 

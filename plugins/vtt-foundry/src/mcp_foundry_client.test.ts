@@ -248,6 +248,17 @@ describe("McpFoundryClient — intake reads (TDD 0031)", () => {
   });
 });
 
+describe("McpFoundryClient — getJournal (TDD 0033)", () => {
+  it("maps get-quest-journal", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-quest-journal": { id: "j1", name: "Note", text: "hello" },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const j = await client.getJournal("j1");
+    expect(j).toEqual({ id: "j1", name: "Note", text: "hello" });
+  });
+});
+
 describe("McpFoundryClient — create-token / move-token (TDD 0033)", () => {
   it("createToken wraps create-token", async () => {
     const caller = new FakeMcpToolCaller({

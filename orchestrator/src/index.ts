@@ -10,6 +10,8 @@ export {
   type ToolHandlerContext,
   type ToolResult,
   type ToolDispatcherOptions,
+  type JournalShareDelivery,
+  type JournalSharePayload,
 } from "./registry.js";
 export { rollFormula, type RollResult, type RollOptions } from "./dice.js";
 export { BUILTIN_TOOLS, registerBuiltinTools, createDefaultRegistry } from "./tools/index.js";
@@ -38,8 +40,10 @@ export {
   type FoundryPackRef,
   type FoundryCreatureRef,
   type FoundrySearchHit,
+  type FoundryJournal,
   type FoundryTokenDetails,
   type RollResult as FoundryRollResult,
+  parseCompendiumRef,
 } from "./foundry/client.js";
 export * from "./intake/types.js";
 export {
