@@ -60,7 +60,7 @@ All docs below are `Status: implemented` unless the Notes column says otherwise.
 | [0019](./0019-cold-episodic-memory.md) | Cold & Episodic Memory | |
 | [0020](./0020-operator-app.md) | Operator App | |
 | [0021](./0021-compendium-cold-ingestion.md) | Compendium-Backed Cold Ingestion | |
-| [0022](./0022-dm-action-coverage-audit.md) | DM-Action Coverage Audit (Foundry + MCP bridges) | |
+| [0022](./0022-dm-action-coverage-audit.md) | DM-Action Coverage Audit (Foundry + MCP bridges) | superseded by [0041](./0041-first-party-foundry-addon.md) / [0042](./0042-foundry-mechanical-writes.md) |
 | [0023](./0023-session-onboarding-presence-operator-channel.md) | Session-Start Onboarding, Voice Presence, Operator-in-Discord Channel | §4 superseded by [0024](./0024-operator-self-designation.md) |
 | [0024](./0024-operator-self-designation.md) | Operator Self-Designation (Console + Slash Command) | supersedes §4 of [0023](./0023-session-onboarding-presence-operator-channel.md) |
 | [0025](./0025-operator-control-parity.md) | Operator Control Parity (Console ↔ Slash) + Live State Sync | |

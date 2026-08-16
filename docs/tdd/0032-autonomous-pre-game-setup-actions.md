@@ -18,7 +18,7 @@ _silence-is-success_ default: act autonomously; report only on ambiguity, failur
 genuine judgment call (which routes back through TDD 0031's escalation channel).
 
 **Surface-model note (PRD-rev `59a0fda`).** Under the §4 surface model, the AI no longer
-runs the bridge's `assign-actor-ownership` write itself. Ownership is now a **pre-flight
+runs a Foundry ownership-assignment write itself. Ownership is now a **pre-flight
 invariant** that the operator establishes in Foundry before Start (the 3-way identity map
 of [TDD 0036](./0036-onboarding-and-foundry-user-preflight.md): Discord user ↔ Foundry
 user ↔ character actor); the AI's role at session-start is to _verify_ that map and
@@ -30,7 +30,7 @@ their after-the-fact operator notifications through TDD 0034's SurfaceRouter (Fo
 GM chat surface) rather than a Discord DM — see TDD 0031's "Delivery via `notify_operator`"
 section.
 
-Three of the four are small write surfaces over the existing `FoundryClient` (TDD 0014).
+Three of the four are small write surfaces over the existing `FoundryClient` (TDD 0007; production transport is TDD 0041).
 The fourth — source-material indexing — extends TDD 0021's compendium-ingestion pattern
 across all loaded world content (journals, scenes, items, creatures) keyed by location,
 quest, and keyword. The extension reuses `ingestColdEntries` and the cold-tier
@@ -63,7 +63,7 @@ export type SceneChoice =
   | { kind: "ambiguous"; candidates: SceneSummary[] } // surfaced as IntakeFinding (TDD 0031)
   | { kind: "none" }; // surfaced as critical gap (TDD 0031)
 
-export async function activateScene(foundry: FoundryClient, sceneId: string): Promise<void>; // calls switch-scene; idempotent
+export async function activateScene(foundry: FoundryClient, sceneId: string): Promise<void>; // calls setActiveScene; idempotent
 ```
 
 `chooseInitialScene` runs exactly once per session, on `runExtendedIntake` completion.
@@ -85,17 +85,17 @@ The orchestrator dispatches based on its return:
   _added in this design pass_). Block `announceReady`. Operator resolves by adding a
   scene in Foundry + retry; no `proceed-anyway` (there's literally nowhere to play).
 
-`activateScene` is idempotent against the already-active case (reads `get-current-scene`
-first; calls `switch-scene` only on mismatch), so back-to-back resolution → activation →
+`activateScene` is idempotent against the already-active case (reads `getActiveScene`
+first; calls `setActiveScene` only on mismatch), so back-to-back resolution → activation →
 operator-override sequences don't double-fire.
 
 Rubric for `'unambiguous'`:
 
-- (a) **already-active**: Foundry's `get-current-scene` returns a scene whose flag/tag
+- (a) **already-active**: Foundry's `getActiveScene` returns a scene whose flag/tag
   metadata or name matches a known "starter" convention (configurable per system; default
   matches names containing `start`, `intro`, or scenes flagged `is-starter` by the
   campaign module).
-- (b) **single-starter**: exactly one scene across `list-scenes` matches the starter
+- (b) **single-starter**: exactly one scene across `listScenes` matches the starter
   convention, and no other scene is currently active.
 - (c) **prior-resolved**: `sessionConfig.intake.chosenStartingSceneId` is set (operator
   resolved an ambiguity in a prior Start of this campaign) and the scene still exists.
@@ -103,7 +103,7 @@ Rubric for `'unambiguous'`:
 Anything else → `'ambiguous'` (multiple plausible scenes) or `'none'` (no scene matches).
 The classifier is pure; unit-tested per branch.
 
-Activation: `switch-scene` against the bridge. After-the-fact notification: a single line
+Activation: `foundry.setActiveScene(sceneId)`. After-the-fact notification: a single line
 appended to the intake report's "I did the following" footer (rendered by TDD 0031's
 formatter when extended intake completes; this TDD provides the line content).
 
@@ -136,38 +136,33 @@ scenes, items, creatures**, keyed by **location / quest / keyword** for retrieva
 
 #### 3a. World-content readers
 
-Four new readers in `vtt-foundry/`, paralleling TDD 0021's `readCompendiumEntries`:
+Four readers over `FoundryClient` (not `McpToolCaller`; not MCP tool names). Production
+transport is [TDD 0041](./0041-first-party-foundry-addon.md). Tests use `MockFoundryClient`.
 
 ```ts
-// vtt-foundry/world-content.ts
-export async function readWorldJournals(
-  caller: McpToolCaller,
-  q?: SearchQuery,
-): Promise<WorldJournalEntry[]>;
-export async function readWorldScenes(caller: McpToolCaller): Promise<WorldSceneEntry[]>;
-export async function readWorldCreatures(
-  caller: McpToolCaller,
-  q?: CreatureCriteria,
-): Promise<WorldCreatureEntry[]>;
-export async function readWorldActorItems(
-  caller: McpToolCaller,
-  actorIds: string[],
-): Promise<WorldItemEntry[]>;
+// orchestrator/autosetup/foundry-world-reader.ts
+export function foundryWorldContentReader(
+  foundry: FoundryClient,
+  partyActorIds?: ReadonlyArray<string>,
+): WorldContentReader;
+
+export interface WorldContentReader {
+  readJournals(q?: SearchQuery): Promise<WorldJournalEntry[]>;
+  readScenes(): Promise<WorldSceneEntry[]>;
+  readCreatures(q?: CreatureCriteria): Promise<WorldCreatureEntry[]>;
+  readActorItems(actorIds: ReadonlyArray<string>): Promise<WorldItemEntry[]>;
+}
 ```
 
-- **Journals** via `list-journals` + `search-journals` (bridge tools confirmed in TDD 0014,
-  0021). Returns `{id, name, text, pages?, folder?, _modifiedAt?}` parsed from the bridge.
-- **Scenes** via `list-scenes` (bridge tool). The bridge's scene metadata includes name +
-  scene `folder` (often used by operators as a location/region label) + active state.
-- **Creatures** via FoundryClient / add-on compendium search (TDD 0041 / existing TDD 0021).
-- **Actor items** via `get-character-entity` per actor. World-level item discovery is
-  constrained — the bridge has no `list-items` tool — so v0.5 indexes only items in the
-  party actors' inventories. Compendium items remain covered by TDD 0021. The gap (no
-  world-level item walk) is named in "PRD conflicts surfaced" and deferred (not a TDD 0042 write)
-  Band B upstream batch (carried forward from TDD 0027).
+- **Journals** via `searchJournals` + `getJournal`. Returns `{id, name, text, pages?, folder?, modifiedAt?}`.
+- **Scenes** via `listScenes`. Name + active state; folder/tags when the add-on provides them.
+- **Creatures** via `listCreaturesByCriteria` / `searchCompendium` (TDD 0041 / TDD 0021).
+- **Actor items** via `getActor` and the actor's sheet `items`. World-level item discovery
+  is out of v0.5 — index only items in the party actors' inventories. Compendium items
+  remain TDD 0021. Named in "PRD conflicts surfaced"; not a TDD 0042 write.
 
-All four parse the bridge response and return typed entries; parsing is unit-tested with
-`MockFoundryClient` per TDD 0021's pattern. No live MCP traffic in unit tests.
+Do not add `plugins/vtt-foundry/src/world-content.ts` calling `list-journals` /
+`get-character-entity`. That path is withdrawn.
 
 #### 3b. Metadata extraction (the keys for retrieval)
 
@@ -227,7 +222,7 @@ across re-ingests → upsert (TDD 0021 behavior preserved).
 ```ts
 // orchestrator/autosetup/index-refresh.ts
 export async function refreshIndex(
-  caller: McpToolCaller,
+  foundry: FoundryClient,
   store: MemoryStore,
   embed: EmbedProvider,
   ctx: { campaignId: string; lastRunAt?: number },
@@ -242,7 +237,7 @@ export interface RefreshReport {
 
 Strategy:
 
-- For each source, read current Foundry IDs + `last_modified` (when the bridge provides
+- For each source, read current Foundry IDs + `last_modified` (when `FoundryClient` provides
   it).
 - Compare against the existing cold-tier records' `foundry_id` + `last_modified` for that
   campaign.
@@ -251,10 +246,9 @@ Strategy:
 - **Delete**: in store, not in current → soft-delete (cold-tier tombstone) so retrieval
   excludes stale entries.
 
-When the bridge doesn't return `last_modified` for a source, the refresh falls back to "if
-foundry*id is present, leave alone; if absent, delete" — coarser but correct. The bridge
-\_does* return `_modifiedAt` for journals per TDD 0021's parse path; scenes/items are
-TBD-verified at implementation time.
+When a source has no `last_modified`, the refresh falls back to "if
+foundry_id is present, leave alone; if absent, delete" — coarser but correct. Journals
+may carry `_modifiedAt`; scenes/items use presence-only until the add-on supplies it.
 
 #### 3e. Concurrency
 
@@ -284,13 +278,12 @@ For each party actor's race/class/background that requires creature/item content
 function:
 
 - Identifies needed compendium entries from intake's classification + the actor's
-  character sheet (read via `get-character-entity`).
+  character sheet (read via `getActor`).
 - For each needed entry, checks whether a corresponding actor (or item template) already
-  exists in the world (via `list-characters` for actors; per-actor items for templates).
-- If absent, calls `create-actor-from-compendium` to import the actor (or its template
-  equivalent for items) into the world _without placing a token on any scene_. The
-  bridge's `create-actor-from-compendium` creates the actor entity; token placement is
-  TDD 0033's job at trigger time.
+  exists in the world (via `listWorldActors` / `listPartyActors`; per-actor items for templates).
+- If absent, calls `createActorFromCompendium` to import the actor (or its template
+  equivalent for items) into the world _without placing a token on any scene_. Token
+  placement is TDD 0033's job at trigger time.
 
 Idempotent: existence check before each create. Per-entry failures do not abort the batch
 (continue + log). Lazy-import fallback in TDD 0033 covers cases where pre-loading missed
@@ -367,17 +360,17 @@ surfaces (it's an internal scheduling flag, not a control).
 
 ### Foundry-side writes
 
-- `switch-scene` (initial-scene activation): Foundry-side state, not Skeinkeeper-side.
-- `assign-actor-ownership` (ownership assignment): Foundry-side.
-- `create-actor-from-compendium` (preload): Foundry-side.
+- `setActiveScene` (initial-scene activation): Foundry-side state, not Skeinkeeper-side.
+- Ownership assignment: operator-side in Foundry; this TDD does not write it.
+- `createActorFromCompendium` (preload): Foundry-side.
 
 ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-owned state.
 
 ## Sequencing / implementation plan
 
 1. `MemoryRecord.metadata` extensions + `byMetadata` filter in `LanceMemoryStore`.
-2. World-content readers (`readWorldJournals`, `readWorldScenes`, `readWorldCreatures`,
-   `readWorldActorItems`) in `vtt-foundry/world-content.ts`, parser-tested.
+2. World-content readers (`foundryWorldContentReader`) in
+   `orchestrator/autosetup/foundry-world-reader.ts`, tested against `MockFoundryClient`.
 3. `extractKeys` metadata extractors, per-source unit tests.
 4. `refreshIndex` incremental run; per-source success/failure isolation.
 5. `chooseInitialScene` + `activateScene` integration with TDD 0031's intake-finding flow.
@@ -390,16 +383,16 @@ ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-own
 
 ## Failure modes & edge cases
 
-- **`switch-scene` fails.** Escalate via `notify_operator` ("I tried to activate
-  _Goblin Ambush_ and the bridge returned: …"). Operator switches manually in Foundry; the
-  next `get-current-scene` returns the chosen scene and play proceeds. No retry loop.
+- **`setActiveScene` fails.** Escalate via `notify_operator` ("I tried to activate
+  _Goblin Ambush_ and Foundry returned: …"). Operator switches manually in Foundry; the
+  next `getActiveScene` returns the chosen scene and play proceeds. No retry loop.
 - **Ownership-verification gap** (operator's 3-way identity map missing or partial). Owned
   by TDD 0036's pre-flight verifier; this TDD does not write Foundry ownership at v0.5.
   Gap findings (e.g., `no-foundry-user`, `foundry-user-not-owning-actor`) are raised by
   TDD 0036 and surfaced on the Foundry GM chat surface; this TDD's autosetup actions do
   not depend on ownership state (the AI controls actors via tool-calls regardless of
   Foundry ownership, per ADR-0023 corollary 2 carried forward from ADR-0015).
-- **Indexing source X fails** (bridge error, parse failure). Per-source isolation — the
+- **Indexing source X fails** (`FoundryClient` error, parse failure). Per-source isolation — the
   other three continue. `RefreshReport.errors` records the failure; telemetry counts it;
   next Start retries. `coldIndexReady` still flips to `true` (the index is _usable_, just
   incomplete for the failing source).
@@ -442,7 +435,7 @@ ADR-0018 places mechanical state in Foundry; this TDD writes only to Foundry-own
 
 None new. The design reuses:
 
-- `FoundryClient` / `McpToolCaller` (TDD 0014).
+- `FoundryClient` (TDD 0007; production client is TDD 0041).
 - `ingestColdEntries` + `MemoryRecord` (TDD 0021 / 0019).
 - `LanceMemoryStore` (TDD 0019).
 - Local embedder default (TDD 0019).
@@ -461,26 +454,21 @@ second tier would split retrieval surface for no benefit.
    pre-game writes contradict ADR-0015's "pre-game = operator." Resolved by
    [ADR-0023](../adr/0023-operator-as-host-model.md), which superseded ADR-0015 in this
    same design PR.
-2. **World-level item discovery gap.** The bridge has no `list-items` or `search-items`
-   tool. The §4.8 ask "items" is interpreted as actor-inventory items + compendium items at
-   v0.5. Resolution: name the gap, scope §3a accordingly; the upstream batch is carried
-   left out of TDD 0042 as
-   a Band B item (deferred, not v0.5-blocking).
-3. **`last_modified` field availability across sources.** TDD 0021's journal parse uses
-   `_modifiedAt`; scenes/items aren't yet verified. Resolution: the incremental refresh
+2. **World-level item discovery gap.** `FoundryClient` has no world-item walk. The §4.8
+   ask "items" is interpreted as actor-inventory items + compendium items at v0.5.
+   Resolution: name the gap, scope §3a accordingly; not a TDD 0042 write.
+3. **`last_modified` field availability across sources.** Journals may carry
+   `_modifiedAt`; scenes/items may not. Resolution: the incremental refresh
    degrades to "presence-only" when `last_modified` is absent (TDD §3d documents this
-   fallback); implementer confirms against live bridge during integration.
+   fallback).
 4. **Foundry-user identity for ownership** — rescoped under PRD-rev `59a0fda`. Ownership
    is established by the operator in Foundry pre-Start, not written by the AI. The
    3-way identity map is verified at pre-flight by TDD 0036, which raises gap findings
    (e.g., `no-foundry-user`, `foundry-user-not-owning-actor`) over the Foundry GM chat
    surface. This TDD inherits the operator-as-host posture (silence-is-success per
    ADR-0024) but no longer carries the ownership-write degradation path.
-5. **`list-users` bridge tool.** Provided by TDD 0041; see
-   [TDD 0041](./0041-first-party-foundry-addon.md) (which
-   supersedes TDD 0027); needed by TDD 0036's pre-flight verifier and by TDD 0034's
-   audience-targeting `post-chat-message` resolution. v0.5 cannot ship without it
-   landing upstream or in the fork.
+5. **`listUsers`.** Provided by TDD 0041; needed by TDD 0036's pre-flight verifier
+   and by TDD 0034's audience targeting. v0.5 cannot ship without TDD 0041.
 
 ## Decisions to promote (ADR candidates)
 
@@ -526,9 +514,9 @@ material).
 
 Scenario fixtures required before this ships:
 
-1. **Unambiguous initial scene (already-active).** `get-current-scene` returns a
+1. **Unambiguous initial scene (already-active).** `getActiveScene` returns a
    starter-named scene → `chooseInitialScene` returns `{ unambiguous, reason: 'already-active' }`;
-   no `switch-scene` call (already there); footer reports the choice.
+   no `setActiveScene` call (already there); footer reports the choice.
 2. **Ambiguous initial scene.** Two equally-plausible scenes → `chooseInitialScene` returns
    `{ ambiguous, candidates: [...] }`; surfaced via TDD 0031 finding; operator-resolved →
    `sessionConfig.intake.chosenStartingSceneId` set → next Start picks reason `'prior-resolved'`.
