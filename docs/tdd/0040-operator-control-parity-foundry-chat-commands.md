@@ -9,6 +9,10 @@ Author: maintainers
 Date: 2026-05-26
 Related TDDs: [0020 (operator app)](./0020-operator-app.md), [0024 (operator self-designation)](./0024-operator-self-designation.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0039 (Foundry-down session lifecycle)](./0039-foundry-down-session-lifecycle.md)
 
+**Prerequisite:** [TDD 0041](./0041-first-party-foundry-addon.md). Command dispatch
+consumes `subscribeChatEvents` / add-on `evt chat`. Do not implement this TDD against
+an MCP notification seam or a "bridge driver." There is no MCP fallback.
+
 ## Carries forward / supersedes (read first)
 
 This TDD supersedes [TDD 0025](./0025-operator-control-parity.md) (operator control parity — console ↔ Discord slash). The PRD revision narrows Discord text to one-time consent only; the operator's second-surface for controls moves to Foundry chat commands. Append-only discipline (TDD 0025 was `implemented`) requires a new document; this is it.
@@ -83,7 +87,7 @@ Each control is a single method on `SessionManager` — same shape as TDD 0025. 
   - `mapPlayerCharacter({ discordUserId, characterName })` — TDD 0036's operator-override path; resolves character name to actor; writes `player_character_map` row with `source: "operator"`.
   - `resolveIntakeFinding({ findingId, option })` — TDD 0031's resolution path, now reachable from the Foundry chat surface.
 
-The web console's existing API handlers (`web/api.ts`) call the same methods. The new methods get new endpoint routes (`POST /api/session/pause`, etc.); the Foundry chat-command parser dispatches to the same methods directly via the bridge driver's handler.
+The web console's existing API handlers (`web/api.ts`) call the same methods. The new methods get new endpoint routes (`POST /api/session/pause`, etc.); the Foundry chat-command parser (TDD 0034, fed by TDD 0041 `subscribeChatEvents`) dispatches to the same methods.
 
 ### 3. The Foundry chat-command handler
 
@@ -242,7 +246,7 @@ The operator-designation data model from TDD 0024 is extended _by reference_ —
 - **A player (PLAYER-role Foundry user) types `/skeinkeeper ...`.** Authorization check (§5) rejects with the unauthorized inline whisper to the invoker. No state change; no SSE echo.
 - **`listUsers()` fails when looking up the invoker's role.** Defensive: fall back to "unauthorized." Per [ADR-0024](../adr/0024-silence-is-success-operator-escalation.md)'s silence-is-success operator escalation discipline, log `error.captured`; the operator's actual GM session in Foundry will show the failure normally.
 - **The cold-start asymmetry will close once the standing-gateway-client work lands.** When that lands (TDD 0025 §4 open item — still open per the design pass), `/skeinkeeper session action:start` becomes a Foundry-chat-command-able action, and the parity table updates. Tracked.
-- **Operator commands during `paused-foundry-down`.** Per TDD 0039 §3: Foundry-side emits are short-circuited; Foundry chat-command listener is presumably ALSO not receiving events (Foundry is down). The operator's resume path is via the web console (or, if the bridge has reconnected enough to deliver chat events, the resume command works). This is correct: the surface model says when Foundry is down, the operator goes to the only working surface (console + the one-time DM notification).
+- **Operator commands during `paused-foundry-down`.** Per TDD 0039 §3: Foundry-side emits are short-circuited; Foundry chat events are not arriving (`evt gone`). The operator's resume path is via the web console (or, if the add-on has reconnected enough to deliver `evt chat`, the resume command works). This is correct: the surface model says when Foundry is down, the operator goes to the only working surface (console + the one-time DM notification).
 - **The migration step (de-registering Discord slash commands at v0.5 startup) fails.** One-time, run on first v0.5 boot. If it fails, the old slash commands linger in Discord's UI but no longer reach Skeinkeeper (the bot's handler for them is removed). Operator sees a "remove old commands" instruction in the v0.5 changelog. Not blocking; cosmetic.
 
 ## Verification plan
@@ -258,7 +262,7 @@ The operator-designation data model from TDD 0024 is extended _by reference_ —
 - **`claim` while operator already set rejects.** _Observation point:_ unit test — pre-set operator designation; issue claim from a different GM user; verify rejection with the actionable error.
 - **`pvp on` toggles + parity-syncs.** _Observation point:_ integration test — issue `pvp on`; verify campaign settings updated; verify SSE event emitted; verify console UI's checkbox reflects in the next `/api/state` snapshot.
 - **`preflight verify` re-runs the verifier and reports inline.** _Observation point:_ integration test — issue `preflight verify`; verify `verifyIdentityPreflight` (TDD 0036) is called; verify the inline whisper reflects the findings; verify the SSE bus emits the result event for the console pane.
-- **Live: end-to-end operator commands against real Foundry + bridge.** Operator types each verb in Foundry chat; observes the inline whisper ack; observes the cross-surface state change on the console; reverses; observes the symmetric round-trip. One scenario per parity row.
+- **Live: end-to-end operator commands against real Foundry + the first-party add-on (TDD 0041).** Operator types each verb in Foundry chat; observes the inline whisper ack; observes the cross-surface state change on the console; reverses; observes the symmetric round-trip. One scenario per parity row.
 
 ## Requirement traceability
 

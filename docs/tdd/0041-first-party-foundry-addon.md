@@ -180,6 +180,8 @@ store (TDD 0029) and is displayed on the console. The add-on stores only
 world settings (`gatewayUrl`, `pairingSecret`) in Foundry. Chat messages
 stay in Foundry (ADR-0018).
 
+**Build order.** This TDD is next. Do not implement [TDD 0039](./0039-foundry-down-session-lifecycle.md), [TDD 0040](./0040-operator-control-parity-foundry-chat-commands.md), or [TDD 0042](./0042-foundry-mechanical-writes.md) until this TDD has landed. Those drafts consume `evt gone`, `subscribeChatEvents`, and add-on `req` methods that do not exist until this transport exists.
+
 ## Sequencing / implementation plan
 
 1. Add `FoundryClient` table-text methods and keep `MockFoundryClient` compiling.

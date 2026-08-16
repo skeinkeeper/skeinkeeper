@@ -16,10 +16,19 @@ rolls, apply damage/heal, fog reveal, spawn token at coordinates. GM rolls
 moved to [TDD 0041](./0041-first-party-foundry-addon.md) with table-text.
 This TDD implements the other four on the first-party add-on.
 
-These are `FoundryClient` methods. Tool-registry handlers (TDD 0006) call
-them; the LLM never names Foundry APIs. dnd5e is the validated system
-(ADR-0012): damage prefers `Actor#applyDamage` when present and falls back
-to `system.attributes.hp.value` only when it is not.
+**Prerequisite:** [TDD 0041](./0041-first-party-foundry-addon.md) (`FoundryGateway`,
+`ModuleFoundryClient`, `modules/skeinkeeper`). Do not implement this TDD on
+`McpFoundryClient` or by adding `callTool("create-token")`.
+
+These are `FoundryClient` methods. [TDD 0033](./0033-live-state-perception-and-triggered-actions.md)
+already added `createToken` / `updateToken` / `addActorItems` on the
+interface and `MockFoundryClient`. This TDD implements `createToken` on the
+add-on (same signature; do not invent a parallel method) plus the three
+methods 0033 did not add: `manageCombat`, `applyDamage`, `manageFog`.
+Tool-registry handlers (TDD 0006) call them; the LLM never names Foundry
+APIs. dnd5e is the validated system (ADR-0012): damage prefers
+`Actor#applyDamage` when present and falls back to
+`system.attributes.hp.value` only when it is not.
 
 Lighting, doors, and arbitrary active effects stay out.
 
@@ -99,7 +108,9 @@ No new Skeinkeeper tables. Combat, HP, fog, and tokens stay in Foundry
 
 ## Sequencing / implementation plan
 
-1. Extend `FoundryClient` + `MockFoundryClient` with the four methods.
+1. Extend `FoundryClient` + `MockFoundryClient` with `manageCombat` /
+   `applyDamage` / `manageFog`. Keep the existing `createToken` signature
+   from TDD 0033; add it only if the salvage branch dropped it.
 2. Route the four methods in `FoundryGateway` / `ModuleFoundryClient`.
 3. Implement dispatch in `modules/skeinkeeper/scripts/main.mjs`.
 4. Register dnd5e tool wrappers in `plugins/vtt-foundry` at session start.

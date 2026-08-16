@@ -9,6 +9,11 @@ Author: maintainers
 Date: 2026-05-26
 Related TDDs: [0011 (orchestrator turn loop)](./0011-orchestrator-turn-loop.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0020 (operator app)](./0020-operator-app.md), [0025 (operator control parity)](./0025-operator-control-parity.md), [0028 (real-time voice latency)](./0028-real-time-voice-latency.md), [0034 (surface routing & I/O abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md), [0040 (operator control parity — Foundry chat commands)](./0040-operator-control-parity-foundry-chat-commands.md)
 
+**Prerequisite:** [TDD 0041](./0041-first-party-foundry-addon.md). Foundry-down is
+add-on `evt gone` plus `FoundryClient` heartbeat. Do not implement a
+`startBridgeHeartbeat` or any MCP stdio disconnect detector. There is no
+third-party connector to watch.
+
 ## Carries forward / supersedes (read first)
 
 This TDD supersedes [TDD 0011](./0011-orchestrator-turn-loop.md) **narrowly — only its failure-mode model for VTT-disconnect**. TDD 0011's `runTurn` design + `Session` shape + Phase-2a integration + hot-context assembly + audit-log writes + all other substantive sections carry forward unchanged. The append-only discipline (TDD 0011 was `implemented`) requires a new document for the substantive change; this document is intentionally narrow and references TDD 0011 for everything outside its scope.
@@ -36,17 +41,17 @@ That's the entire substantive delta. This TDD codifies the new behavior, names t
 **New / substantively changed in this TDD:**
 
 - A `SessionLifecycleState` machine (`active` → `paused-foundry-down` → `active`) the Coordinator owns; replaces the implicit always-on state.
-- A bridge-disconnect detector wired through TDD 0034's `EmitReport` failures + a periodic heartbeat against `FoundryClient`; transitions the state on detection.
+- A Foundry-down detector: TDD 0041 `evt gone`, TDD 0034 `EmitReport` failures, and a periodic heartbeat against `FoundryClient.listUsers()`; transitions the state on detection.
 - An explicit pause behavior: the turn loop drains in-flight work, the always-listening loop continues to consume voice audio to a paused buffer (no LLM calls), and emit attempts to Foundry-side surfaces are short-circuited (no retries, no error spam).
 - An operator notification at the transition: the web console + Discord voice (a single TTS announce, voice surface is up) + the audit log all carry the pause event with the cause.
-- An operator-driven resume: explicit `/skeinkeeper session action:resume` (TDD 0040 surface) or the equivalent web console action; both go through TDD 0025's `SessionManager` write path. Auto-resume on bridge-reconnect is NOT in scope at v0.5 (see §"Open questions").
+- An operator-driven resume: explicit `/skeinkeeper session action:resume` (TDD 0040 surface) or the equivalent web console action; both go through TDD 0025's `SessionManager` write path. Auto-resume on add-on reconnect is NOT in scope at v0.5 (see §"Open questions").
 - The prior "voice-only / chat-only narration" fallback code path is **deleted** — its absence is a code-level reflection of the PRD's surface-model decision that text now lives in Foundry.
 
 ## Approach
 
 The PRD revision narrows the supported configuration to "every player has Foundry," which removes voice-only continuation as a meaningful degraded mode: if the table-text surface (Foundry public chat) is unavailable, the players can no longer read narration mirror, IC/OOC convention markers, dice receipts, or scene-change notifications; the orchestrator can't deliver to half its audience model. **Continuing voice-only would be misleading — it would look like things were working when they aren't.** Pausing is the honest behavior.
 
-The shape of the lifecycle state machine is small (two states + the transitions) and the operator-facing signals are unsurprising; the implementation depth is mostly in correctly handling the in-flight turn at pause-time so no half-applied tool calls land on Foundry-side state when the bridge comes back.
+The shape of the lifecycle state machine is small (two states + the transitions) and the operator-facing signals are unsurprising; the implementation depth is mostly in correctly handling the in-flight turn at pause-time so no half-applied tool calls land on Foundry-side state when the add-on comes back.
 
 ### 1. The lifecycle states
 
@@ -57,7 +62,7 @@ export type SessionLifecycleState =
   | {
       kind: "paused-foundry-down";
       since: ISO8601;
-      cause: "emit-failure" | "heartbeat-failure";
+      cause: "addon-gone" | "emit-failure" | "heartbeat-failure";
       lastError: string;
     };
 ```
@@ -65,19 +70,21 @@ export type SessionLifecycleState =
 The Coordinator owns the state. Transitions:
 
 - **`active` → `paused-foundry-down`** on detection (§2). The transition is one-shot per session-pause-episode; subsequent failures while paused are absorbed (no event-spam).
-- **`paused-foundry-down` → `active`** on operator-issued resume (§3). Re-runs the pre-flight verifier (TDD 0036 §3a) — if the bridge is genuinely back, verifier returns `ok`; if not, the transition fails with the verifier's findings + the state stays `paused-foundry-down`.
+- **`paused-foundry-down` → `active`** on operator-issued resume (§3). Re-runs the pre-flight verifier (TDD 0036 §3a) — if the add-on is genuinely back (`hello-ok`), verifier returns `ok`; if not, the transition fails with the verifier's findings + the state stays `paused-foundry-down`.
 
-There is intentionally no `paused-foundry-down → paused-foundry-down` self-transition; once paused, additional bridge errors don't change state.
+There is intentionally no `paused-foundry-down → paused-foundry-down` self-transition; once paused, additional Foundry errors don't change state.
 
-### 2. The bridge-disconnect detector
+### 2. The Foundry-down detector
 
-Two signals, fused, drive the transition to `paused-foundry-down`:
+Three signals, fused, drive the transition to `paused-foundry-down`:
 
-**(a) `surface.emit.failed` storms.** When TDD 0034's router reports an emit failure to ANY Foundry-side surface (`FoundryPublicChatSurface`, `FoundryWhisperSurface`, `FoundryGmChatSurface`), the detector counts it. **Threshold:** ≥3 consecutive emit failures (any combination of Foundry surfaces) within a 30-second window. A single transient failure doesn't trigger; a sustained failure does.
+**(a) TDD 0041 `evt gone`.** The add-on socket closed (GM closed Foundry, network drop, add-on disabled). One `gone` is enough; do not wait for emit storms.
 
-**(b) Periodic heartbeat.** A background timer calls `FoundryClient.listUsers()` (TDD 0041) every 30 seconds. On consecutive heartbeat failure (≥2 in a row, ~60s of Foundry unreachability), transitions immediately.
+**(b) `surface.emit.failed` storms.** When TDD 0034's router reports an emit failure to ANY Foundry-side surface (`FoundryPublicChatSurface`, `FoundryWhisperSurface`, `FoundryGmChatSurface`), the detector counts it. **Threshold:** ≥3 consecutive emit failures (any combination of Foundry surfaces) within a 30-second window. A single transient failure doesn't trigger; a sustained failure does.
 
-Signal (a) catches active-traffic failures fast (you'd see them within a turn or two); signal (b) catches silent failures during a quiet session (the operator has stepped away from the table; no traffic is being attempted; bridge died; we'd otherwise not notice until traffic resumed).
+**(c) Periodic heartbeat.** A background timer calls `FoundryClient.listUsers()` (TDD 0041) every 30 seconds. On consecutive heartbeat failure (≥2 in a row, ~60s of Foundry unreachability), transitions immediately.
+
+Signal (a) is the load-bearing transport signal. (b) catches active-traffic failures if `gone` was missed. (c) catches silent failures during a quiet session (the operator has stepped away; no traffic is being attempted; the add-on died; we'd otherwise not notice until traffic resumed).
 
 ### 3. The pause behavior
 
@@ -101,13 +108,13 @@ Operator issues `/skeinkeeper session action:resume` (Foundry chat command, TDD 
 
 `resume()` does:
 
-1. **Re-run the pre-flight verifier** (TDD 0036 §3a) — confirms the bridge is back, the operator-Foundry-user is still designated, the campaign actors exist, identity map is still consistent. If the verifier returns `critical-gaps`, transition fails; the state stays `paused-foundry-down`; the operator sees the findings inline (Foundry GM chat if it's back; web console if not).
+1. **Re-run the pre-flight verifier** (TDD 0036 §3a) — confirms the add-on is back (`hello-ok` / `listUsers` works), the operator-Foundry-user is still designated, the campaign actors exist, identity map is still consistent. If the verifier returns `critical-gaps`, transition fails; the state stays `paused-foundry-down`; the operator sees the findings inline (Foundry GM chat if it's back; web console if not).
 2. **Transition to `active`.** Audit-log entry `session.resumed { pausedDurationMs, bufferedInputs }`.
 3. **Emit a resume TTS announcement** on Discord voice (cached similarly): "We're back. Picking up where we left off."
 4. **Drain the buffered inputs.** Voice utterances captured during the pause are dispatched in order, each producing a normal turn. Foundry-chat inputs (typically zero, since Foundry was down) are similarly drained.
 5. **Resume the turn loop normally.**
 
-A `paused-foundry-down → active` transition is intentionally explicit (operator action only at v0.5). Auto-resume on bridge reconnect was considered and deferred (see §"Open questions"); the operator-as-host model (ADR-0023) puts these gates on the operator deliberately — the operator chooses when the table picks up.
+A `paused-foundry-down → active` transition is intentionally explicit (operator action only at v0.5). Auto-resume on add-on reconnect was considered and deferred (see §"Open questions"); the operator-as-host model (ADR-0023) puts these gates on the operator deliberately — the operator chooses when the table picks up.
 
 ### 5. What we explicitly delete
 
@@ -117,7 +124,7 @@ The prior TDD 0011-era "if Foundry disconnects, fall back to chat-only narration
 - Any "degraded mode" indicator the operator console used to surface — replaced by the `paused-foundry-down` lifecycle state.
 - PRD §5.8's prior wording's text is replaced verbatim in the same PRD revision (already merged); the code-level deletion happens here.
 
-This isn't a code change of its own — the prior fallback never actually shipped, per the TDD 0011 file (which says "the bridge integration was Phase 3-live"). What ships is the new lifecycle state machine, INSTEAD of the prior fallback's design intent. Code-archaeology pass: grep for "voice-only," "chat-only," "fallback narration" in `orchestrator/` and `app/` to confirm no orphaned fallback code; delete what's found.
+This isn't a code change of its own — the prior fallback never actually shipped, per the TDD 0011 file (which deferred live Foundry to a later phase). What ships is the new lifecycle state machine, INSTEAD of the prior fallback's design intent. Code-archaeology pass: grep for "voice-only," "chat-only," "fallback narration" in `orchestrator/` and `app/` to confirm no orphaned fallback code; delete what's found.
 
 ## Components & interfaces
 
@@ -128,7 +135,7 @@ export type SessionLifecycleState =
   | {
       kind: "paused-foundry-down";
       since: ISO8601;
-      cause: "emit-failure" | "heartbeat-failure";
+      cause: "addon-gone" | "emit-failure" | "heartbeat-failure";
       lastError: string;
     };
 
@@ -157,8 +164,8 @@ The `LifecycleController` is owned by the Coordinator (constructed alongside it;
 ### Heartbeat task
 
 ```ts
-// orchestrator/sessions/bridge-heartbeat.ts
-export function startBridgeHeartbeat(args: {
+// orchestrator/sessions/foundry-heartbeat.ts
+export function startFoundryHeartbeat(args: {
   client: FoundryClient;
   intervalMs: number; // default 30000
   lifecycle: LifecycleController;
@@ -208,9 +215,9 @@ No new SQL tables; no new columns. The audit-log row format is rich enough alrea
 
 ## Failure modes & edge cases
 
-- **Heartbeat fails but emits succeed (mixed signals).** Unusual but possible — e.g., bridge's read-side has a transient issue while the write-side works. Per the design, the heartbeat threshold is consecutive failures; a single heartbeat failure doesn't transition; the emit signal would also need to fire. If both succeed and fail in alternation, the session stays active (correct: emits are the load-bearing signal; heartbeat is the safety net).
+- **Heartbeat fails but emits succeed (mixed signals).** Unusual but possible — e.g., a transient `listUsers` failure while chat still writes. Per the design, the heartbeat threshold is consecutive failures; a single heartbeat failure doesn't transition; the emit signal would also need to fire. If both succeed and fail in alternation, the session stays active (correct: `evt gone` and emits are the load-bearing signals; heartbeat is the safety net).
 - **Heartbeat succeeds but emits fail consistently (also mixed).** The emit-failure threshold (≥3 in 30s) transitions; the heartbeat is a safety net, not the primary signal. Correct behavior.
-- **Operator restarts Foundry but a new bridge issue persists.** Operator issues `resume`; pre-flight verifier runs `listUsers()`; the call fails again; verifier returns the failure as a finding; `requestResume` returns `preflight-failed`; state stays `paused-foundry-down`. Operator sees the failing finding and addresses the underlying issue.
+- **Operator restarts Foundry but the add-on still cannot `hello-ok`.** Operator issues `resume`; pre-flight verifier runs `listUsers()`; the call fails again; verifier returns the failure as a finding; `requestResume` returns `preflight-failed`; state stays `paused-foundry-down`. Operator sees the failing finding and addresses the underlying issue.
 - **Operator issues `resume` while session is already active.** `requestResume` returns `{ kind: "already-active" }`; no transition; no announcement; idempotent.
 - **Two `/skeinkeeper session action:resume` commands fired near-simultaneously** (operator + their cousin both clicked). TDD 0025's SessionManager serializes writes; the first wins (transitions to active); the second sees `already-active`. No race.
 - **A LLM call is in-flight when transition fires** (per §3 step 1). The LLM call completes; the resulting tool-call attempt against Foundry is skipped (dispatcher short-circuits); the dialogue store records the turn as `aborted-foundry-down`. The operator's audit log captures the abort. No half-completed Foundry-side state.
@@ -218,14 +225,14 @@ No new SQL tables; no new columns. The audit-log row format is rich enough alrea
 - **Voice channel is also down concurrently** (Discord outage + Foundry outage at once). The pause TTS announcement fails to deliver; logged; cached; nothing else to do. When voice returns, the operator presumably restarts.
 - **Buffered voice utterances on resume — out-of-date.** If the pause lasted minutes, the buffered utterances are stale; replaying them as turns could land actions out of context. Recommendation: at resume-time, the AI is prompted to acknowledge the pause ("We paused; here's what I'm taking forward from before…") — handled in the behavior spec (this is a behavior concern, not a routing concern). The mechanical buffer-drain is per §4; the AI's framing of stale inputs is behavior-spec.
 - **Operator hasn't DM-consented but is unavailable in Foundry.** Pause notification reaches only the web console; if the operator isn't watching the console either, the pause is undiscovered until they check. INSTALL.md recommends operator-DM consent at first run.
-- **Auto-resume considered and rejected for v0.5.** The bridge might "come back" briefly while Foundry is still mid-restore; an auto-resume could fail mid-turn. Operator-controlled resume is the safer default; revisit if operator UX feedback asks.
+- **Auto-resume considered and rejected for v0.5.** The add-on might "come back" briefly while Foundry is still mid-restore; an auto-resume could fail mid-turn. Operator-controlled resume is the safer default; revisit if operator UX feedback asks.
 
 ## Verification plan
 
 - **Lifecycle state machine — emit-failure threshold transition.** _Observable surface:_ `controller.current()` after a sequence of failures. _Observation point:_ unit test — start in `active`; report two emit failures (no transition); third within 30s (transition). _Expected:_ state becomes `paused-foundry-down` with `cause: "emit-failure"` after the third; transitions back to `active` only on `requestResume`.
 - **Lifecycle state machine — heartbeat threshold transition.** _Observation point:_ unit test — report one heartbeat failure (no transition); second consecutive failure (transition). _Expected:_ state becomes `paused-foundry-down` with `cause: "heartbeat-failure"`.
 - **Dispatcher short-circuits on non-active state.** _Observable surface:_ recorded `FoundryClient` calls + dialogue-store row's audit reason. _Observation point:_ integration test — set lifecycle to `paused-foundry-down`; run a turn that would otherwise call `postChatMessage`. _Expected:_ no `FoundryClient` calls recorded; dialogue row recorded with `aborted-foundry-down` reason; audit-log entry matches.
-- **Surface adapters short-circuit emit when paused.** _Observation point:_ unit test — set state to paused; call `FoundryPublicChatSurface.emit({ audience: table, text: "x" })`. _Expected:_ no bridge call; one `surface.emit.skipped` telemetry event; emit returns success (no-op, not failure — the surface is correctly behaving for the lifecycle state).
+- **Surface adapters short-circuit emit when paused.** _Observation point:_ unit test — set state to paused; call `FoundryPublicChatSurface.emit({ audience: table, text: "x" })`. _Expected:_ no `FoundryClient` call; one `surface.emit.skipped` telemetry event; emit returns success (no-op, not failure — the surface is correctly behaving for the lifecycle state).
 - **`requestResume` re-runs pre-flight verifier.** _Observation point:_ integration test — set state to paused; call `controller.requestResume()`. _Expected:_ a single call to `verifyIdentityPreflight` recorded; on `ok` the state transitions; on `critical-gaps` the resume returns `preflight-failed { findings }` and state stays paused.
 - **Resume drains buffered inputs.** _Observation point:_ integration test — pause; feed three voice utterances via the always-listening loop's buffer; resume. _Expected:_ three turn-dispatches recorded post-resume, in order.
 - **Discord DM operator pause notification.** _Observable surface:_ `FakeDiscordBot.dmUser` recorded calls. _Observation point:_ integration test — set operator with DM-consent on file; trigger a lifecycle transition. _Expected:_ one DM recorded to the operator's Discord ID with the pause cause; no DM if consent is absent.
@@ -245,7 +252,7 @@ No new SQL tables; no new columns. The audit-log row format is rich enough alrea
 
 No new third-party Skeinkeeper-side dependencies. Reuses:
 
-- `FoundryClient` (TDD 0014) — heartbeat call.
+- `FoundryClient` (TDD 0041) — heartbeat call + `evt gone`.
 - `SessionManager` (TDD 0025) — extended with `resume()` method.
 - TDD 0034's surface router for the `surface.emit.failed` signal source.
 - TDD 0036's pre-flight verifier for resume-side checking.
@@ -253,9 +260,9 @@ No new third-party Skeinkeeper-side dependencies. Reuses:
 
 Alternatives considered:
 
-- **Auto-resume on bridge reconnect (no operator action).** Considered. Rejected for v0.5 (see §"Failure modes"); operator-controlled is safer.
+- **Auto-resume on add-on reconnect (no operator action).** Considered. Rejected for v0.5 (see §"Failure modes"); operator-controlled is safer.
 - **Continue voice-only with the prior chat-only narration design.** Rejected categorically — that's the PRD §5.8 change this TDD codifies, not an option.
-- **More aggressive emit-failure threshold (e.g., 1 failure → pause).** Considered. Rejected: transient single-failure cases (bridge restart, single network blip) shouldn't trigger; the threshold of 3-in-30s catches sustained problems without flapping.
+- **More aggressive emit-failure threshold (e.g., 1 failure → pause).** Considered. Rejected: transient single-failure cases (add-on reload, single network blip) shouldn't trigger; the threshold of 3-in-30s catches sustained problems without flapping.
 - **Persist lifecycle state across Skeinkeeper restart.** Rejected: a Skeinkeeper restart already requires operator re-start; layering another resume gate is redundant.
 
 ## PRD conflicts surfaced (and resolution)
@@ -278,11 +285,11 @@ None new from this TDD. The decisions are:
 
 | Event                     | Payload                                                                     | Description                                                                  |
 | ------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `session.paused`          | `{ cause: "emit-failure" \| "heartbeat-failure", consecutiveFailureCount }` | Lifecycle transition to paused                                               |
+| `session.paused`          | `{ cause: "addon-gone" \| "emit-failure" \| "heartbeat-failure", consecutiveFailureCount }` | Lifecycle transition to paused                                               |
 | `session.resumed`         | `{ pausedDurationMs, bufferedInputs, preflightStatus }`                     | Lifecycle transition back to active                                          |
 | `session.resume-failed`   | `{ pausedDurationMs, preflightCriticalCount }`                              | Operator requested resume but pre-flight verifier returned critical findings |
 | `surface.emit.skipped`    | `{ surface, audienceKind, lifecycleState }`                                 | Coalesced — fires once per pause episode per surface, NOT per emit attempt   |
-| `bridge.heartbeat.failed` | `{ consecutiveFailures, reason }`                                           | A heartbeat call failed; consecutiveFailures is the run length               |
+| `foundry.heartbeat.failed` | `{ consecutiveFailures, reason }`                                          | A heartbeat call failed; consecutiveFailures is the run length               |
 
 All PII-free per [ADR-0010](../adr/0010-privacy-as-architecture.md).
 
@@ -300,8 +307,8 @@ The TDD does not change the existing erasure paths (TDD 0038); pause state is pe
 
 ## Open questions
 
-- **Auto-resume on bridge reconnect.** Deferred to v0.5+. Revisit if operator UX feedback asks for it; the LifecycleController's design admits a third transition path (`paused-foundry-down → active` on automatic bridge-restored detection) without restructuring.
-- **Operator DM consent UX at first run.** The pause-notification DM requires a separate operator consent (vs. player consent). Recommendation: at first session-start (or operator-first-claim per TDD 0024), surface a one-time prompt: "Do you want pause notifications via Discord DM (operator-only, on Foundry/bridge disconnect)?" Y/N persists per-installation; CONTRIBUTING.md captures.
+- **Auto-resume on add-on reconnect.** Deferred to v0.5+. Revisit if operator UX feedback asks for it; the LifecycleController's design admits a third transition path (`paused-foundry-down → active` on automatic add-on-restored / `hello-ok` detection) without restructuring.
+- **Operator DM consent UX at first run.** The pause-notification DM requires a separate operator consent (vs. player consent). Recommendation: at first session-start (or operator-first-claim per TDD 0024), surface a one-time prompt: "Do you want pause notifications via Discord DM (operator-only, on Foundry/add-on disconnect)?" Y/N persists per-installation; CONTRIBUTING.md captures.
 - **LLM-down case** (PRD §5.8 "If primary LLM fails, surface a warning + pause"). Could the same lifecycle machine extend to `paused-llm-down`? Yes, additively (`SessionLifecycleState`'s discriminated union extends; detectors extend; same operator-resume path). Not in scope for this TDD; tracked as a future enhancement.
 - **Voice-down case.** If Discord voice disconnects, what's the lifecycle response? Currently: not pause-causing; voice-IO has its own reconnect logic; STT just stops capturing during the gap. If voice-down should also pause (parity with Foundry-down), that's a future extension — same LifecycleController design.
 

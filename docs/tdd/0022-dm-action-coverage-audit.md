@@ -1,5 +1,5 @@
 # TDD 0022: DM-Action Coverage Audit (Foundry + MCP bridges)
-Status: implemented
+Status: superseded by [0041](./0041-first-party-foundry-addon.md) (transport) and [0042](./0042-foundry-mechanical-writes.md) (combat, damage, fog, token spawn)
 PRD refs: 4.2, 4.3
 PRD-rev: 10391ba
 ADR constraints: 0011, 0023
