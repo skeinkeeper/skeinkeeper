@@ -6,7 +6,7 @@ import type { FoundryClient, OutboundSurface, SurfaceOutput } from "@skeinkeeper
 export interface FoundryGmChatSurfaceOptions {
   client: FoundryClient;
   /** When known, escalations also whisper this Foundry user (TDD 0034 §2). */
-  operatorFoundryUserId?: string;
+  operatorFoundryUserId?: string | (() => string | undefined);
 }
 
 export class FoundryGmChatSurface implements OutboundSurface {
@@ -28,7 +28,10 @@ export class FoundryGmChatSurface implements OutboundSurface {
       return;
     }
     await this.opts.client.postChatMessage({ content, mode: "gm" });
-    const operatorId = this.opts.operatorFoundryUserId;
+    const operatorId =
+      typeof this.opts.operatorFoundryUserId === "function"
+        ? this.opts.operatorFoundryUserId()
+        : this.opts.operatorFoundryUserId;
     if (output.meta?.escalation === true && operatorId !== undefined) {
       await this.opts.client.postChatMessage({
         content,

@@ -329,12 +329,36 @@ const notifyOperatorDef = defineTool({
   name: "notify_operator",
   description:
     "Privately message the human operator over Foundry GM chat about a setup problem you can't resolve in-fiction — e.g., a player named a character you can't find in Foundry, or Foundry seems disconnected. Players never see this. Use sparingly; never for normal play or narration.",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: z.object({
+    message: z.string(),
+    severity: z.enum(["info", "warning", "critical"]).optional(),
+  }),
   outputSchema: z.object({ delivered: z.boolean() }),
   async handle(input, ctx) {
+    const severity = input.severity ?? "info";
+    ctx.analytics?.track("escalation.notify-operator", { severity });
+    if (ctx.surfaces !== undefined) {
+      try {
+        const report = await ctx.surfaces.emit({
+          audience: { kind: "gm" },
+          text: input.message,
+          meta: { escalation: true, severity },
+        });
+        const delivered = report.perSurface.some((p) => p.status === "ok");
+        if (delivered && ctx.operatorFoundryUserKnown?.() !== true) {
+          ctx.onOperatorEscalation?.({ message: input.message, severity });
+        }
+        return { delivered };
+      } catch {
+        return { delivered: false };
+      }
+    }
     if (ctx.notifyOperator === undefined) return { delivered: false };
     try {
       await ctx.notifyOperator(input.message);
+      if (ctx.operatorFoundryUserKnown?.() !== true) {
+        ctx.onOperatorEscalation?.({ message: input.message, severity });
+      }
       return { delivered: true };
     } catch {
       return { delivered: false };

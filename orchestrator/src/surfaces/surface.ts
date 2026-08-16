@@ -10,6 +10,7 @@ export interface SurfaceOutput {
   audio?: TtsStream | null;
   meta?: {
     escalation?: boolean;
+    severity?: "info" | "warning" | "critical";
     sceneChange?: { fromSceneId: string; toSceneId: string };
     diceReceipt?: {
       formula: string;

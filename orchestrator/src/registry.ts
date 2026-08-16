@@ -49,6 +49,16 @@ export interface ToolHandlerContext {
   resolveFoundryUserId?: (playerId: string) => string | undefined;
   /** TDD 0036: persistent 3-way map binds the ephemeral session cache. */
   identity?: SideChannelIdentityMap;
+  /**
+   * Degraded-fallback SSE echo when notify_operator has no operator Foundry
+   * user to whisper (TDD 0036). SessionManager wires this to AppEvent.
+   */
+  onOperatorEscalation?: (event: {
+    message: string;
+    severity: "info" | "warning" | "critical";
+  }) => void;
+  /** True when an operator Foundry user is known for whisper targeting. */
+  operatorFoundryUserKnown?: () => boolean;
 }
 
 /** Typed 0034/0035 seam used by share_journal_to_audience. */

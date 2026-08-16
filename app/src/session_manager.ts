@@ -115,7 +115,15 @@ export type AppEvent =
   /** PvP toggle changed from any surface (design doc 0026 §6). */
   | { kind: "pvp"; enabled: boolean }
   /** Intake report / resolution changed (TDD 0031). */
-  | { kind: "intake"; ready: boolean; findings: IntakeView["findings"] };
+  | { kind: "intake"; ready: boolean; findings: IntakeView["findings"] }
+  /** Degraded-fallback echo when no operator Foundry user is known (TDD 0036). */
+  | { kind: "operatorEscalation"; message: string; severity: "info" | "warning" | "critical" }
+  | {
+      kind: "preflight";
+      status: "ok" | "critical-gaps" | "warnings-only";
+      findingCount: number;
+      criticalCount: number;
+    };
 
 export interface IntakeViewFinding {
   id: number;
@@ -615,6 +623,7 @@ export class SessionManager {
       },
     };
     this.routing = routing;
+    this.bindIdentityFromPersistentMap();
     const surfaces = this.buildSurfaceRouter(foundry, voiceIO, client, routing);
     this.surfaces = surfaces;
     // Operator escalations land in Foundry GM chat (TDD 0034). The router
@@ -643,6 +652,12 @@ export class SessionManager {
       },
       surfaces,
       identity: this.identity,
+      onOperatorEscalation: (event) => {
+        if (this.resolveOperatorFoundryUserId() === undefined) {
+          this.deps.onEvent?.({ kind: "operatorEscalation", ...event });
+        }
+      },
+      operatorFoundryUserKnown: () => this.resolveOperatorFoundryUserId() !== undefined,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     this.coordinator = new SideChannelCoordinator({
@@ -933,7 +948,10 @@ export class SessionManager {
       },
     });
     this.consentSurface = consent;
-    const gm = new FoundryGmChatSurface({ client: foundry });
+    const gm = new FoundryGmChatSurface({
+      client: foundry,
+      operatorFoundryUserId: () => this.resolveOperatorFoundryUserId(),
+    });
     router.register(new DiscordVoiceSurface(voiceIO, voiceRouting));
     router.register(consent);
     router.register(new FoundryPublicChatSurface({ client: foundry }));
@@ -969,9 +987,32 @@ export class SessionManager {
       text: message,
       meta: { escalation: true },
     });
+    if (this.resolveOperatorFoundryUserId() === undefined) {
+      this.deps.onEvent?.({ kind: "operatorEscalation", message, severity: "info" });
+    }
     if (report.perSurface.every((p) => p.status === "failed")) {
       console.warn(`[operator note — emit failed] ${message}`);
       throw new Error(report.perSurface[0]?.error ?? "surface emit failed");
+    }
+  }
+
+  /** Operator Foundry user for whisper targeting (3-way map, then settings). */
+  resolveOperatorFoundryUserId(): string | undefined {
+    const discordId = this.operator.get();
+    if (discordId !== undefined) {
+      const mapped = this.identity.foundryUserIdForDiscord(discordId);
+      if (mapped !== undefined) return mapped;
+    }
+    return this.deps.tenantDb.settings.get(this.deps.campaignId, "operator.foundry_user_id")?.value;
+  }
+
+  /** Load TDD 0035's ephemeral map from the persistent 3-way rows. */
+  bindIdentityFromPersistentMap(): void {
+    const rows = this.deps.tenantDb.playerCharacterMap.listByCampaign(this.deps.campaignId);
+    for (const row of rows) {
+      if (row.foundryUserId !== null && row.foundryUserId.length > 0) {
+        this.identity.bind(row.discordUserId, row.foundryUserId);
+      }
     }
   }
 

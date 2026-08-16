@@ -114,6 +114,12 @@ export interface SessionConfig {
   surfaces?: SurfaceRouter;
   /** TDD 0035 ephemeral 3-way identity (persisted by TDD 0036). */
   identity?: SideChannelIdentityMap;
+  /** TDD 0036: SSE echo when notify_operator has no operator Foundry user. */
+  onOperatorEscalation?: (event: {
+    message: string;
+    severity: "info" | "warning" | "critical";
+  }) => void;
+  operatorFoundryUserKnown?: () => boolean;
 }
 
 export class Session {
@@ -519,6 +525,12 @@ async function runLlmIterations(
             identity: cfg.identity,
             resolveFoundryUserId: (id: string) => cfg.identity?.foundryUserIdForDiscord(id),
           }
+        : {}),
+      ...(cfg.onOperatorEscalation !== undefined
+        ? { onOperatorEscalation: cfg.onOperatorEscalation }
+        : {}),
+      ...(cfg.operatorFoundryUserKnown !== undefined
+        ? { operatorFoundryUserKnown: cfg.operatorFoundryUserKnown }
         : {}),
     };
     for (const tc of iterationToolCalls) {
