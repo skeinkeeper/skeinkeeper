@@ -1,74 +1,57 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import type { McpToolCaller } from "./mcp_tool_caller.js";
-import { nonEmptyStr as str } from "./mcp_parse.js";
+import type { FoundryClient, FoundrySearchHit } from "@skeinkeeper/orchestrator";
 
 /**
- * Reads game-system content from the connected Foundry world's compendia via
- * the OSS bridge (design doc 0021). The system module is the ruleset
- * (ADR-0012), so this pulls whatever the installed system ships — monsters,
- * spells, items, rules journals — with no per-system code. Search-driven (the
- * bridge has no enumerate-pack tool, and ADR-0002 forbids dumping cold content
- * en masse). Parsing is unit-tested with FakeMcpToolCaller; the live search is
+ * Reads game-system content from the connected Foundry world's compendia via the
+ * first-party add-on's `FoundryClient.searchCompendium` (ADR-0029 / TDD 0041 —
+ * replaces the withdrawn OSS MCP bridge of TDD 0021's original design). The
+ * system module is the ruleset (ADR-0012), so this pulls whatever the installed
+ * system ships — monsters, spells, items — with no per-system code. Search-driven
+ * (there is no enumerate-pack tool, and ADR-0002 forbids dumping cold content en
+ * masse). The reader is unit-tested with a fake FoundryClient; the live search is
  * operator-validated.
+ *
+ * NOTE on text richness: the add-on's `searchCompendium` returns pack-index
+ * fields (id/name/type/packId), so the embed text is name+type today. Ingesting
+ * the full entry description needs an add-on `getCompendiumEntry(packId, id)`
+ * method (`pack.getDocument`), tracked as a TDD 0021 follow-up.
  */
 export interface CompendiumEntry {
   id: string;
   name: string;
   type: string;
   packId: string;
-  packLabel?: string;
-  system?: string;
-  /** name + type + summary + description, ready to embed. */
+  /** Ready to embed (name + type today; + description once the add-on exposes it). */
   text: string;
 }
 
-interface SearchResultItem {
-  id?: unknown;
-  name?: unknown;
-  type?: unknown;
-  pack?: { id?: unknown; label?: unknown };
-  description?: unknown;
-  summary?: unknown;
-}
-interface SearchResponse {
-  results?: SearchResultItem[];
-  gameSystem?: unknown;
-}
-
-function toEntry(item: SearchResultItem, system: string | undefined): CompendiumEntry | null {
-  const id = str(item.id);
-  const name = str(item.name);
-  if (id === undefined || name === undefined) return null;
-  const type = str(item.type) ?? "unknown";
-  const summary = str(item.summary) ?? "";
-  const description = str(item.description) ?? "";
-  const text = [name, type !== "unknown" ? `(${type})` : "", summary, description]
+function toEntry(hit: FoundrySearchHit): CompendiumEntry | null {
+  const id = hit.id?.trim();
+  const name = hit.name?.trim();
+  if (!id || !name) return null;
+  const type = hit.type?.trim() ?? "unknown";
+  const text = [name, type !== "unknown" ? `(${type})` : ""]
     .filter((s) => s.length > 0)
     .join("\n")
     .trim();
-  const entry: CompendiumEntry = { id, name, type, packId: str(item.pack?.id) ?? "", text };
-  const packLabel = str(item.pack?.label);
-  if (packLabel !== undefined) entry.packLabel = packLabel;
-  if (system !== undefined) entry.system = system;
-  return entry;
+  return { id, name, type, packId: hit.packId ?? "", text };
 }
 
 export async function readCompendiumEntries(
-  caller: McpToolCaller,
+  foundry: FoundryClient,
   opts: { queries: ReadonlyArray<string>; packType?: string },
 ): Promise<CompendiumEntry[]> {
   const byId = new Map<string, CompendiumEntry>();
   for (const query of opts.queries) {
-    if (query.trim().length < 2) continue; // the bridge requires >= 2 chars
-    const res = (await caller.callTool("search-compendium", {
+    if (query.trim().length < 2) continue; // very short queries match too much
+    const hits = await foundry.searchCompendium(
       query,
-      ...(opts.packType !== undefined ? { packType: opts.packType } : {}),
-    })) as SearchResponse | null;
-    const system = str(res?.gameSystem);
-    for (const item of res?.results ?? []) {
-      const entry = toEntry(item, system);
+      opts.packType !== undefined ? { packType: opts.packType } : undefined,
+    );
+    for (const hit of hits) {
+      const entry = toEntry(hit);
       if (entry !== null && !byId.has(entry.id)) byId.set(entry.id, entry);
     }
   }

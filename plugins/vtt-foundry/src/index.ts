@@ -3,14 +3,6 @@
 
 export { FoundryGateway, FoundryGatewayError } from "./foundry_gateway.js";
 export { ModuleFoundryClient } from "./module_foundry_client.js";
-export { McpFoundryClient, parseScene, parseSceneRefs } from "./mcp_foundry_client.js";
-export { FakeMcpToolCaller, type McpToolCaller } from "./mcp_tool_caller.js";
-export {
-  StdioMcpToolCaller,
-  extractToolResult,
-  McpToolError,
-  type StdioMcpToolCallerOptions,
-} from "./stdio_mcp_tool_caller.js";
 export { readCompendiumEntries, type CompendiumEntry } from "./compendium.js";
 export { parseChatConvention } from "./convention.js";
 export {
