@@ -340,6 +340,20 @@ describe("McpFoundryClient — table-text (TDD 0034)", () => {
     });
   });
 
+  it("deleteChatMessages maps to delete-chat-messages (TDD 0038)", async () => {
+    const caller = new FakeMcpToolCaller({ "delete-chat-messages": { deletedCount: 4 } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const r = await client.deleteChatMessages({
+      scope: "by-recipient",
+      recipientFoundryUserId: "u1",
+    });
+    expect(r.deletedCount).toBe(4);
+    expect(caller.calls[0]).toEqual({
+      name: "delete-chat-messages",
+      args: { scope: "by-recipient", recipientFoundryUserId: "u1" },
+    });
+  });
+
   it("subscribeChatEvents delivers public and whisper notifications", () => {
     const caller = new FakeMcpToolCaller({});
     const client = new McpFoundryClient(caller, "dnd5e");

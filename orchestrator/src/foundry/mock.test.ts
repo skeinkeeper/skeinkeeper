@@ -76,6 +76,23 @@ describe("MockFoundryClient", () => {
     expect(await f.getActiveScene()).toBeNull();
     expect(await f.listSceneActors("missing")).toEqual([]);
   });
+
+  it("records deleteChatMessages and returns the configured count (TDD 0038)", async () => {
+    const f = new MockFoundryClient({ system: "dnd5e" });
+    f.deleteChatMessagesResultFor = (args) => ({
+      deletedCount: args.scope === "by-recipient" ? 7 : 3,
+    });
+    expect(
+      await f.deleteChatMessages({ scope: "by-recipient", recipientFoundryUserId: "u1" }),
+    ).toEqual({ deletedCount: 7 });
+    expect(await f.deleteChatMessages({ scope: "by-author", authorFoundryUserId: "u1" })).toEqual({
+      deletedCount: 3,
+    });
+    expect(f.chatDeletes).toEqual([
+      { scope: "by-recipient", recipientFoundryUserId: "u1" },
+      { scope: "by-author", authorFoundryUserId: "u1" },
+    ]);
+  });
 });
 
 describe("MockFoundryClient — scenes (ADR-0015)", () => {
