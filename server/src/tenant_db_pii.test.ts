@@ -162,6 +162,33 @@ describe("TenantDb PII — player_character_map (TDD 0030)", () => {
     expect(rows.map((r) => r.discordUserId)).toEqual(["discord:42"]);
     expect(rows.map((r) => r.displayName)).toEqual(["Alice"]);
   });
+
+  it("encrypts foundry_user_id and decrypts it on read (TDD 0036 PII)", () => {
+    const { db } = setup();
+    const c = enabled();
+    new TenantDb(db, "default", c).playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:42",
+      foundryUserId: "foundry-user-42",
+      foundryActorId: "actor-1",
+      source: "player",
+      confirmedAt: 1,
+    });
+    const raw = db.select().from(playerCharacterMap).get();
+    expect(raw?.foundryUserId?.startsWith("gcm:")).toBe(true);
+    expect(raw?.foundryUserId).not.toContain("foundry-user-42");
+    const row = new TenantDb(db, "default", c).playerCharacterMap.currentForPlayer(
+      "c1",
+      "discord:42",
+    );
+    expect(row?.foundryUserId).toBe("foundry-user-42");
+    expect(
+      new TenantDb(db, "default", c).playerCharacterMap.currentForFoundryUser(
+        "c1",
+        "foundry-user-42",
+      )?.discordUserId,
+    ).toBe("discord:42");
+  });
 });
 
 describe("TenantDb PII — dialogue (TDD 0030)", () => {

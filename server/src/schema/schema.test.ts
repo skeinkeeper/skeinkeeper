@@ -119,6 +119,55 @@ describe("schema", () => {
     }
   });
 
+  it("stores a nullable foundry_user_id on player_character_map (TDD 0036)", () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    try {
+      db.insert(tenants).values({ id: "default", name: "T", createdAt: Date.now() }).run();
+      db.insert(campaigns)
+        .values({
+          id: "c1",
+          tenantId: "default",
+          name: "C",
+          rulesetId: "dnd5e",
+          behaviorSpecVersion: "v0.1",
+          status: "active",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      db.insert(playerCharacterMap)
+        .values({
+          tenantId: "default",
+          campaignId: "c1",
+          discordUserId: "discord:alice",
+          foundryActorId: "actor-1",
+          source: "player",
+          confirmedAt: Date.now(),
+        })
+        .run();
+      expect(db.select().from(playerCharacterMap).get()?.foundryUserId).toBeNull();
+      db.insert(playerCharacterMap)
+        .values({
+          tenantId: "default",
+          campaignId: "c1",
+          discordUserId: "discord:bob",
+          foundryUserId: "foundry-user-bob",
+          foundryActorId: "actor-2",
+          source: "player",
+          confirmedAt: Date.now(),
+        })
+        .run();
+      const bob = db
+        .select()
+        .from(playerCharacterMap)
+        .all()
+        .find((r) => r.discordUserId === "discord:bob");
+      expect(bob?.foundryUserId).toBe("foundry-user-bob");
+    } finally {
+      db.close();
+    }
+  });
+
   it("stores a speaker_hash companion on dialogue", () => {
     const db = openDb({ path: ":memory:", runMigrations: true });
     try {
