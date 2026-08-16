@@ -52,6 +52,7 @@ import {
   formatIntakeReportForOperator,
   kickExtendedIntake,
   loadIntakeConfig,
+  runIdentityPreflight,
   MockFoundryClient,
   NullFoundryEventStream,
   persistFindingResolution,
@@ -720,6 +721,10 @@ export class SessionManager {
       getEagerness: () => this.controls.eagerness,
       isConsented: (id) => this.deps.consent.isGranted(id),
       intakeReady: () => this.intakeReadyFlag,
+      identityPreflight: {
+        verifyPlayer: (player) => this.verifyVoiceJoinIdentity(player),
+        onCriticalGap: (player) => this.onVoiceJoinIdentityGap(player),
+      },
       voiceRouting: this.routing,
       onDecision: (d, frags) =>
         this.deps.onEvent?.({
@@ -1037,6 +1042,55 @@ export class SessionManager {
       if (mapped !== undefined) return mapped;
     }
     return this.deps.tenantDb.settings.get(this.deps.campaignId, "operator.foundry_user_id")?.value;
+  }
+
+  private async verifyVoiceJoinIdentity(player: {
+    discordUserId: string;
+    displayName?: string;
+  }): Promise<"ok" | "critical-gaps" | "warnings-only"> {
+    const session = this.session;
+    if (session === null) return "ok";
+    const dmFoundryUserId = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "campaign.dm_foundry_user_id",
+    )?.value;
+    const operatorFoundryUserId = this.resolveOperatorFoundryUserId();
+    const { result } = await runIdentityPreflight({
+      ctx: {
+        campaignId: this.deps.campaignId,
+        sessionId: session.config.sessionId,
+        sessionConfig: { intake: this.intakeState.intake },
+        expectedPlayers: [player],
+        ...(dmFoundryUserId !== undefined ? { dmFoundryUserId } : {}),
+        ...(operatorFoundryUserId !== undefined ? { operatorFoundryUserId } : {}),
+      },
+      tenantDb: this.deps.tenantDb,
+      foundry: session.config.foundry,
+      trigger: "voice-join",
+      expectedPlayers: [player],
+      onTelemetry: (name, props) => this.trackIntake(name, props),
+    });
+    return result.status;
+  }
+
+  private async onVoiceJoinIdentityGap(player: {
+    discordUserId: string;
+    displayName?: string;
+  }): Promise<void> {
+    const name = player.displayName ?? player.discordUserId;
+    try {
+      await this.consentSurface?.sendIdentityCourtesy(player.discordUserId);
+    } catch {
+      // courtesy DM is best-effort
+    }
+    const mention = player.displayName ?? player.discordUserId;
+    try {
+      await this.emitOperatorNote(
+        `Player ${name} joined voice; their Foundry user / actor ownership isn't configured — please add and \`/skeinkeeper preflight verify @${mention}\`.`,
+      );
+    } catch {
+      // escalation undelivered; player still stays off the onboarding set
+    }
   }
 
   /** Load TDD 0035's ephemeral map from the persistent 3-way rows. */

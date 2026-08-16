@@ -69,6 +69,18 @@ export interface AlwaysListeningConfig {
    * Defaults to ready (tests / sessions without intake).
    */
   intakeReady?: () => boolean;
+  /**
+   * Per-player identity pre-flight on voice-join (TDD 0036). Critical-gap
+   * players stay on voice but are not onboarded; the hook fires once per
+   * player per session for the courtesy DM + notify_operator.
+   */
+  identityPreflight?: {
+    verifyPlayer: (player: {
+      discordUserId: string;
+      displayName?: string;
+    }) => Promise<"ok" | "critical-gaps" | "warnings-only">;
+    onCriticalGap: (player: { discordUserId: string; displayName?: string }) => Promise<void>;
+  };
   /** Invoked after each respond-decision (for telemetry / operator UI). */
   onDecision?: (decision: RespondDecision, fragments: ReadonlyArray<BufferFragment>) => void;
   /** Invoked after each turn the DM actually takes. */
@@ -143,6 +155,8 @@ export async function runAlwaysListeningSession(
   const present = new Map<string, PresenceMember>();
   const greeted = new Set<string>();
   const consentPrompted = new Set<string>();
+  const identityBlocked = new Set<string>();
+  const identityCourtesySent = new Set<string>();
 
   // Send one consent prompt per member, deduped across both triggers (a speak
   // burst and a channel join) so a noisy room isn't re-prompted.
@@ -174,10 +188,30 @@ export async function runAlwaysListeningSession(
         if (isConsented(m.id)) consentPrompted.delete(m.id);
         else await promptConsentOnce(m.id);
       }
+      const identity = config.identityPreflight;
+      if (identity !== undefined) {
+        for (const m of event.members) {
+          const player =
+            m.displayName !== undefined
+              ? { discordUserId: m.id, displayName: m.displayName }
+              : { discordUserId: m.id };
+          const status = await identity.verifyPlayer(player);
+          if (status === "critical-gaps") {
+            identityBlocked.add(m.id);
+            if (!identityCourtesySent.has(m.id)) {
+              identityCourtesySent.add(m.id);
+              await identity.onCriticalGap(player);
+            }
+          } else {
+            identityBlocked.delete(m.id);
+          }
+        }
+      }
       continue;
     }
 
     if (event.kind === "utterance") {
+      if (identityBlocked.has(event.utterance.speaker)) continue;
       buffer.append(utteranceToFragment(event.utterance));
       continue;
     }
@@ -191,13 +225,13 @@ export async function runAlwaysListeningSession(
 
     // Build the table roster fresh (mappings can change as the AI records
     // characters), then decide what to do.
-    const roster = buildRoster(session, present);
+    const roster = buildRoster(session, present).filter((p) => !identityBlocked.has(p.discordId));
     const mapped = new Set(
       roster.filter((p) => p.mappedActorId !== undefined).map((p) => p.discordId),
     );
     const consented = new Set([...present.keys()].filter((id) => isConsented(id)));
     const targets = selectOnboardingTargets({
-      present: [...present.values()],
+      present: [...present.values()].filter((m) => !identityBlocked.has(m.id)),
       consented,
       mapped,
       greeted,
