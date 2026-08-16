@@ -116,3 +116,12 @@ export async function resolveIntake(app: App, body: unknown): Promise<ApiResult>
   const result = await app.manager.resolveIntakeFinding(findingId, b.optionId.trim());
   return { status: 200, body: result };
 }
+
+/** Re-run identity pre-flight (TDD 0036). Same write path as Foundry chat. */
+export async function verifyPreflight(app: App, body: unknown): Promise<ApiResult> {
+  const player = (body as { player?: unknown } | null)?.player;
+  const result = await app.manager.verifyPreflight(
+    typeof player === "string" && player.trim().length > 0 ? player.trim() : undefined,
+  );
+  return { status: 200, body: result };
+}

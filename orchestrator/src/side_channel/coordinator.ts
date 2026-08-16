@@ -21,6 +21,10 @@ export interface SideChannelCoordinatorOptions {
   semaphore?: number;
   /** Per-player coalesce window for rapid-fire whispers. Default 0 (off). */
   coalesceMs?: number;
+  /** Foundry `/skeinkeeper` commands (TDD 0036 / 0040). */
+  onOperatorCommand?: (
+    event: Extract<SurfaceInputEvent, { kind: "chat.command" }>,
+  ) => Promise<void>;
 }
 
 /**
@@ -65,6 +69,10 @@ export class SideChannelCoordinator {
 
   async handleEvent(event: SurfaceInputEvent): Promise<SideChannelDispatchResult> {
     if (this.stopped) return { dispatched: false, reason: "stopped" };
+    if (event.kind === "chat.command") {
+      await this.opts.onOperatorCommand?.(event);
+      return { dispatched: false, reason: "ignored" };
+    }
     if (event.kind !== "chat.whisper.player-to-dm") {
       return { dispatched: false, reason: "ignored" };
     }

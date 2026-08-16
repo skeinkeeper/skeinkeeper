@@ -7,7 +7,15 @@ import { fileURLToPath } from "node:url";
 import { dirname, extname, join, normalize } from "node:path";
 import type { App } from "../bootstrap.js";
 import type { EventBus } from "./event_bus.js";
-import { getState, resolveIntake, setDmVoice, setEagerness, setOperator, setPvp } from "./api.js";
+import {
+  getState,
+  resolveIntake,
+  setDmVoice,
+  setEagerness,
+  setOperator,
+  setPvp,
+  verifyPreflight,
+} from "./api.js";
 import { mintToken, verifyPassword, verifyToken } from "../auth.js";
 
 /** Optional local-operator auth (design doc 0020 §6). When omitted, the
@@ -208,6 +216,10 @@ export function createWebServer(app: App, bus: EventBus, auth?: WebAuth): Server
     }
     if (method === "POST" && pathname === "/api/intake/resolve") {
       const r = await resolveIntake(app, await readJsonBody(req));
+      return sendJson(res, r.status, r.body);
+    }
+    if (method === "POST" && pathname === "/api/preflight/verify") {
+      const r = await verifyPreflight(app, await readJsonBody(req));
       return sendJson(res, r.status, r.body);
     }
 

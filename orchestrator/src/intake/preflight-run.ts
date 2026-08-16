@@ -203,6 +203,33 @@ export async function runIdentityPreflight(args: {
   return { input, result, findings };
 }
 
+export async function executePreflightVerify(args: {
+  ctx: IntakeContext;
+  tenantDb: TenantDb;
+  foundry: FoundryClient;
+  player?: string;
+  emit: (text: string) => Promise<void>;
+  onTelemetry?: (name: string, props?: Record<string, unknown>) => void;
+}): Promise<IdentityPreflightResult> {
+  const expectedPlayers =
+    args.player !== undefined
+      ? [{ discordUserId: args.player.replace(/^@/, "") }]
+      : args.ctx.expectedPlayers;
+  const ran = await runIdentityPreflight({
+    ctx: {
+      ...args.ctx,
+      ...(expectedPlayers !== undefined ? { expectedPlayers } : {}),
+    },
+    tenantDb: args.tenantDb,
+    foundry: args.foundry,
+    trigger: "operator-command",
+    ...(expectedPlayers !== undefined ? { expectedPlayers } : {}),
+    ...(args.onTelemetry !== undefined ? { onTelemetry: args.onTelemetry } : {}),
+  });
+  await args.emit(formatIdentityPreflightReport(ran.result));
+  return ran.result;
+}
+
 export function formatIdentityPreflightReport(result: IdentityPreflightResult): string {
   if (result.status === "ok") return "Identity pre-flight: ok.";
   const lines = result.findings.map((f) => `- ${identityFindingSummary(f)}`);

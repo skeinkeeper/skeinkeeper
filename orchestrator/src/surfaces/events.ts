@@ -62,7 +62,8 @@ export type ConsoleControl =
   | { control: "intake"; id: string; option: string }
   | { control: "consent"; decision: "accept" | "decline" }
   | { control: "map"; discordUser: string; character: string }
-  | { control: "pvp"; enabled: boolean };
+  | { control: "pvp"; enabled: boolean }
+  | { control: "preflight"; player?: string };
 
 /** TTS byte stream consumed only by the voice surface. */
 export type TtsStream = AsyncIterable<Uint8Array>;

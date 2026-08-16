@@ -49,12 +49,15 @@ import {
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
   createIntakeResolutionState,
+  executePreflightVerify,
   formatIntakeReportForOperator,
+  identityFindingSeverity,
   kickExtendedIntake,
   loadIntakeConfig,
   runIdentityPreflight,
   startFoundryPresencePoll,
   type FoundryPresencePoller,
+  type IdentityPreflightResult,
   MockFoundryClient,
   NullFoundryEventStream,
   persistFindingResolution,
@@ -308,6 +311,56 @@ export class SessionManager {
     }
     this.emitIntakeEvent();
     return result;
+  }
+
+  /**
+   * Single write path for `/skeinkeeper preflight verify` (TDD 0036).
+   * TDD 0040 owns the rest of the Foundry-chat parity table.
+   */
+  async verifyPreflight(player?: string): Promise<IdentityPreflightResult> {
+    const session = this.session;
+    if (session === null) {
+      return { status: "warnings-only", findings: [{ kind: "bridge-listusers-unavailable" }] };
+    }
+    const deps = this.intakeDeps();
+    const ctx = deps?.ctx ?? {
+      campaignId: this.deps.campaignId,
+      sessionId: session.config.sessionId,
+      sessionConfig: { intake: this.intakeState.intake },
+    };
+    const result = await executePreflightVerify({
+      ctx,
+      tenantDb: this.deps.tenantDb,
+      foundry: session.config.foundry,
+      ...(player !== undefined && player.length > 0 ? { player } : {}),
+      emit: async (text) => {
+        const operatorId = this.resolveOperatorFoundryUserId();
+        await this.surfaces?.emit({
+          audience: { kind: "gm" },
+          text,
+          meta: operatorId !== undefined ? { replyTo: operatorId } : { escalation: false },
+        });
+      },
+      onTelemetry: (name, props) => this.trackIntake(name, props),
+    });
+    this.bindIdentityFromPersistentMap();
+    this.deps.onEvent?.({
+      kind: "preflight",
+      status: result.status,
+      findingCount: result.findings.length,
+      criticalCount: result.findings.filter((f) => identityFindingSeverity(f) === "critical")
+        .length,
+    });
+    return result;
+  }
+
+  private async handleFoundryCommand(event: {
+    verb: string;
+    args: ReadonlyArray<string>;
+  }): Promise<void> {
+    if (event.verb === "preflight" && event.args[0] === "verify") {
+      await this.verifyPreflight(event.args[1]);
+    }
   }
 
   /** Replace the live intake findings after a minimum/extended run. */
@@ -703,6 +756,7 @@ export class SessionManager {
       session: this.session,
       router: surfaces,
       identity: this.identity,
+      onOperatorCommand: (event) => this.handleFoundryCommand(event),
     });
     void this.coordinator.start();
     await this.runIntakeAtStart();

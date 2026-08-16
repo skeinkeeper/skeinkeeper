@@ -83,6 +83,7 @@ export {
   assertIdentityAllowsStart,
   collectIdentityPreflightInput,
   emitIdentityPreflightTelemetry,
+  executePreflightVerify,
   formatIdentityPreflightReport,
   identityFindingsToIntake,
   runIdentityPreflight,

@@ -14,6 +14,7 @@ const KNOWN_VERBS = new Set([
   "consent",
   "map",
   "pvp",
+  "preflight",
 ]);
 
 export function isSkeinkeeperCommand(text: string): boolean {
@@ -54,7 +55,7 @@ export function parseSkeinkeeperCommand(raw: string): CommandParseResult {
       verb,
       args,
       raw: trimmed,
-      error: `Unknown verb '${verb}'. Try session, eagerness, voice, operator, intake, consent, map, pvp.`,
+      error: `Unknown verb '${verb}'. Try session, eagerness, voice, operator, intake, consent, map, pvp, preflight.`,
     };
   }
 
@@ -134,6 +135,12 @@ function mapVerbToControl(verb: string, args: ReadonlyArray<string>): ConsoleCon
       if (v === "on") return { control: "pvp", enabled: true };
       if (v === "off") return { control: "pvp", enabled: false };
       return undefined;
+    }
+    case "preflight": {
+      if (args[0] !== "verify") return undefined;
+      const who = args[1];
+      if (who === undefined) return { control: "preflight" };
+      return { control: "preflight", player: who.replace(/^@/, "") };
     }
     default:
       return undefined;
