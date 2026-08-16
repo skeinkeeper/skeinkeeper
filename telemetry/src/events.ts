@@ -231,6 +231,46 @@ export const events = {
     description: "A Foundry /skeinkeeper command was parsed. Verb only; no args.",
     props: {} as { verb: string; ok: boolean },
   },
+  "preflight.identity.ran": {
+    v: 1,
+    description: "The 3-way identity pre-flight verifier ran.",
+    props: {} as {
+      trigger: "start" | "voice-join" | "operator-command";
+      playerCount: number;
+      findingCount: number;
+      criticalCount: number;
+    },
+  },
+  "preflight.identity.finding": {
+    v: 1,
+    description: "One identity pre-flight finding. Kind and severity only; no player IDs.",
+    props: {} as { kind: string; severity: "critical" | "warning" | "info" },
+  },
+  "preflight.identity.blocked-start": {
+    v: 1,
+    description: "Start was blocked by critical identity pre-flight findings.",
+    props: {} as { criticalCount: number },
+  },
+  "presence.foundry.dropped": {
+    v: 1,
+    description: "A previously-active Foundry user went inactive.",
+    props: {} as { foundryUserIdHashed: string },
+  },
+  "presence.foundry.restored": {
+    v: 1,
+    description: "An inactive Foundry user came back online.",
+    props: {} as { foundryUserIdHashed: string },
+  },
+  "escalation.notify-operator": {
+    v: 1,
+    description: "notify_operator emitted. Severity only; no content.",
+    props: {} as { severity: "info" | "warning" | "critical" },
+  },
+  "identity.player-character.recorded": {
+    v: 1,
+    description: "record_player_character wrote a 3-way map row.",
+    props: {} as { source: "player" | "operator"; hasFoundryUser: boolean },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;

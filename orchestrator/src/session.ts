@@ -515,7 +515,10 @@ async function runLlmIterations(
       ...(cfg.whisperPlayer !== undefined ? { whisperPlayer: cfg.whisperPlayer } : {}),
       ...(cfg.surfaces !== undefined ? { surfaces: cfg.surfaces } : {}),
       ...(cfg.identity !== undefined
-        ? { resolveFoundryUserId: (id: string) => cfg.identity?.foundryUserIdForDiscord(id) }
+        ? {
+            identity: cfg.identity,
+            resolveFoundryUserId: (id: string) => cfg.identity?.foundryUserIdForDiscord(id),
+          }
         : {}),
     };
     for (const tc of iterationToolCalls) {

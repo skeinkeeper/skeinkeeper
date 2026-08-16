@@ -6,6 +6,7 @@ import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryClient } from "./foundry/client.js";
 import type { SessionRunState } from "./session/run-state.js";
+import type { SideChannelIdentityMap } from "./side_channel/identity_map.js";
 import type { SurfaceRouter } from "./surfaces/router.js";
 import type { Mutex } from "./util/mutex.js";
 
@@ -46,6 +47,8 @@ export interface ToolHandlerContext {
   surfaces?: SurfaceRouter;
   /** TDD 0035 / 0036: Discord player id → Foundry user id. */
   resolveFoundryUserId?: (playerId: string) => string | undefined;
+  /** TDD 0036: persistent 3-way map binds the ephemeral session cache. */
+  identity?: SideChannelIdentityMap;
 }
 
 /** Typed 0034/0035 seam used by share_journal_to_audience. */

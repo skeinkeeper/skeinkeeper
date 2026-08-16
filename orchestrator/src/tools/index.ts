@@ -273,17 +273,54 @@ const recordPlayerCharacterDef = defineTool({
   outputSchema: z.object({
     discordUserId: z.string(),
     foundryActorId: z.string(),
+    foundryUserId: z.string().nullable(),
   }),
   async handle(input, ctx) {
+    let foundryUserId: string | null = null;
+    if (ctx.foundry !== undefined) {
+      try {
+        const users = await ctx.foundry.listUsers();
+        const owningUser = users.find((u) =>
+          (u.ownedActorIds ?? []).includes(input.foundryActorId),
+        );
+        foundryUserId = owningUser?.id ?? null;
+      } catch {
+        ctx.analytics?.track("error.captured", {
+          errorClass: "listUsers",
+          module: "orchestrator:record_player_character",
+        });
+      }
+    }
     ctx.tenantDb.playerCharacterMap.record({
       campaignId: input.campaignId,
       discordUserId: input.discordUserId,
       foundryActorId: input.foundryActorId,
+      ...(foundryUserId !== null ? { foundryUserId } : {}),
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
       source: "player",
       confirmedAt: Date.now(),
     });
-    return { discordUserId: input.discordUserId, foundryActorId: input.foundryActorId };
+    if (foundryUserId !== null) {
+      ctx.identity?.bind(input.discordUserId, foundryUserId);
+    } else if (ctx.surfaces !== undefined) {
+      await ctx.surfaces.emit({
+        audience: { kind: "gm" },
+        text:
+          `Recorded ${input.displayName ?? input.discordUserId} → ${input.foundryActorId}, ` +
+          `but no Foundry user owns that actor. Add a Foundry user + grant ownership; ` +
+          `then \`/skeinkeeper preflight verify @<player>\`.`,
+        meta: { escalation: true, severity: "warning" },
+      });
+    }
+    ctx.analytics?.track("identity.player-character.recorded", {
+      source: "player",
+      hasFoundryUser: foundryUserId !== null,
+    });
+    return {
+      discordUserId: input.discordUserId,
+      foundryActorId: input.foundryActorId,
+      foundryUserId,
+    };
   },
 });
 

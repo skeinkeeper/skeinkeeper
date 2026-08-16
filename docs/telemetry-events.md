@@ -256,3 +256,50 @@ Fires when a `/skeinkeeper` Foundry chat command is parsed. Verb only — args c
 
 - `verb: string` — the first token after `/skeinkeeper`.
 - `ok: boolean` — whether the verb and args were recognized.
+
+### `preflight.identity.ran` (v1)
+
+Fires when the 3-way identity pre-flight verifier runs (TDD 0036). Counts only; no player IDs.
+
+- `trigger: string` — `start` | `voice-join` | `operator-command`.
+- `playerCount: number` — expected players in the check.
+- `findingCount: number` — total findings.
+- `criticalCount: number` — critical findings.
+
+### `preflight.identity.finding` (v1)
+
+Fires once per identity finding. Kind and severity only — no player IDs.
+
+- `kind: string` — finding kind (e.g. `no-foundry-user`).
+- `severity: string` — `critical` | `warning` | `info`.
+
+### `preflight.identity.blocked-start` (v1)
+
+Fires when Start is blocked by critical identity findings.
+
+- `criticalCount: number` — number of critical findings that blocked Start.
+
+### `presence.foundry.dropped` (v1)
+
+Fires when a previously-active Foundry user goes inactive.
+
+- `foundryUserIdHashed: string` — salted hash of the Foundry user id.
+
+### `presence.foundry.restored` (v1)
+
+Fires when an inactive Foundry user comes back online.
+
+- `foundryUserIdHashed: string` — salted hash of the Foundry user id.
+
+### `escalation.notify-operator` (v1)
+
+Fires when `notify_operator` emits. No content.
+
+- `severity: string` — `info` | `warning` | `critical`.
+
+### `identity.player-character.recorded` (v1)
+
+Fires when `record_player_character` writes a map row.
+
+- `source: string` — `player` | `operator`.
+- `hasFoundryUser: boolean` — whether a Foundry user was bound at record-time.
