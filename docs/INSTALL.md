@@ -243,6 +243,12 @@ A second GM window that also enables the add-on is rejected (`duplicate`); keep 
 
 **LAN (another machine on your network):** set `FOUNDRY_GATEWAY_BIND=lan`, `FOUNDRY_PAIRING_SECRET`, and `FOUNDRY_GATEWAY_TLS_CERT` + `FOUNDRY_GATEWAY_TLS_KEY`. Point the add-on at `wss://<host>:7733`. Without TLS, Skeinkeeper refuses to listen.
 
+### If Foundry drops mid-session
+
+If the add-on disconnects mid-session (Foundry closed, network drop), the session **pauses itself with state preserved** — there is no voice-only fallback, because the players' table text lives in Foundry. The bot stays in the voice channel, announces the pause once, and keeps transcribing (buffered, replayed on resume); the web console shows a paused indicator with a **Resume** button. Restore Foundry (reload the GM session so the add-on reconnects), then click **Resume** — or type `/skeinkeeper session action:resume` in Foundry chat. Resume re-checks the connection first; if Foundry still isn't reachable, it tells you and stays paused.
+
+**Recommended at first run:** enable **pause-notification DMs** (the checkbox in the console's Operator section, or `/skeinkeeper operator dm-consent on`). When Foundry drops, its GM chat can't reach you — the one-per-pause Discord DM is the out-of-band signal. Off by default; operator-only; see `docs/PRIVACY.md`.
+
 ## Seeding your first campaign
 
 Skeinkeeper expects a tenant and a campaign before it can do useful work. The alpha uses a YAML seed file:

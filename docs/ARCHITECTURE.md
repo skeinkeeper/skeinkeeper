@@ -119,6 +119,14 @@ A simplified flow:
 
 Every step is logged; the operator can replay any session from the audit log.
 
+## When Foundry goes down mid-session
+
+Every player needs Foundry for the table text, so there is no degraded "voice-only" mode — if Foundry becomes unreachable, the session **pauses with state preserved** ([TDD 0039](./tdd/0039-foundry-down-session-lifecycle.md)). A small per-session state machine (`active` ⇄ `paused-foundry-down`) is driven by three fused detectors: the add-on's `evt gone` (one is enough), a storm of Foundry-surface emit failures (≥3 consecutive within 30s), and a periodic `listUsers` heartbeat (2 consecutive misses).
+
+While paused: the in-flight turn drains (the dispatcher short-circuits any not-yet-called tool with `aborted-foundry-down`, so no half-applied tool calls land on Foundry when it returns); the bot stays in the voice channel and STT keeps capturing to a bounded buffer, but no LLM calls happen; Foundry-side emits are no-op'd (one coalesced `surface.emit.skipped` event per surface, not error spam); a single cached TTS announcement tells the table. The operator learns of the pause via the web console and — if they opted in — one Discord DM (Foundry GM chat can't carry it; it's the surface that's down).
+
+Resume is **operator-explicit** (no auto-resume, per the operator-as-host model of [ADR-0023](./adr/0023-operator-as-host-model.md)): the console's Resume button or `/skeinkeeper session action:resume` both go through the same `SessionManager.resume()` write path, which re-runs the identity pre-flight (an unreachable `listUsers` blocks the resume) and then replays the buffered inputs in order, each as a normal turn carrying a "captured while paused" note. Lifecycle state is in-memory per session; the `session.paused` / `session.resumed` audit rows are the durable record.
+
 ## Privacy and data handling
 
 Skeinkeeper is software the operator runs on their own infrastructure. Architectural commitments are in [ADR-0010](./adr/0010-privacy-as-architecture.md); the user-facing explanation is in [`PRIVACY.md`](./PRIVACY.md).
