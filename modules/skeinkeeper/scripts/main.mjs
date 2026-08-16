@@ -103,10 +103,12 @@ async function dispatch(method, params) {
         name: u.name,
         role: roleOf(u),
         isActive: u.active === true,
+        // Ownership must be evaluated per user `u`. `actor.isOwner` reflects the
+        // *current* (GM) session, so a GM would appear to own every actor and the
+        // 3-way pre-flight verifier (owners.length === 1) would flag correctly
+        // configured worlds. testUserPermission(u, "OWNER") is the per-user check.
         ownedActorIds: [...game.actors]
-          .filter(
-            (a) => a.testUserPermission?.(u, "OWNER") || a.isOwner === (u.isGM ? true : undefined),
-          )
+          .filter((a) => a.testUserPermission?.(u, "OWNER") === true)
           .map((a) => a.id),
       }));
     case "listCompendiumPacks":
@@ -115,21 +117,103 @@ async function dispatch(method, params) {
         label: p.metadata?.label ?? p.title ?? "",
         type: p.metadata?.type,
       }));
-    case "searchCompendium":
-    case "listCreaturesByCriteria":
-    case "searchJournals":
-    case "getJournal":
+    case "searchCompendium": {
+      const q = String(params.query ?? "").toLowerCase();
+      const wantType = params.packType;
+      const hits = [];
+      for (const pack of game.packs) {
+        const type = pack.metadata?.type ?? pack.documentName;
+        if (wantType && type !== wantType) continue;
+        const index = await pack.getIndex();
+        for (const e of index) {
+          if (q.length === 0 || (e.name ?? "").toLowerCase().includes(q)) {
+            hits.push({ id: e._id ?? e.id, name: e.name, packId: pack.collection, type });
+          }
+        }
+      }
+      return hits;
+    }
+    case "listCreaturesByCriteria": {
+      const name = String(params.name ?? "").toLowerCase();
+      const wantType = params.type;
+      const hits = [];
+      for (const pack of game.packs) {
+        const type = pack.metadata?.type ?? pack.documentName;
+        if (type !== "Actor") continue;
+        const index = await pack.getIndex();
+        for (const e of index) {
+          const nm = (e.name ?? "").toLowerCase();
+          if (name.length > 0 && !nm.includes(name)) continue;
+          if (wantType && e.type !== undefined && e.type !== wantType) continue;
+          hits.push({ id: e._id ?? e.id, name: e.name, packId: pack.collection, type: e.type });
+        }
+      }
+      return hits;
+    }
+    case "searchJournals": {
+      const q = String(params.query ?? "").toLowerCase();
+      const hits = [];
+      for (const j of game.journal ?? []) {
+        if (q.length === 0 || (j.name ?? "").toLowerCase().includes(q)) {
+          hits.push({ id: j.id, name: j.name });
+        }
+      }
+      return hits;
+    }
+    case "getJournal": {
+      const j = game.journal?.get(params.journalId);
+      if (!j) return null;
+      const pages = [];
+      for (const p of j.pages ?? []) {
+        pages.push({ id: p.id, name: p.name, text: p.text?.content ?? "" });
+      }
+      const text = pages
+        .map((p) => p.text)
+        .filter((t) => t && t.length > 0)
+        .join("\n\n");
+      return { id: j.id, name: j.name, text, pages };
+    }
+    case "getTokenDetails": {
+      const found = findTokenDoc(params.tokenId);
+      if (!found) return null;
+      const { token, scene } = found;
+      return {
+        id: token.id,
+        actorId: token.actorId,
+        name: token.name,
+        hidden: token.hidden === true,
+        x: token.x,
+        y: token.y,
+        sceneId: scene.id,
+        disposition: token.disposition,
+      };
+    }
+    case "updateToken": {
+      const found = findTokenDoc(params.tokenId);
+      if (!found) throw Object.assign(new Error("not-found"), { code: "not-found" });
+      const patch = {};
+      if (typeof params.hidden === "boolean") patch.hidden = params.hidden;
+      if (typeof params.x === "number") patch.x = params.x;
+      if (typeof params.y === "number") patch.y = params.y;
+      await found.token.update(patch);
+      return null;
+    }
+    case "moveToken": {
+      const found = findTokenDoc(params.tokenId);
+      if (!found) throw Object.assign(new Error("not-found"), { code: "not-found" });
+      await found.token.update({ x: params.x, y: params.y });
+      return null;
+    }
     case "createActorFromCompendium":
-    case "updateToken":
-    case "getTokenDetails":
     case "createToken":
-    case "moveToken":
     case "addActorItems":
-      return method === "searchCompendium" ||
-        method === "listCreaturesByCriteria" ||
-        method === "searchJournals"
-        ? []
-        : null;
+      // Token spawn, compendium-to-world import, and inventory writes are the
+      // TDD 0042 write surface — they touch v13/v14 APIs that must be validated
+      // against a live Foundry. Until that lands, fail loudly with a clear code
+      // rather than return null (a silent no-op looked like success to callers).
+      throw Object.assign(new Error(`${method} is not implemented yet (TDD 0042)`), {
+        code: "not-implemented",
+      });
     case "applyActorUpdate": {
       const actor = game.actors.get(params.actorId);
       if (!actor) throw Object.assign(new Error("not-found"), { code: "not-found" });
@@ -188,15 +272,27 @@ async function dispatch(method, params) {
       };
     }
     case "deleteChatMessages": {
-      const ids = [];
-      for (const m of game.messages) {
-        if (params.scope === "by-author" && m.author?.id !== params.authorFoundryUserId) continue;
-        if (params.scope === "by-recipient") {
-          const whisper = m.whisper ?? [];
-          if (!whisper.includes(params.recipientFoundryUserId)) continue;
+      // Per-scope predicate. An UNRECOGNIZED scope matches nothing (fail safe):
+      // the previous fall-through pushed every message and would have wiped the
+      // whole chat log on an unhandled scope such as "by-time-range".
+      const scope = params.scope;
+      const since = params.since ? Date.parse(params.since) : undefined;
+      const until = params.until ? Date.parse(params.until) : undefined;
+      const matches = (m) => {
+        if (scope === "by-author") return m.author?.id === params.authorFoundryUserId;
+        if (scope === "by-recipient")
+          return (m.whisper ?? []).includes(params.recipientFoundryUserId);
+        if (scope === "by-time-range") {
+          const t = typeof m.timestamp === "number" ? m.timestamp : Date.parse(m.timestamp ?? "");
+          if (Number.isNaN(t)) return false;
+          if (since !== undefined && !Number.isNaN(since) && t < since) return false;
+          if (until !== undefined && !Number.isNaN(until) && t > until) return false;
+          return true;
         }
-        ids.push(m.id);
-      }
+        return false;
+      };
+      const ids = [];
+      for (const m of game.messages) if (matches(m)) ids.push(m.id);
       if (ids.length > 0) await ChatMessage.deleteDocuments(ids);
       return { deletedCount: ids.length };
     }
@@ -207,6 +303,16 @@ async function dispatch(method, params) {
 
 function tokenOrFirst(actor) {
   return actor.getActiveTokens?.()?.[0];
+}
+
+/** Locate a token document by id across all scenes (tokens live on scenes in
+ *  v13/v14). Returns the token doc + its scene, or null. */
+function findTokenDoc(tokenId) {
+  for (const scene of game.scenes ?? []) {
+    const token = scene.tokens?.get?.(tokenId);
+    if (token) return { token, scene };
+  }
+  return null;
 }
 
 function openGateway() {

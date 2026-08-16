@@ -8,6 +8,18 @@ Author: maintainers
 Date: 2026-05-26
 Related TDDs: [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0019 (cold/episodic memory)](./0019-cold-episodic-memory.md), [0021 (compendium cold ingestion)](./0021-compendium-cold-ingestion.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0036 (onboarding + Foundry-user pre-flight)](./0036-onboarding-and-foundry-user-preflight.md)
 
+> **Implementation note (add-on write surface).** The orchestrator-side logic
+> here (classifiers, world-content readers, `refreshIndex`, `extractKeys`,
+> `chooseInitialScene`) is implemented and unit-tested. Source-material indexing
+> is functional end-to-end: the first-party add-on implements the journal/
+> compendium **reads** it needs (`searchJournals`, `getJournal`,
+> `searchCompendium`, `listCreaturesByCriteria`). **Content pre-loading**
+> (`preloadExpectedContent` → `createActorFromCompendium`) is the compendium-to-
+> world **write** surface owned by [TDD 0042](./0042-foundry-mechanical-writes.md);
+> until that lands and is live-validated, the add-on returns a `not-implemented`
+> error for that call and pre-load surfaces the failure rather than silently
+> importing nothing. Lazy-at-trigger-time (TDD 0033) is the fallback either way.
+
 ## Approach
 
 §4.8 names four autonomous actions the AI takes once intake (TDD 0031) gives it the green

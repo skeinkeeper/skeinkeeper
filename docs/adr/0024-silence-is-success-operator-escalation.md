@@ -4,6 +4,13 @@ Status: accepted
 Date: 2026-05-26
 Scope: operator-controls
 
+> **Carrier errata ([ADR-0031](./0031-errata-escalation-carrier-and-durable-surfaces.md)).**
+> This ADR predates the surface model and refers to "the Discord `notify_operator`
+> channel." [ADR-0025](./0025-foundry-as-table-text-and-operator-surface.md) re-homed
+> the operator-escalation carrier to **Foundry GM chat** (whisper to the operator's
+> Foundry user when known; GM-broadcast otherwise). Where the text below says
+> "Discord," read "Foundry GM chat." The escalation _discipline_ is unchanged.
+
 ## Context
 
 [ADR-0023](./0023-operator-as-host-model.md) moves DM work — both pre-game

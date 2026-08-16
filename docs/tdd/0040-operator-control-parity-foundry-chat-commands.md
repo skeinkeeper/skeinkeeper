@@ -1,6 +1,6 @@
 # TDD 0040: Operator Control Parity — Foundry Chat Commands as the Second Surface
 
-Status: draft
+Status: implemented
 PRD refs: 4.3, 4.4
 PRD-rev: 5c3a198
 ADR constraints: 0010, 0016, 0017, 0018, 0023, 0024, 0025, 0029, 0030
@@ -12,6 +12,35 @@ Related TDDs: [0020 (operator app)](./0020-operator-app.md), [0024 (operator sel
 **Prerequisite:** [TDD 0041](./0041-first-party-foundry-addon.md). Command dispatch
 consumes `subscribeChatEvents` / add-on `evt chat`. Do not implement this TDD against
 an MCP notification seam or a "bridge driver." There is no MCP fallback.
+
+## Implementation status (v0.5)
+
+Shipped: `FoundryChatCommandSurface` parses `/skeinkeeper <verb> <args>` and emits
+`chat.command`; `SessionManager.handleFoundryCommand` authorizes by the invoker's
+Foundry GM role (`GAMEMASTER`/`ASSISTANT` via `listUsers()`, fail-closed) and
+dispatches to the **same** `SessionManager` write paths the web console uses —
+`eagerness`, `voice list|set`, `operator claim|clear|show` (sets the dedicated
+escalation-whisper Foundry user), `pvp on|off`, `intake resolve`, `preflight
+verify`, and `session stop` — with an inline ack/error whispered to the invoker.
+`consent accept|decline` is handled as a player self-action (exempt from the GM
+gate; resolves the invoker's Discord id via the 3-way map). The Discord slash
+**operator** subcommands are retired: `registerSlashCommands` now registers only
+`consent`, and a stale operator subcommand is redirected to Foundry chat + the
+console. This satisfies the parity invariant for every operator control that
+exists on the console today.
+
+Deferred (consistently absent on **both** surfaces, so parity is not violated):
+
+- `session start` — console-only cold-start (the chat listener isn't subscribed
+  before Start), unchanged from §"Carries forward".
+- `session pause` / `session resume` — blocked on [TDD 0039](./0039-foundry-down-session-lifecycle.md)
+  (`draft`); the dispatcher returns "not available yet."
+- `map @<discord-user> <character>` (operator override) — not yet on either
+  surface; the dispatcher returns "use the console" and a console endpoint is a
+  follow-up.
+
+The verb parser (`parseSkeinkeeperCommand`) already recognizes every verb below,
+including the deferred ones, so closing these gaps is a dispatch-only change.
 
 ## Carries forward / supersedes (read first)
 
@@ -341,11 +370,11 @@ The Discord-slash-command-registration code removal removes one persistent Disco
 
 ## Evaluation rubric
 
-| Criterion | High-quality | Acceptable | Failing |
-| --- | --- | --- | --- |
-| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
-| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
-| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
-| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
-| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
-| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
+| Criterion                       | High-quality                                                                                       | Acceptable                                                   | Failing                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Requirement traceability        | Every in-scope FR/NFR maps to a named interface, type, or step                                     | One mapping is slightly coarse but still findable            | An in-scope FR has no row, or the row is "handled in code"        |
+| Interface concreteness          | Method names, args, return types, and error cases are specified                                    | Types are named; one edge payload is implied                 | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason                                    | No new dep, and the section says why                         | New dep with empty or "none considered" analysis                  |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named                                   | Observable but one scenario is console-only                  | Non-actionable plan (no surface, no observation point)            |
+| Scope-bound adherence           | Touched files ≤8, body ≤500, per-file estimates present                                            | One justified exception marker                               | Silent over-bound or missing Touched files / Expected diff        |
+| Naming consistency              | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name                  |

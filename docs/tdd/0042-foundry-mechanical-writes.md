@@ -8,6 +8,21 @@ Author: maintainers
 Date: 2026-08-15
 Related TDDs: [0006](./0006-tool-registry.md), [0007](./0007-foundry-as-source-of-truth.md), [0022](./0022-dm-action-coverage-audit.md), [0032](./0032-autonomous-pre-game-setup-actions.md), [0033](./0033-live-state-perception-and-triggered-actions.md), [0041](./0041-first-party-foundry-addon.md)
 
+## Implementation status (partial)
+
+Landed (alongside the Phase-3 audit fixes): the add-on implements the token
+show/hide/move path (`updateToken`, `getTokenDetails`, `moveToken`) and the
+journal/compendium **reads** several `implemented` TDDs depend on (`getJournal`,
+`searchJournals`, `searchCompendium`, `listCreaturesByCriteria`).
+
+Still pending (this TDD's core; requires a live Foundry to validate the v13/v14
+APIs): the `FoundryClient` methods `manageCombat` / `applyDamage` / `manageFog` /
+`createToken`; their `FoundryGateway` / `ModuleFoundryClient` routing; the add-on
+`main.mjs` dispatch for them plus `createActorFromCompendium` and `addActorItems`
+(all currently return a `not-implemented` error, not a silent null); and the
+dnd5e tool wrappers (`apply_damage`, `start_combat`, `spawn_token`, `reveal_fog`).
+The Verification plan below is the operator-live gate for this remaining surface.
+
 ## Approach
 
 [TDD 0022](./0022-dm-action-coverage-audit.md) listed five in-play actions
@@ -72,17 +87,17 @@ live world.
 
 ### Add-on dispatch (extends TDD 0041 `main.mjs`)
 
-| `method` | Foundry call |
-| --- | --- |
-| `manageCombat` / `start` | `Combat.create` + `combat.startCombat` on the active scene's tokens if none specified |
-| `manageCombat` / `end` | `combat.endCombat` |
-| `manageCombat` / `add` | `combat.createEmbeddedDocuments("Combatant", …)` |
-| `manageCombat` / `roll-initiative` | `combat.rollInitiative(ids \| "all")` |
-| `manageCombat` / `next-turn` / `previous-turn` | `combat.nextTurn` / `combat.previousTurn` |
-| `applyDamage` | `actor.applyDamage(amount)` if function; else `actor.update` on `system.attributes.hp.value` (floor 0) |
-| `manageFog` / `reveal-scene` | reset fog exploration for all users on that scene (core fog, not Simple Fog) |
-| `manageFog` / `reset` | `scene.resetFog` |
-| `createToken` | if `compendiumRef`, import actor first; `scene.createEmbeddedDocuments("Token", [{ actorId, x, y, hidden }])` |
+| `method`                                       | Foundry call                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `manageCombat` / `start`                       | `Combat.create` + `combat.startCombat` on the active scene's tokens if none specified                         |
+| `manageCombat` / `end`                         | `combat.endCombat`                                                                                            |
+| `manageCombat` / `add`                         | `combat.createEmbeddedDocuments("Combatant", …)`                                                              |
+| `manageCombat` / `roll-initiative`             | `combat.rollInitiative(ids \| "all")`                                                                         |
+| `manageCombat` / `next-turn` / `previous-turn` | `combat.nextTurn` / `combat.previousTurn`                                                                     |
+| `applyDamage`                                  | `actor.applyDamage(amount)` if function; else `actor.update` on `system.attributes.hp.value` (floor 0)        |
+| `manageFog` / `reveal-scene`                   | reset fog exploration for all users on that scene (core fog, not Simple Fog)                                  |
+| `manageFog` / `reset`                          | `scene.resetFog`                                                                                              |
+| `createToken`                                  | if `compendiumRef`, import actor first; `scene.createEmbeddedDocuments("Token", [{ actorId, x, y, hidden }])` |
 
 A missing combat on `end` / `next-turn` returns `{ combatId: null, round: 0, turn: 0, currentCombatantId: null }`
 and `ok: true` (idempotent), not an error. `add` without `combatantIds` is
@@ -148,39 +163,39 @@ No new Skeinkeeper tables. Combat, HP, fog, and tokens stay in Foundry
 Observable surface: Foundry combat tracker, actor HP, fog, scene tokens,
 and `FoundryClient` return values.
 
-| Observation point | PASS |
-| --- | --- |
-| `manageCombat({ action:"start" })` on a scene with tokens | tracker is active; `currentCombatantId` is a token/actor id |
-| `manageCombat({ action:"next-turn" })` | `turn` or `currentCombatantId` changes |
-| `manageCombat({ action:"end" })` twice | both succeed; second returns `combatId: null` |
-| `applyDamage({ actorId, amount: 7 })` on a dnd5e actor at 12 HP | sheet HP is 5; return `{ hp: 5 }` |
-| `applyDamage({ actorId, amount: -4 })` | HP increases by 4, capped at max |
-| `applyDamage` on unknown id | `ok: false`, `error.code = "not-found"` |
-| `manageFog({ action:"reveal-scene" })` | player fog on that scene is cleared |
-| `createToken({ actorId, x: 400, y: 300 })` | a token for that actor exists at (400, 300) |
-| `createToken({ x: 1, y: 1 })` (no actor) | `error.code = "bad-args"` |
+| Observation point                                               | PASS                                                        |
+| --------------------------------------------------------------- | ----------------------------------------------------------- |
+| `manageCombat({ action:"start" })` on a scene with tokens       | tracker is active; `currentCombatantId` is a token/actor id |
+| `manageCombat({ action:"next-turn" })`                          | `turn` or `currentCombatantId` changes                      |
+| `manageCombat({ action:"end" })` twice                          | both succeed; second returns `combatId: null`               |
+| `applyDamage({ actorId, amount: 7 })` on a dnd5e actor at 12 HP | sheet HP is 5; return `{ hp: 5 }`                           |
+| `applyDamage({ actorId, amount: -4 })`                          | HP increases by 4, capped at max                            |
+| `applyDamage` on unknown id                                     | `ok: false`, `error.code = "not-found"`                     |
+| `manageFog({ action:"reveal-scene" })`                          | player fog on that scene is cleared                         |
+| `createToken({ actorId, x: 400, y: 300 })`                      | a token for that actor exists at (400, 300)                 |
+| `createToken({ x: 1, y: 1 })` (no actor)                        | `error.code = "bad-args"`                                   |
 
 ## Evaluation rubric
 
-| Criterion | High-quality | Acceptable | Failing |
-| --- | --- | --- | --- |
-| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
-| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
-| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
-| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
-| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
-| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
+| Criterion                       | High-quality                                                                                       | Acceptable                                                   | Failing                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Requirement traceability        | Every in-scope FR/NFR maps to a named interface, type, or step                                     | One mapping is slightly coarse but still findable            | An in-scope FR has no row, or the row is "handled in code"        |
+| Interface concreteness          | Method names, args, return types, and error cases are specified                                    | Types are named; one edge payload is implied                 | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason                                    | No new dep, and the section says why                         | New dep with empty or "none considered" analysis                  |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named                                   | Observable but one scenario is console-only                  | Non-actionable plan (no surface, no observation point)            |
+| Scope-bound adherence           | Touched files ≤8, body ≤500, per-file estimates present                                            | One justified exception marker                               | Silent over-bound or missing Touched files / Expected diff        |
+| Naming consistency              | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name                  |
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-| --- | --- | --- |
-| 4.2 combat tracker | start/end, add, initiative, turn advance | `manageCombat` |
-| 4.2 apply damage / heal | HP changes on the actor sheet | `applyDamage` |
-| 4.2 fog of war | reveal / reset on a scene | `manageFog` |
-| 4.2 token spawn | place an actor at coordinates | `createToken` |
-| 4.3 action capabilities | tools mutate only via typed calls | TDD 0006 wrappers around these methods |
-| 4.8 triggered actions | hidden token place + reveal | `createToken({ hidden:true })` + existing `applyActorUpdate` |
+| PRD ref                 | Requirement                              | Satisfied by                                                 |
+| ----------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| 4.2 combat tracker      | start/end, add, initiative, turn advance | `manageCombat`                                               |
+| 4.2 apply damage / heal | HP changes on the actor sheet            | `applyDamage`                                                |
+| 4.2 fog of war          | reveal / reset on a scene                | `manageFog`                                                  |
+| 4.2 token spawn         | place an actor at coordinates            | `createToken`                                                |
+| 4.3 action capabilities | tools mutate only via typed calls        | TDD 0006 wrappers around these methods                       |
+| 4.8 triggered actions   | hidden token place + reveal              | `createToken({ hidden:true })` + existing `applyActorUpdate` |
 
 ## Dependencies considered
 

@@ -1,6 +1,6 @@
 # Skeinkeeper — Project Memory for AI Coding Tools
 
-> *Wyrd bið ful aræd.*
+> _Wyrd bið ful aræd._
 
 This file gives AI coding assistants (Claude Code, similar tools) project-specific context for working in this repository. If you're not using such a tool, you can ignore this file — `CONTRIBUTING.md` is the right starting point for humans.
 
@@ -44,7 +44,7 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 
 8. **Privacy by design** ([ADR-0010](./docs/adr/0010-privacy-as-architecture.md)). Every persistent data store has a documented deletion path. Every PII field is annotated with the `PII<>` type marker. Voice audio is strictly ephemeral. PRs that add new storage require a deletion adapter before merge.
 
-9. **Don't reinvent abstractions an integrated dependency already provides.** Before designing a new plugin interface or schema layer, check whether a system we're integrating with already provides it. The clearest example: Foundry's per-system data models *are* the ruleset abstraction — we don't build a parallel one. If we find ourselves designing an interface that mirrors a system we already depend on, use theirs instead.
+9. **Don't reinvent abstractions an integrated dependency already provides.** Before designing a new plugin interface or schema layer, check whether a system we're integrating with already provides it. The clearest example: Foundry's per-system data models _are_ the ruleset abstraction — we don't build a parallel one. If we find ourselves designing an interface that mirrors a system we already depend on, use theirs instead.
 
 10. **Evaluate alternatives before committing to a third-party dependency.** Every new dependency added in a TDD or ADR must list at least one evaluated alternative, with explicit notes on licensing, cost, and maintenance posture. Prefer fully-OSS, self-hostable options. Patreon-gated, subscription-gated, or single-vendor-hosted dependencies require a written justification, not silent inclusion.
 
@@ -53,10 +53,11 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 11. **TDD before code for any non-trivial feature.** "Non-trivial" = more than ~100 lines, or touches more than one module, or introduces a new external dependency, or changes a data model, or introduces new processing of personal data. The TDD lives in `/docs/tdd/` and is reviewed before implementation begins. For small bug fixes and refactors, skip this.
 
 12. **Tests alongside features, not after.** Every PR includes:
-   - Unit tests for new deterministic logic (dice, state mutations, parsing).
-   - Eval fixture for new behavioral logic (anything the LLM does).
-   - Telemetry event reference for any new user-visible feature (even though events fire only when opted in).
-   - Deletion-path test for any new persistent storage.
+
+- Unit tests for new deterministic logic (dice, state mutations, parsing).
+- Eval fixture for new behavioral logic (anything the LLM does).
+- Telemetry event reference for any new user-visible feature (even though events fire only when opted in).
+- Deletion-path test for any new persistent storage.
 
 13. **One task per PR.** PRs reviewers can read in ten minutes or less.
 
@@ -67,7 +68,7 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
     - For ADRs/TDDs in `Accepted` status, follow hard rule #15-adjacent: supersede with a new doc, don't rewrite substance in place (see [hard rule about ADR immutability](#hard-rules-process) and [CONTRIBUTING.md](./CONTRIBUTING.md)).
     - For evergreen user-facing docs (README, ARCHITECTURE, PRIVACY, INSTALL, CONTRIBUTING, behavior spec), edit in place.
     - Include the doc changes in the same commit when they're small (typo, link fix, one-line correction); split them into a second commit in the same PR when the doc work is substantial (a rewrite, a new ADR). The PR doesn't land until docs catch up.
-    
+
     Past example: the Foundry-as-source-of-truth refactor changed schemas, dropped tables, swapped a recommended dependency — and shipped without touching README, ARCHITECTURE, PRIVACY, or CONTRIBUTING. A separate doc-sanity-sweep had to be done days later. That sweep should have been part of the refactor PR. Avoid the lag.
 
 ## Tech stack
@@ -89,26 +90,31 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 ## Conventions
 
 **Code style:**
+
 - TypeScript strict mode. No `any` without an explicit `// eslint-disable-next-line` and a comment explaining why.
 - Functional core, imperative shell. Pure functions wherever possible; side effects at the edges.
 - Names: `camelCase` variables and functions, `PascalCase` types and classes, `SCREAMING_SNAKE_CASE` constants.
 - Files: one exported concept per file; co-locate tests as `*.test.ts`.
 
 **Imports:**
+
 - Path aliases via `tsconfig`. No `../../../` chains.
 - Group order: external packages, internal modules, types, then relative.
 
 **Errors:**
+
 - Domain errors are typed (`Result<T, E>` or tagged unions). Don't throw from business logic.
 - HTTP boundaries convert errors to typed responses; no leaked stack traces.
 - All errors emit a typed telemetry event (anonymous; fires only when opted in).
 
 **Comments:**
-- Code comments explain *why*, not *what*. The *what* should be obvious from the names.
+
+- Code comments explain _why_, not _what_. The _what_ should be obvious from the names.
 - Reference the relevant ADR for non-obvious decisions: `// per ADR-0003: state via tool calls only`.
 - TODOs reference an issue number: `// TODO(#142): handle disconnected players gracefully`.
 
 **Commits:**
+
 - Conventional Commits format: `type(scope): summary`. Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`.
 - Body explains the why if it's not obvious from the summary.
 - DCO sign-off (`Signed-off-by:` line) on commits.
@@ -168,12 +174,13 @@ docker compose up         # Runs the whole stack; web UI at localhost:3000.
 
 Before treating a change as done, satisfy the gates CI enforces — easiest via the
 single command `pnpm verify:all` (headers + telemetry registry + lint + type-check
-+ tests + eval). The individual gates:
 
-- **SPDX header** on every committed source file (`.ts/.tsx/.js/.mjs/.cjs` under
+- tests + eval). The individual gates:
+
+* **SPDX header** on every committed source file (`.ts/.tsx/.js/.mjs/.cjs` under
   the code dirs) — the two lines in [`LICENSE-HEADER.txt`](./LICENSE-HEADER.txt).
   CI's `check:headers` fails the PR without it.
-- **DCO sign-off** on every commit. No need for `git commit -s`: a
+* **DCO sign-off** on every commit. No need for `git commit -s`: a
   `prepare-commit-msg` hook auto-appends `Signed-off-by:` from your git identity
   (set `git config user.name` / `user.email` if it's missing).
 
@@ -191,7 +198,7 @@ is handled automatically by the build runner.
 - **Asking the LLM to do math.** Math goes through a tool. Always.
 - **Rolling dice in the model.** Per ADR-0003.
 - **Generating example data with PII-shaped strings** even in tests. Use `fake-` prefixed values.
-- **Adding an operator control to only one surface.** Every operator action/setting must work from *both* the web console and Discord slash commands, and stay synced live across them (one `SessionManager` write path + an `AppEvent` on the bus). Per [ADR-0016](./docs/adr/0016-operator-control-parity-across-surfaces.md) / [TDD 0025](./docs/tdd/0025-operator-control-parity.md). Per-player actions like `/skeinkeeper consent` are exempt (not operator controls).
+- **Adding an operator control to only one surface.** Every operator action/setting must work from _both_ the web console and **Foundry chat commands** (`/skeinkeeper <verb> <args>`), and stay synced live across them (one `SessionManager` write path + an `AppEvent` on the bus). Per [ADR-0028](./docs/adr/0028-operator-control-parity-foundry-chat.md) (supersedes [ADR-0016](./docs/adr/0016-operator-control-parity-across-surfaces.md)) / [TDD 0040](./docs/tdd/0040-operator-control-parity-foundry-chat-commands.md) (supersedes [TDD 0025](./docs/tdd/0025-operator-control-parity.md)). Discord is voice + one-time consent only ([ADR-0025](./docs/adr/0025-foundry-as-table-text-and-operator-surface.md)); do not add operator controls to Discord slash commands. Per-player actions like `/skeinkeeper consent` are exempt (not operator controls).
 
 ## When responding to user requests
 
@@ -204,4 +211,4 @@ is handled automatically by the build runner.
 
 ---
 
-*This file is project memory. Update it when conventions change.*
+_This file is project memory. Update it when conventions change._

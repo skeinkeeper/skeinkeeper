@@ -24,16 +24,16 @@ Skeinkeeper is a single-process application that an operator runs on one machine
             ┌─────▼──────┐           ┌─────▼─────┐            ┌─────▼──────┐
             │ LLMProvider│           │FoundryClient│          │  VoiceIO   │
             │  (Claude,  │           │ (Foundry  │            │ (Discord + │
-            │   GPT, …)  │           │  via OSS  │            │ Deepgram + │
-            │            │           │   MCP)    │            │ElevenLabs) │
+            │   GPT, …)  │           │  1st-party│            │ Deepgram + │
+            │            │           │  add-on)  │            │ElevenLabs) │
             └────────────┘           └─────┬─────┘            └─────┬──────┘
                                            │                        │
                                   ┌────────▼──────────┐      ┌──────▼──────┐
                                   │   Foundry VTT     │      │   Players   │
                                   │  (authoritative   │      │  (Discord)  │
                                   │  mechanical state │      └─────────────┘
-                                  │  per ADR-0011 +   │
-                                  │  TDD 0007)        │
+                                  │  per ADR-0018 +   │
+                                  │  TDD 0041/0007)   │
                                   └───────────────────┘
               │
       ┌───────▼────────┐
@@ -83,19 +83,19 @@ Every persistent record carries a `tenant_id`. The default tenant for a fresh in
 
 ## Plugin interfaces
 
-Three pluggable surfaces, each with a stable interface and one default implementation:
+Two pluggable contribution surfaces, plus one internal seam, each with a stable interface and one default implementation:
 
-| Interface       | Default                                                         | Purpose                                                         |
-| --------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
-| `LLMProvider`   | `AnthropicProvider`                                             | Generate narration and tool calls                               |
-| `FoundryClient` | `McpFoundryClient` (via the OSS Foundry MCP bridge of ADR-0011) | Operate the visual tabletop; authoritative for mechanical state |
-| `VoiceIO`       | `DiscordVoiceIO`                                                | Bridge to players (STT + TTS + Discord transport)               |
+| Interface       | Default                                            | Purpose                                                         |
+| --------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| `LLMProvider`   | `AnthropicProvider`                                | Generate narration and tool calls                               |
+| `VoiceIO`       | `DiscordVoiceIO`                                   | Bridge to players (STT + TTS + Discord transport)               |
+| `FoundryClient` | `ModuleFoundryClient` (first-party Foundry add-on) | Operate the visual tabletop; authoritative for mechanical state |
+
+`LLMProvider` and `VoiceIO` are the public plugin surfaces ([ADR-0004](./adr/0004-plugin-interface-pattern.md)). `FoundryClient` is an **internal seam**, not a "write your own VTT driver" surface — Foundry is the only VTT, and the `VTTDriver` plugin interface was dropped per [ADR-0030](./adr/0030-drop-vttdriver-plugin-interface.md). The concrete client is Skeinkeeper's own Foundry add-on (`modules/skeinkeeper`), which the operator enables in their world; it dials the local Skeinkeeper gateway over WebSocket ([ADR-0029](./adr/0029-first-party-foundry-addon.md) / [TDD 0041](./tdd/0041-first-party-foundry-addon.md), superseding the third-party MCP bridge of ADR-0011). Tests use `MockFoundryClient`.
 
 Audience-tagged output is emitted through `SurfaceRouter` (TDD 0034 / [ADR-0025](./adr/0025-foundry-as-table-text-and-operator-surface.md)): `table` → Discord voice + Foundry public chat; `player` → Foundry whisper; `gm` → Foundry GM chat. There is no parallel Discord text-channel mirror.
 
-A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts`. Per-system mutation tools are planned to be registered by the Foundry plugin at session start, but are not yet wired (see "How a turn works" below and the mutation gap in [TDD 0014](./tdd/0014-mcp-foundry-client.md)). See [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md).
-
-See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP bridge choice (supersedes [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md)) and [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
+A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts`. Per-system mutation tools (apply-damage, combat, fog, token spawn) are registered by the Foundry plugin at session start; the add-on write surface for them is [TDD 0042](./tdd/0042-foundry-mechanical-writes.md) (see its Implementation-status section for what is live vs. pending live-validation). See [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md) and [ADR-0018](./adr/0018-foundry-source-of-truth.md).
 
 ## Session intake
 
@@ -112,8 +112,8 @@ A simplified flow:
 1. **Player speaks** in Discord voice channel.
 2. **VoiceIO** transcribes via STT, attributes to player by Discord user ID.
 3. **Orchestrator** assembles hot context: warm-state snapshot (Foundry read + Skeinkeeper SQLite read) + retrieved cold knowledge + dialogue window + behavior spec.
-4. **LLM call** with tools available. Core tools (system-agnostic): `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `resolve_action` (private-action audience flip to the table), `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator notes — including the session-intake report), plus TDD 0033 triggered actions `reveal_token`, `hide_token`, `place_hidden_token`, `share_journal_to_audience`, `distribute_loot`. System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
-5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to MCP calls (reads + scene activation today; broader mutation as the bridge gains it). Either way, the dispatcher writes an audit-log row and returns results to the model.
+4. **LLM call** with tools available. Core tools (system-agnostic): `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `resolve_action` (private-action audience flip to the table), `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator notes — including the session-intake report), plus TDD 0033 triggered actions `reveal_token`, `hide_token`, `place_hidden_token`, `share_journal_to_audience`, `distribute_loot`. The add-on implements table text, server-side rolls, and the token show/hide/move path; system-specific _mutation_ tools (apply-damage, combat, fog, token spawn) are the [TDD 0042](./tdd/0042-foundry-mechanical-writes.md) write surface — see its Implementation-status section for what is live vs. pending live-validation (the add-on returns a clear `not-implemented` error for the pending writes rather than silently no-op'ing).
+5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to add-on `req` calls over the WebSocket gateway ([TDD 0041](./tdd/0041-first-party-foundry-addon.md)). Either way, the dispatcher writes an audit-log row and returns results to the model.
 6. **Model narrates** over the deterministic outcome.
 7. **SurfaceRouter** fans the table-audience narration to Discord voice (TTS) and Foundry public chat. Player-audience output is a Foundry whisper; GM-audience (including `notify_operator`) is Foundry GM chat. Discord DMs are consent-only.
 
