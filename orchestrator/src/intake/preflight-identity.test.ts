@@ -33,7 +33,7 @@ describe("verifyIdentityPreflight", () => {
   it("no-foundry-user is critical when the map has no Foundry user", () => {
     const result = verifyIdentityPreflight(
       base({
-        identityMap: [{ discordUserId: "d1", foundryUserId: undefined, foundryActorId: "a1" }],
+        identityMap: [{ discordUserId: "d1", foundryActorId: "a1" }],
       }),
     );
     expect(result.status).toBe("critical-gaps");
@@ -78,7 +78,8 @@ describe("verifyIdentityPreflight", () => {
   });
 
   it("no-dm-foundry-user-designated is critical when the DM user is unset", () => {
-    const result = verifyIdentityPreflight(base({ dmFoundryUserId: undefined }));
+    const { dmFoundryUserId: _omit, ...unsetDm } = base();
+    const result = verifyIdentityPreflight(unsetDm);
     expect(result.status).toBe("critical-gaps");
     expect(result.findings).toContainEqual({ kind: "no-dm-foundry-user-designated" });
   });
