@@ -303,3 +303,26 @@ Fires when `record_player_character` writes a map row.
 
 - `source: string` — `player` | `operator`.
 - `hasFoundryUser: boolean` — whether a Foundry user was bound at record-time.
+
+### `erasure.completed` (v1)
+
+Fires when an erasure run finishes (TDD 0003 / TDD 0038). No subject IDs.
+
+- `scope: string` — `player` | `campaign` | `tenant`.
+- `totalRecords: number` — sum of per-adapter `recordsDeleted`.
+- `adapterCount: number` — adapters that ran for the scope.
+
+### `erasure.partial-success` (v1)
+
+Fires when at least one adapter returned a manual remainder (TDD 0038). Reasons only — no Foundry or Discord IDs.
+
+- `scope: string` — as `erasure.completed`.
+- `remainderCount: number` — number of remainders.
+- `reasons: string[]` — deduped remainder reasons (`no-foundry-user-mapped`, `addon-unavailable`, `foundry-call-failed`, …).
+
+### `erasure.adapter.failed` (v1)
+
+Fires once per adapter that returned a manual remainder.
+
+- `adapter: string` — adapter name (e.g. `foundry-whisper`).
+- `reason: string` — remainder reason. No IDs.

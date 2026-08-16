@@ -116,7 +116,9 @@ Every PR includes:
 
 ### New persistent storage requires a DeletionAdapter
 
-Any PR that adds a new persistent data store (table, file, vector collection) must also register a `DeletionAdapter` for it under `server/src/adapters/` before merge. Reviewers will reject otherwise. The mechanism is `ErasureService.register(adapter)` per [TDD 0003](./docs/tdd/0003-erasure-and-export.md). The same applies to `ExportAdapter` so the new data shows up in operator exports.
+Any PR that adds a new persistent data store (table, file, vector collection) must also register a `DeletionAdapter` for it under `server/src/adapters/` before merge. Reviewers will reject otherwise. The mechanism is `ErasureService.register(adapter)` per [TDD 0003](./docs/tdd/0003-erasure-and-export.md) / [TDD 0038](./docs/tdd/0038-per-audience-erasure-cascade-to-foundry.md). The same applies to `ExportAdapter` so the new data shows up in operator exports.
+
+Adapters MAY return `DeletionAdapterResult.manualRemainder` only when full deletion is genuinely impossible within the adapter's scope (the store is not Skeinkeeper-controlled — typically Foundry). Adapters over Skeinkeeper-owned stores (SQLite tables, LanceDB collections, files in `data/`) MUST always fully delete; a `manualRemainder` from such an adapter is a bug, not a runtime condition.
 
 ### Commits
 

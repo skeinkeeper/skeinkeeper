@@ -37,7 +37,7 @@ What lives in **Foundry** (not in Skeinkeeper's database):
 - Combat tracker — initiative, current turn, active effects
 - Dice rolls — handled and audited on Foundry's side via its chat log
 
-If you erase a player's data from Skeinkeeper, the Skeinkeeper-side erasure does _not_ reach into Foundry. You as the operator are responsible for any matching erasure in Foundry — those are separate stores.
+If you erase a player's data from Skeinkeeper, `player:delete` also tries to delete that player's Foundry whisper history (messages they authored or received). Character sheets and other mechanical state stay in Foundry — you erase those with Foundry's own tools. Foundry-server backups are outside Skeinkeeper's reach.
 
 What Skeinkeeper does **not** store, anywhere:
 
@@ -93,7 +93,21 @@ Writes an archive (JSON + a readable HTML summary) of everything Skeinkeeper has
 pnpm skeinkeeper player:delete --tenant <id> --subject <discord-id> [--yes]
 ```
 
-Cascades across the player's **personal** data: dialogue transcripts (their spoken/typed lines), the 3-way identity row (Discord user ID **and** Foundry user ID **and** display name — all `PII<>`), consent records, and their **private side-channel content** — their 1:1 Foundry whispers with the DM and the DM's private replies addressed to them, plus any private memory derived from them ([ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)). (`--yes` skips the confirmation prompt.) The **audit log is not erased per-player** — it's part of the tamper-evident audit trail and is removed only on full tenant deletion. A record of the deletion itself is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper. Foundry-side whisper history is a separate store; cascading that delete is [TDD 0038](./tdd/0038-per-audience-erasure-cascade-to-foundry.md). Until that lands, erase matching Foundry whispers yourself if a player asks to be forgotten.
+Cascades across the player's **personal** data:
+
+- **Skeinkeeper-side:** dialogue transcripts (their spoken/typed lines, audience-tagged per [ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)), private episodic memory derived from them, the 3-way identity row (Discord user ID **and** Foundry user ID **and** display name — all `PII<>`), and consent records. The **audit log is not erased per-player** — it's part of the tamper-evident audit trail and is removed only on full tenant deletion. A record of the deletion itself is kept (anonymous: just the fact that deletion occurred, when, and whether it was partial) for your own audit purposes.
+- **Foundry-side:** whisper history for the player's current Foundry user (messages they authored or received), deleted via the Foundry add-on when it is connected.
+
+(`--yes` skips the confirmation prompt.) Character sheets and other mechanical state live in your Foundry instance; those are not part of this cascade.
+
+**Partial success.** If the Foundry side cannot complete — add-on not connected, `deleteChatMessages` error, or no Foundry user mapped — Skeinkeeper still finishes its own stores and reports the remainder. The CLI prints `WARNING:` lines and exits **2** (0 = clean success, 1 = a Skeinkeeper adapter threw, 2 = remainders you still need to handle). Hand the player that summary: it lists what was deleted and what you may need to remove in Foundry's GM chat-log UI (or retry `player:delete` once Foundry is back).
+
+**Known limits.**
+
+- If you remapped a player's Foundry user mid-campaign, only the **current** binding is cascaded. Delete the prior user's whispers in Foundry yourself.
+- `campaign:delete` / `tenant:delete` do **not** remove Foundry chat history. Delete the Foundry world or use Foundry's GM tools.
+- Skeinkeeper does **not** reach Foundry-server backups (nightly dumps, hosted-Foundry vendor snapshots). Rotate those on a documented retention window if you treat erasure as a hard commitment.
+- `player:export` is Skeinkeeper-side only. Foundry-side data is not exported — use Foundry's own GM export tools. The HTML summary names this.
 
 **Private side-channels: what "private" means.** A player messages the DM privately with a **Foundry whisper** (not a Discord DM) for a side question or a surprise action ([TDD 0035](./tdd/0035-side-channels-via-foundry-whisper.md)). Two layers keep that private from other players: Skeinkeeper never puts another player's private content (or `gm` secrets) into a `player:<id>` LLM context, and Foundry delivers the whisper only to that recipient. It is **not private from you, the operator**: you see every whisper in Foundry's standard GM view, and Skeinkeeper also keeps the audience-tagged transcript for session replay, export, and erasure (the web console's escalation pane is the degraded fallback when no operator Foundry user is known). Don't promise players secrecy from the operator. Private side-channel content is **player-scoped and individually erasable** (the per-player deletion above), unlike the campaign's shared memory. The 3-way identity map is likewise operator-visible: Discord ID and Foundry user ID appear in GM chat escalations and in console replay, never in player-facing table text.
 
