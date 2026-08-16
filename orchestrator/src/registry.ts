@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryClient } from "./foundry/client.js";
+import type { LifecycleStateReader } from "./sessions/lifecycle.js";
 import type { SessionRunState } from "./session/run-state.js";
 import type { SideChannelIdentityMap } from "./side_channel/identity_map.js";
 import type { SurfaceRouter } from "./surfaces/router.js";
@@ -121,7 +122,12 @@ export type ToolResult =
   | { ok: true; output: unknown; latencyMs: number }
   | {
       ok: false;
-      kind: "unknown_tool" | "invalid_input" | "handler_error" | "operator_gated";
+      kind:
+        | "unknown_tool"
+        | "invalid_input"
+        | "handler_error"
+        | "operator_gated"
+        | "aborted-foundry-down";
       error: string;
       latencyMs: number;
     };
@@ -134,6 +140,10 @@ export interface ToolDispatcherOptions {
    *  read-only handlers are unaffected. Absent = no serialization (the legacy
    *  single-table flow, where there's only ever one in-flight turn). */
   writeSerializer?: Mutex;
+  /** Session lifecycle state (design doc 0039). When non-`active`, every
+   *  dispatch is short-circuited with `aborted-foundry-down` so no
+   *  half-applied tool calls land on Foundry-side state while paused. */
+  lifecycle?: LifecycleStateReader;
 }
 
 export class ToolDispatcher {
@@ -150,6 +160,22 @@ export class ToolDispatcher {
     ctx: ToolHandlerContext,
   ): Promise<ToolResult> {
     const start = Date.now();
+
+    // Design doc 0039 §3: while paused-foundry-down, no tool dispatches happen —
+    // checked before each tool call so an in-flight turn aborts cleanly.
+    const lifecycle = this.options.lifecycle;
+    if (lifecycle !== undefined && lifecycle.current().kind !== "active") {
+      const result: ToolResult = {
+        ok: false,
+        kind: "aborted-foundry-down",
+        error: "Session is paused (Foundry unreachable); tool dispatch aborted.",
+        latencyMs: Date.now() - start,
+      };
+      this.recordAudit(call, ctx, result);
+      this.recordTelemetry(call.name, false, result.latencyMs);
+      return result;
+    }
+
     const tool = this.options.registry.get(call.name);
 
     if (!tool) {

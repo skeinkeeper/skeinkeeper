@@ -332,7 +332,10 @@ export type TurnStopReason =
   | "max_tool_iterations"
   | "refusal"
   | "llm_error"
-  | "aborted";
+  | "aborted"
+  // Design doc 0039: the dispatcher short-circuited a tool call because the
+  // session paused (Foundry unreachable); the in-flight turn drains here.
+  | "aborted-foundry-down";
 
 export interface TurnOutput {
   narration: string;
@@ -503,6 +506,7 @@ async function runLlmIterations(
     messages.push({ role: "assistant", content: assistantContent });
 
     // Dispatch tools and collect results.
+    let abortedFoundryDown = false;
     const toolResultBlocks: LLMContent[] = [];
     const ctx = {
       tenantDb: cfg.tenantDb,
@@ -543,6 +547,12 @@ async function runLlmIterations(
         ok: result.ok,
       };
       allToolCalls.push(dispatched);
+      // Design doc 0039 §3 step 1: the session paused mid-turn — skip the
+      // remaining pending tool calls and drain without another round-trip.
+      if (!result.ok && result.kind === "aborted-foundry-down") {
+        abortedFoundryDown = true;
+        break;
+      }
       const resultBlock: LLMContent = {
         type: "tool_result",
         toolUseId: tc.id,
@@ -550,6 +560,10 @@ async function runLlmIterations(
       };
       if (!result.ok) resultBlock.isError = true;
       toolResultBlocks.push(resultBlock);
+    }
+    if (abortedFoundryDown) {
+      stopReason = "aborted-foundry-down";
+      break;
     }
     messages.push({ role: "user", content: toolResultBlocks });
 
@@ -674,7 +688,11 @@ export async function runTurn(
   // it in hot context (in-memory + DB). In a side-channel it carries the
   // conversation's audience, so the private reply stays private (design doc
   // 0026 §2) and is player-scoped erasable (ADR-0017).
-  if (narration.length > 0) {
+  // A turn aborted by the Foundry-down pause emits nothing: the table must not
+  // hear narration for a turn whose tool calls never landed, and the transcript
+  // must not record words the players never heard (design doc 0039 §3). The
+  // audit log below is the durable record of the abort.
+  if (narration.length > 0 && stopReason !== "aborted-foundry-down") {
     appendDialogue(
       cfg,
       session,
@@ -702,7 +720,9 @@ export async function runTurn(
   // Tools may have mutated state — refresh for the output, but only if any
   // tool ran. A pure-narration turn can't have changed warm state, so the
   // common "DM just narrates" case skips a second round of Foundry reads.
-  if (allToolCalls.length > 0) {
+  // An aborted-foundry-down turn also skips it: no tool landed, and the
+  // Foundry reads would fail against the down connection anyway.
+  if (allToolCalls.length > 0 && stopReason !== "aborted-foundry-down") {
     warmState = await buildWarmStateSnapshot(cfg.foundry, cfg.tenantDb, cfg.campaignId);
   }
 

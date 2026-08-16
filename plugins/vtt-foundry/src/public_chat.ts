@@ -4,6 +4,7 @@
 import type {
   FoundryChatEvent,
   FoundryClient,
+  FoundrySurfaceLifecycleGate,
   InboundSurface,
   OutboundSurface,
   SurfaceInputEvent,
@@ -16,6 +17,8 @@ import { parseChatConvention } from "./convention.js";
 export interface FoundryPublicChatSurfaceOptions {
   client: FoundryClient;
   wakePhrase?: string;
+  /** Design doc 0039: while paused-foundry-down, emits no-op (coalesced skip). */
+  lifecycle?: FoundrySurfaceLifecycleGate;
 }
 
 export class FoundryPublicChatSurface implements OutboundSurface, InboundSurface {
@@ -27,6 +30,7 @@ export class FoundryPublicChatSurface implements OutboundSurface, InboundSurface
   constructor(private readonly opts: FoundryPublicChatSurfaceOptions) {}
 
   async emit(output: SurfaceOutput): Promise<void> {
+    if (emitSkippedWhilePaused(this.opts.lifecycle, this.name, output)) return;
     const content = formatPublicContent(output);
     if (content.length === 0) return;
     await this.opts.client.postChatMessage({ content, mode: "public" });
@@ -67,6 +71,22 @@ export class FoundryPublicChatSurface implements OutboundSurface, InboundSurface
       this.handleChatEvent(event);
     });
   }
+}
+
+/**
+ * Design doc 0039 §3: while the session is paused-foundry-down, Foundry-side
+ * emits short-circuit to a no-op **success** — the surface is behaving
+ * correctly for the lifecycle state, so no retries and no error spam. The gate
+ * coalesces the `surface.emit.skipped` telemetry per surface per episode.
+ */
+export function emitSkippedWhilePaused(
+  lifecycle: FoundrySurfaceLifecycleGate | undefined,
+  surfaceName: string,
+  output: SurfaceOutput,
+): boolean {
+  if (lifecycle === undefined || lifecycle.current().kind === "active") return false;
+  lifecycle.noteEmitSkipped(surfaceName, output.audience.kind);
+  return true;
 }
 
 function formatPublicContent(output: SurfaceOutput): string {

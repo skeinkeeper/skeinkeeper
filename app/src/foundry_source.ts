@@ -19,6 +19,10 @@ export interface FoundrySource {
   connect(): Promise<FoundryClient>;
   worldContent(): WorldContentReader;
   close(): Promise<void>;
+  /** Add-on `evt gone` (TDD 0041) — the load-bearing Foundry-down signal
+   *  (design doc 0039 §2a). Returns an unsubscribe. Optional so test fakes
+   *  without a gateway can omit it. */
+  onGone?(handler: () => void): () => void;
 }
 
 export function createFoundrySource(config: AppConfig, _env: NodeJS.ProcessEnv): FoundrySource {
@@ -69,5 +73,6 @@ export function createFoundrySource(config: AppConfig, _env: NodeJS.ProcessEnv):
         listening = false;
       }
     },
+    onGone: (handler) => gateway.onGone(handler),
   };
 }

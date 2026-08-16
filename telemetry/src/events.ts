@@ -23,6 +23,33 @@ export const events = {
       turnCount: number;
     },
   },
+  "session.paused": {
+    v: 1,
+    description: "Session lifecycle transitioned to paused-foundry-down.",
+    props: {} as {
+      cause: "addon-gone" | "emit-failure" | "heartbeat-failure";
+      consecutiveFailureCount: number;
+    },
+  },
+  "session.resumed": {
+    v: 1,
+    description: "Session lifecycle transitioned back to active on operator resume.",
+    props: {} as {
+      pausedDurationMs: number;
+      bufferedInputs: number;
+      preflightStatus: string;
+    },
+  },
+  "session.resume_failed": {
+    v: 1,
+    description: "Operator requested resume but pre-flight returned critical findings.",
+    props: {} as { pausedDurationMs: number; preflightCriticalCount: number },
+  },
+  "foundry.heartbeat.failed": {
+    v: 1,
+    description: "A Foundry heartbeat call failed; consecutiveFailures is the run length.",
+    props: {} as { consecutiveFailures: number; reason: string },
+  },
   "tool.called": {
     v: 1,
     description: "A typed tool was invoked by the orchestrator.",
@@ -220,6 +247,12 @@ export const events = {
       audience: { kind: "table" | "player" | "gm"; player?: string };
       reason: string;
     },
+  },
+  "surface.emit.skipped": {
+    v: 1,
+    description:
+      "A Foundry-side emit was short-circuited while paused. Coalesced: fires once per pause episode per surface, not per attempt.",
+    props: {} as { surface: string; audienceKind: string; lifecycleState: string },
   },
   "surface.input": {
     v: 1,

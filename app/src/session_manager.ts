@@ -37,12 +37,26 @@ import {
   registerFoundrySystemTools,
 } from "@skeinkeeper/vtt-foundry";
 import {
+  DEFAULT_PAUSE_ANNOUNCEMENT,
+  DEFAULT_RESUME_ANNOUNCEMENT,
   Mutex,
   PVP_SETTING_KEY,
+  PausedInputBuffer,
   SideChannelCoordinator,
   SideChannelIdentityMap,
   SurfaceRouter,
   ToolDispatcher,
+  createLifecycleController,
+  formatIdentityPreflightReport,
+  prepareLifecycleAnnouncements,
+  runResumePreflight,
+  startFoundryHeartbeat,
+  type BufferFragment,
+  type FoundryHeartbeat,
+  type LifecycleController,
+  type LifecyclePreflightOutcome,
+  type ResumeResult,
+  type SessionLifecycleState,
   activateScene,
   archiveSession,
   announceReadyAllowed,
@@ -91,6 +105,7 @@ import type { AppConfig } from "./config.js";
 import type { ConsentService } from "./consent.js";
 import type { FoundrySource } from "./foundry_source.js";
 import { pickDmFoundryUserId, pickOperatorFoundryUserId } from "./foundry_identity.js";
+import { formatPauseDm, shouldSendPauseDm } from "./lifecycle_notification.js";
 import {
   OperatorService,
   operatorActionIsPrivileged,
@@ -133,7 +148,17 @@ export type AppEvent =
       status: "ok" | "critical-gaps" | "warnings-only";
       findingCount: number;
       criticalCount: number;
-    };
+    }
+  /** Session lifecycle transition (design doc 0039): the console shows the
+   *  pause indicator + Resume button on `paused-foundry-down`. */
+  | {
+      kind: "lifecycleStateChanged";
+      state: "active" | "paused-foundry-down";
+      cause?: "addon-gone" | "emit-failure" | "heartbeat-failure";
+      since?: string;
+    }
+  /** Operator pause-notification DM consent changed (design doc 0039). */
+  | { kind: "operatorDmConsent"; consented: boolean };
 
 export interface IntakeViewFinding {
   id: number;
@@ -230,6 +255,15 @@ export class SessionManager {
   private identity = new SideChannelIdentityMap();
   private coordinator: SideChannelCoordinator | null = null;
   private foundryPresence: FoundryPresencePoller | null = null;
+  /** Foundry-down session lifecycle (design doc 0039); per-session. */
+  private lifecycle: LifecycleController | null = null;
+  private heartbeat: FoundryHeartbeat | null = null;
+  private goneUnsub: (() => void) | null = null;
+  private lifecycleUnsub: (() => void) | null = null;
+  private voicePausedInputs = new PausedInputBuffer<BufferFragment>();
+  private whisperPausedInputs = new PausedInputBuffer<{ playerId: string; text: string }>();
+  /** Rate-limit: one operator pause DM per pause episode (`since` key). */
+  private lastPauseDmEpisode: string | null = null;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -434,7 +468,28 @@ export class SessionManager {
         if (control.action === "start") {
           return "Session start is console-only at v0.5 (cold-start) — open the operator console.";
         }
-        return `Session ${control.action} isn't available yet (Foundry-down lifecycle is not shipped).`;
+        if (control.action === "resume") {
+          // Design doc 0039 §4: same SessionManager.resume() write path as the
+          // console's Resume button (parity per ADR-0028).
+          const result = await this.resume();
+          switch (result.kind) {
+            case "ok":
+              return "Session resumed.";
+            case "already-active":
+              return "Session is already active — nothing to resume.";
+            case "preflight-failed":
+              return `Resume blocked: pre-flight found ${result.findings.length} finding(s); see the escalation report.`;
+            case "not-running":
+              return "No session is running — cold-start from the operator console.";
+          }
+        }
+        // action === "pause": detector-driven only at v0.5 (design doc 0039).
+        return "There's no operator-initiated pause — the session pauses itself when Foundry becomes unreachable, and you resume it here or from the console.";
+      case "operator-dm-consent":
+        this.setOperatorDmConsent(control.enabled);
+        return control.enabled
+          ? "Pause-notification DMs enabled — you'll get one Discord DM per Foundry-down pause."
+          : "Pause-notification DMs disabled.";
       case "eagerness": {
         const level = normalizeEagerness(control.level);
         if (level === undefined) {
@@ -724,6 +779,22 @@ export class SessionManager {
     this.coordinator = null;
     this.surfaces = null;
     this.consentSurface = null;
+    this.teardownLifecycle();
+  }
+
+  /** Lifecycle state is per-session in-memory (design doc 0039 §Data): a
+   *  Skeinkeeper stop/restart discards it; the audit rows are the record. */
+  private teardownLifecycle(): void {
+    this.heartbeat?.stop();
+    this.heartbeat = null;
+    this.goneUnsub?.();
+    this.goneUnsub = null;
+    this.lifecycleUnsub?.();
+    this.lifecycleUnsub = null;
+    this.lifecycle = null;
+    this.lastPauseDmEpisode = null;
+    this.voicePausedInputs.drain();
+    this.whisperPausedInputs.drain();
   }
 
   private async doStart(): Promise<void> {
@@ -738,6 +809,38 @@ export class SessionManager {
       const reason = err instanceof Error ? err.message : String(err);
       throw new Error(`Refusing to Start: Foundry add-on is not connected. ${reason}`);
     }
+
+    // Foundry-down session lifecycle (design doc 0039). The controller fuses
+    // add-on `evt gone`, Foundry-surface emit-failure storms, and the periodic
+    // heartbeat; only SessionManager.resume() transitions back to active.
+    this.voicePausedInputs = new PausedInputBuffer<BufferFragment>();
+    this.whisperPausedInputs = new PausedInputBuffer<{ playerId: string; text: string }>();
+    this.lastPauseDmEpisode = null;
+    const lifecycle = createLifecycleController({
+      preflight: () => this.resumePreflight(foundry),
+      audit: (eventType, payload) => {
+        const sessionId = this.session?.config.sessionId ?? "pending";
+        this.deps.tenantDb.auditLog.append({
+          sessionId,
+          turnId: `${sessionId}-lifecycle-${Date.now()}`,
+          actor: "app:lifecycle",
+          eventType,
+          payloadJson: JSON.stringify(payload),
+          timestamp: Date.now(),
+        });
+      },
+      bufferedInputs: () => this.voicePausedInputs.size + this.whisperPausedInputs.size,
+      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+    });
+    this.lifecycle = lifecycle;
+    this.lifecycleUnsub = lifecycle.onTransition((next, prev) =>
+      this.onLifecycleTransition(next, prev),
+    );
+    this.goneUnsub =
+      this.deps.foundry.onGone?.(() =>
+        lifecycle.reportAddonGone("Foundry add-on disconnected (evt gone)"),
+      ) ?? null;
+    this.heartbeat = startFoundryHeartbeat({ client: foundry, lifecycle });
 
     const client = new Client({
       intents: [
@@ -845,6 +948,8 @@ export class SessionManager {
       // Single serialized writer so the table loop and side-channel turns never
       // race shared world-state (design doc 0026 §3).
       writeSerializer: this.writeSerializer,
+      // Design doc 0039: no tool dispatches while paused-foundry-down.
+      lifecycle,
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     const behaviorSpec = loadBehaviorSpec(findDefaultBehaviorSpec(import.meta.dirname));
@@ -872,7 +977,7 @@ export class SessionManager {
     };
     this.routing = routing;
     this.bindIdentityFromPersistentMap();
-    const surfaces = this.buildSurfaceRouter(foundry, voiceIO, client, routing);
+    const surfaces = this.buildSurfaceRouter(foundry, voiceIO, client, routing, lifecycle);
     this.surfaces = surfaces;
     // Operator escalations land in Foundry GM chat (TDD 0034). The router
     // fans `gm` + escalation to GM chat and, when known, a whisper.
@@ -913,8 +1018,25 @@ export class SessionManager {
       router: surfaces,
       identity: this.identity,
       onOperatorCommand: (event) => this.handleFoundryCommand(event),
+      // Design doc 0039: whisper turns buffer while paused; commands still flow
+      // so `/skeinkeeper session action:resume` works once the add-on is back.
+      lifecycle,
+      pausedInputs: this.whisperPausedInputs,
     });
     void this.coordinator.start();
+    // Pause/resume TTS announcements: one-shot generation + pre-render, cached
+    // on the run state so pause-time needs no LLM call (design doc 0039). Off
+    // the Start critical path; the defaults cover a pause that beats it.
+    void prepareLifecycleAnnouncements({
+      llm: providers.llm,
+      tts: providers.tts,
+      config: this.session.config,
+      voiceId: this.controls.dmVoiceId,
+    })
+      .then((announcements) => {
+        this.runState.lifecycleAnnouncements = announcements;
+      })
+      .catch(() => undefined);
     await this.runIntakeAtStart();
     this.startFoundryPresenceWatch(foundry);
 
@@ -934,6 +1056,9 @@ export class SessionManager {
       voiceIO,
       session: this.session,
       consentText: VOICE_CONSENT_TEXT,
+      // Design doc 0039: gate the loop + buffer utterances across a pause.
+      lifecycle,
+      pausedInputs: this.voicePausedInputs,
       getEagerness: () => this.controls.eagerness,
       isConsented: (id) => this.deps.consent.isGranted(id),
       intakeReady: () => this.intakeReadyFlag,
@@ -988,10 +1113,129 @@ export class SessionManager {
     this.coordinator = null;
     this.surfaces = null;
     this.consentSurface = null;
+    this.teardownLifecycle();
     this.extendedStarted = false;
     this.intakeReadyFlag = true;
     this.runState = createSessionRunState();
     this.deps.onEvent?.({ kind: "status", status: "stopped" });
+  }
+
+  // ---- Foundry-down session lifecycle (design doc 0039) ----
+
+  /** Current lifecycle state, or null when no session is running. */
+  lifecycleState(): SessionLifecycleState | null {
+    return this.lifecycle?.current() ?? null;
+  }
+
+  /**
+   * Single write path for operator resume (design doc 0039 §4): the web
+   * console's Resume button and `/skeinkeeper session action:resume` both land
+   * here (parity per ADR-0028). Re-runs the pre-flight verifier; on critical
+   * gaps the state stays paused and the findings surface to the operator.
+   */
+  async resume(): Promise<ResumeResult | { kind: "not-running" }> {
+    const lifecycle = this.lifecycle;
+    if (lifecycle === null) return { kind: "not-running" };
+    const result = await lifecycle.requestResume();
+    if (result.kind === "preflight-failed") {
+      const report = formatIdentityPreflightReport({
+        status: "critical-gaps",
+        findings: result.findings,
+      });
+      const message = `Resume blocked — Foundry pre-flight failed.\n${report}`;
+      // Console always sees it (SSE); Foundry GM chat sees it if chat is back
+      // (a still-down Foundry short-circuits the emit to a no-op).
+      this.deps.onEvent?.({ kind: "operatorEscalation", message, severity: "warning" });
+      void this.surfaces
+        ?.emit({ audience: { kind: "gm" }, text: message, meta: { escalation: true } })
+        .catch(() => undefined);
+    }
+    return result;
+  }
+
+  /** Operator DM-consent for pause notifications (design doc 0039 step 9) —
+   *  single write path; both surfaces call this. */
+  setOperatorDmConsent(consented: boolean): void {
+    this.operator.setDmConsent(consented);
+    this.deps.onEvent?.({ kind: "operatorDmConsent", consented });
+  }
+
+  get operatorDmConsented(): boolean {
+    return this.operator.dmConsentedAt() !== undefined;
+  }
+
+  private onLifecycleTransition(next: SessionLifecycleState, prev: SessionLifecycleState): void {
+    if (next.kind === "paused-foundry-down") {
+      this.deps.onEvent?.({
+        kind: "lifecycleStateChanged",
+        state: "paused-foundry-down",
+        cause: next.cause,
+        since: next.since,
+      });
+      // One TTS announce per pause episode; bypasses the input buffer (it's
+      // TTS-only, not a turn). notify_operator is NOT used — it writes to the
+      // very surface that's down; the DM below is the out-of-band signal.
+      void this.speakLifecycleAnnouncement("pauseFoundryDown");
+      void this.sendOperatorPauseDm(next);
+      return;
+    }
+    if (prev.kind === "paused-foundry-down") {
+      this.deps.onEvent?.({ kind: "lifecycleStateChanged", state: "active" });
+      void this.speakLifecycleAnnouncement("resumeOk");
+    }
+  }
+
+  /** Speak the cached announcement text (the only thing TTS'd at pause-time —
+   *  no LLM call; design doc 0039 §3 step 3). */
+  private async speakLifecycleAnnouncement(which: "pauseFoundryDown" | "resumeOk"): Promise<void> {
+    const cached = this.runState.lifecycleAnnouncements?.[which];
+    const text =
+      cached?.text ??
+      (which === "pauseFoundryDown" ? DEFAULT_PAUSE_ANNOUNCEMENT : DEFAULT_RESUME_ANNOUNCEMENT);
+    try {
+      await this.voiceIO?.speak(text, { voiceId: this.controls.dmVoiceId });
+    } catch {
+      // Voice may be down too (concurrent outage): logged path only —
+      // nothing else to do (design doc 0039 §Failure modes).
+      console.warn(`[lifecycle] ${which} announcement failed to play`);
+    }
+  }
+
+  /** One Discord DM per pause episode, gated on operator DM-consent — the
+   *  second narrow exception to "Discord DM = one-time consent only". */
+  private async sendOperatorPauseDm(state: SessionLifecycleState): Promise<void> {
+    const decision = shouldSendPauseDm({
+      state,
+      operatorUserId: this.operator.get(),
+      dmConsented: this.operator.dmConsentedAt() !== undefined,
+      lastNotifiedEpisode: this.lastPauseDmEpisode,
+    });
+    if (!decision.send) return;
+    this.lastPauseDmEpisode = decision.episode;
+    const operatorId = this.operator.get();
+    if (operatorId === undefined || this.client === null) return;
+    try {
+      const user = await this.client.users.fetch(operatorId);
+      await user.send({ content: formatPauseDm(state) });
+    } catch {
+      // DM is best-effort; the console escalation pane still carries the pause.
+    }
+  }
+
+  /** Resume-side pre-flight (TDD 0036 §3a re-run; design doc 0039 §4 step 1). */
+  private async resumePreflight(foundry: FoundryClient): Promise<LifecyclePreflightOutcome> {
+    const deps = this.intakeDeps();
+    const ctx = deps?.ctx ?? {
+      campaignId: this.deps.campaignId,
+      sessionId: this.session?.config.sessionId ?? "pending",
+      sessionConfig: { intake: this.intakeState.intake },
+    };
+    return runResumePreflight({
+      foundry,
+      tenantDb: this.deps.tenantDb,
+      ctx,
+      onTelemetry: (name, props) => this.trackIntake(name, props),
+    });
   }
 
   // ---- operator designation (design doc 0024) ----
@@ -1193,10 +1437,19 @@ export class SessionManager {
     voiceIO: VoiceIO,
     client: Client,
     voiceRouting: NonNullable<SessionManager["routing"]>,
+    lifecycle: LifecycleController,
   ): SurfaceRouter {
+    // Only Foundry-side surfaces feed the Foundry-down detector (design doc
+    // 0039 §2b); a Discord voice/consent hiccup says nothing about Foundry.
+    const foundrySurfaces = new Set(["foundry-public", "foundry-whisper", "foundry-gm"]);
     const router = new SurfaceRouter({
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
       hashPlayerId: (id) => this.deps.tenantDb.piiCrypto.hash(id),
+      onEmitResult: (surface, status, reason) => {
+        if (!foundrySurfaces.has(surface)) return;
+        if (status === "ok") lifecycle.reportEmitSuccess(surface);
+        else lifecycle.reportEmitFailure(surface, reason ?? "emit failed");
+      },
     });
     const consent = new DiscordConsentSurface({
       sendDm: async (discordId, text) => {
@@ -1208,14 +1461,16 @@ export class SessionManager {
     const gm = new FoundryGmChatSurface({
       client: foundry,
       operatorFoundryUserId: () => this.resolveOperatorFoundryUserId(),
+      lifecycle,
     });
     router.register(new DiscordVoiceSurface(voiceIO, voiceRouting));
     router.register(consent);
-    router.register(new FoundryPublicChatSurface({ client: foundry }));
+    router.register(new FoundryPublicChatSurface({ client: foundry, lifecycle }));
     router.register(
       new FoundryWhisperSurface({
         client: foundry,
         resolveFoundryUserId: (id) => this.identity.foundryUserIdForDiscord(id),
+        lifecycle,
       }),
     );
     router.register(gm);
