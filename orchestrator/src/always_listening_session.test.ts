@@ -373,6 +373,66 @@ describe("runAlwaysListeningSession", () => {
     expect(lines.some((t) => t.includes("[Onboarding]"))).toBe(true);
   });
 
+  it("suppresses onboarding for a voice-join identity critical gap (TDD 0036)", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome, Alice.");
+    const { session } = setupSession(llm);
+    const gaps: string[] = [];
+    const voiceIO = new FakeVoiceIO([
+      presence([
+        { id: "discord:alice", displayName: "Alice" },
+        { id: "discord:bob", displayName: "Bob" },
+      ]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async (p) =>
+          p.discordUserId === "discord:bob" ? "critical-gaps" : "ok",
+        onCriticalGap: async (p) => {
+          gaps.push(p.displayName ?? p.discordUserId);
+        },
+      },
+    });
+    expect(result.onboardingCount).toBe(1);
+    expect(result.turnCount).toBe(1);
+    const narration = llm.receivedRequests.find((r) => r.modelTier === "narration");
+    const text = (narration?.messages ?? [])
+      .flatMap((m) => m.content)
+      .map((c) => (c.type === "text" ? c.text : ""))
+      .join("\n");
+    expect(text).toContain("Alice");
+    expect(text).not.toMatch(/Bob/);
+    expect(gaps).toEqual(["Bob"]);
+  });
+
+  it("sends the voice-join identity courtesy once per player per session", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome.");
+    const { session } = setupSession(llm);
+    const gaps: string[] = [];
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      { kind: "lull" },
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async () => "critical-gaps",
+        onCriticalGap: async (p) => {
+          gaps.push(p.displayName ?? p.discordUserId);
+        },
+      },
+    });
+    expect(result.onboardingCount).toBe(0);
+    expect(gaps).toEqual(["Bob"]);
+  });
+
   it("requests consent for unconsented speakers", async () => {
     const llm = deciderAndNarration('{"respond": false}', "x");
     const { session } = setupSession(llm);
