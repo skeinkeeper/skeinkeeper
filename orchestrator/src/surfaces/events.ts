@@ -59,6 +59,8 @@ export type ConsoleControl =
   | { control: "voice"; action: "list" }
   | { control: "voice"; action: "set"; persona: string }
   | { control: "operator"; action: "claim" | "clear" | "show" }
+  /** Design doc 0039: operator opt-in/out for pause-notification Discord DMs. */
+  | { control: "operator-dm-consent"; enabled: boolean }
   | { control: "intake"; id: string; option: string }
   | { control: "consent"; decision: "accept" | "decline" }
   | { control: "map"; discordUser: string; character: string }

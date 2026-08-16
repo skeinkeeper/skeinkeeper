@@ -15,6 +15,7 @@
       .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
       .pill { padding: 0.1rem 0.5rem; border-radius: 999px; background: #eee; font-size: 0.8rem; }
       .running { background: #cdebd0; }
+      .paused { background: #f7d6a0; }
     </style>
   </head>
   <body>
@@ -26,7 +27,9 @@
         <span id="status" class="pill">…</span>
         <button id="start">Start</button>
         <button id="stop">Stop</button>
+        <button id="resume" hidden>Resume</button>
       </div>
+      <p id="lifecycle-note" hidden style="color:#8a5a00;font-size:0.85rem;margin:0.4rem 0 0;"></p>
     </section>
 
     <section>
@@ -64,6 +67,10 @@
       <p style="color:#555;font-size:0.8rem;margin:0.4rem 0 0.2rem;">…or, while a session is running, pick yourself from the voice channel:</p>
       <div id="operator-roster" style="font-size:0.85rem;"></div>
       <p style="color:#777;font-size:0.78rem;margin-top:0.4rem;">Tip: in Discord you can also type <code>/skeinkeeper operator claim</code>.</p>
+      <div class="row" style="margin-top:0.5rem;">
+        <label><input type="checkbox" id="operator-dm-consent" /> DM me on Discord if the session pauses (Foundry disconnect)</label>
+      </div>
+      <p style="color:#555;font-size:0.8rem;margin:0.3rem 0 0;">Operator-only, one DM per pause. Off by default; when Foundry drops, its chat can't reach you — this is the out-of-band signal.</p>
     </section>
 
     <section>

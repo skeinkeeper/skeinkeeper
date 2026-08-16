@@ -25,6 +25,10 @@ export interface SurfaceRouterOptions {
   emitTimeoutMs?: number;
   /** Timeout for gm-audience escalations (not on the voice path). Default 5000. */
   gmEscalationTimeoutMs?: number;
+  /** Per-surface emit outcome, for the Foundry-down detector (design doc 0039
+   *  §2b): the Coordinator feeds Foundry-side failures/successes to the
+   *  LifecycleController's consecutive-failure counter. */
+  onEmitResult?: (surface: string, status: "ok" | "failed", reason?: string) => void;
 }
 
 export class NoHandlingSurfaceError extends Error {
@@ -49,12 +53,14 @@ export class SurfaceRouter {
   private readonly hashPlayerId: ((playerId: string) => string) | undefined;
   private readonly emitTimeoutMs: number;
   private readonly gmEscalationTimeoutMs: number;
+  private readonly onEmitResult: SurfaceRouterOptions["onEmitResult"];
 
   constructor(opts: SurfaceRouterOptions = {}) {
     this.analytics = opts.analytics;
     this.hashPlayerId = opts.hashPlayerId;
     this.emitTimeoutMs = opts.emitTimeoutMs ?? DEFAULT_EMIT_TIMEOUT_MS;
     this.gmEscalationTimeoutMs = opts.gmEscalationTimeoutMs ?? DEFAULT_GM_ESCALATION_TIMEOUT_MS;
+    this.onEmitResult = opts.onEmitResult;
   }
 
   register(surface: OutboundSurface | InboundSurface): void {
@@ -122,6 +128,7 @@ export class SurfaceRouter {
         audience,
         latencyMs: Date.now() - started,
       });
+      this.onEmitResult?.(surface.name, "ok");
       return { surface: surface.name, status: "ok" };
     } catch (err) {
       const reason = timeoutReason(err);
@@ -130,6 +137,7 @@ export class SurfaceRouter {
         audience,
         reason,
       });
+      this.onEmitResult?.(surface.name, "failed", reason);
       return { surface: surface.name, status: "failed", error: reason };
     }
   }

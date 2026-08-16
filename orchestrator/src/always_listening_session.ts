@@ -4,6 +4,8 @@
 import type { PresentPlayer } from "./hot_context.js";
 import { InterruptedError, type PresenceMember, type VoiceIO } from "./interfaces/voice.js";
 import { runTurn, type Session, type TurnInput, type TurnOutput } from "./session.js";
+import type { PausedInputBuffer } from "./sessions/input-buffer.js";
+import type { LifecycleController } from "./sessions/lifecycle.js";
 import { TranscriptionBuffer, utteranceToFragment, type BufferFragment } from "./voice/buffer.js";
 import { decideShouldRespond, type RespondDecision } from "./voice/decider.js";
 import { DEFAULT_EAGERNESS, type Eagerness } from "./voice/eagerness.js";
@@ -83,6 +85,15 @@ export interface AlwaysListeningConfig {
     /** TDD 0036 §3c: warnings-only still onboards; escalate one operator line. */
     onWarning?: (player: { discordUserId: string; displayName?: string }) => Promise<void>;
   };
+  /**
+   * Foundry-down lifecycle (design doc 0039). While non-`active`: utterances
+   * are captured to `pausedInputs` (STT keeps running; nothing is lost), the
+   * lull decider and onboarding are skipped (no LLM calls), and on the
+   * transition back to `active` the buffered utterances are drained in order,
+   * each producing a normal turn. Both fields travel together.
+   */
+  lifecycle?: LifecycleController;
+  pausedInputs?: PausedInputBuffer<BufferFragment>;
   /** Invoked after each respond-decision (for telemetry / operator UI). */
   onDecision?: (decision: RespondDecision, fragments: ReadonlyArray<BufferFragment>) => void;
   /** Invoked after each turn the DM actually takes. */
@@ -172,6 +183,42 @@ export async function runAlwaysListeningSession(
   let decisionCount = 0;
   let onboardingCount = 0;
 
+  // Foundry-down lifecycle (design doc 0039). Buffered utterances drain on the
+  // paused→active transition, each as its own turn, in order (§4 step 4). The
+  // drain chains onto one promise so turns never interleave, and the loop
+  // awaits it before returning so no drained turn is abandoned.
+  const isLifecycleActive = (): boolean =>
+    config.lifecycle === undefined || config.lifecycle.current().kind === "active";
+  let drainChain: Promise<void> = Promise.resolve();
+  const unsubscribeLifecycle = config.lifecycle?.onTransition((next, prev) => {
+    if (next.kind !== "active" || prev.kind !== "paused-foundry-down") return;
+    const buffered = config.pausedInputs?.drain() ?? [];
+    if (buffered.length === 0) return;
+    drainChain = drainChain.then(async () => {
+      for (const fragment of buffered) {
+        const input = mergeFragmentsToTurnInput([fragment]);
+        if (input === null) continue;
+        const roster = buildRoster(session, present).filter(
+          (p) => !identityBlocked.has(p.discordId),
+        );
+        try {
+          // The note is a factual marker only; how the DM frames stale input
+          // is the behavior spec's job (behavior/default.md § pause/resume).
+          const turn = await runTurnAndSpeak(config, input, roster, {
+            systemNote:
+              "This player input was captured while the session was paused " +
+              "(Foundry connection lost) and is being replayed now that the session resumed.",
+          });
+          turnCount += 1;
+          config.onTurn?.(turn);
+        } catch (err) {
+          // One failed drained turn must not strand the rest of the buffer.
+          console.warn(`[lifecycle] drained-turn dispatch failed: ${String(err)}`);
+        }
+      }
+    });
+  });
+
   for await (const event of voiceIO.listen()) {
     if (event.kind === "consent_needed") {
       // The adapter only emits this for an unconsented speaker, so prompt
@@ -234,11 +281,23 @@ export async function runAlwaysListeningSession(
         });
         continue;
       }
+      // Paused: capture to the bounded pause buffer instead — STT continues so
+      // nothing said while Foundry is down is lost, but no LLM call happens
+      // against it until resume (design doc 0039 §3 step 2).
+      if (!isLifecycleActive() && config.pausedInputs !== undefined) {
+        config.pausedInputs.push(utteranceToFragment(event.utterance));
+        continue;
+      }
       buffer.append(utteranceToFragment(event.utterance));
       continue;
     }
 
-    // event.kind === "lull". Top up the masking pool off-path while the table is
+    // event.kind === "lull". While paused-foundry-down, the turn loop stops
+    // accepting new inputs — no masking refills, no onboarding, no decider
+    // (all are LLM calls; design doc 0039 §3 step 2).
+    if (!isLifecycleActive()) continue;
+
+    // Top up the masking pool off-path while the table is
     // quiet (design doc 0028 §P2 — generation never blocks a response).
     const masking = config.masking;
     if (masking?.generate !== undefined && masking.pool.needsRefill()) {
@@ -307,6 +366,9 @@ export async function runAlwaysListeningSession(
     config.onTurn?.(turn);
   }
 
+  unsubscribeLifecycle?.();
+  await drainChain;
+
   return { turnCount, decisionCount, onboardingCount };
 }
 
@@ -343,6 +405,7 @@ async function runTurnAndSpeak(
   config: AlwaysListeningConfig,
   input: TurnInput,
   roster: ReadonlyArray<PresentPlayer>,
+  extra: { systemNote?: string } = {},
 ): Promise<TurnOutput> {
   const routing = config.voiceRouting;
   // When a SurfaceRouter is wired, runTurn emits table narration (voice +
@@ -357,6 +420,7 @@ async function runTurnAndSpeak(
     const turn = await runTurn(config.session, input, {
       presentPlayers: roster,
       signal: abort.signal,
+      ...(extra.systemNote !== undefined ? { systemNote: extra.systemNote } : {}),
     });
     if (!voiceViaRouter) {
       try {
@@ -393,6 +457,7 @@ async function runTurnAndSpeak(
   const turn = await runTurn(config.session, input, {
     presentPlayers: roster,
     signal: abort.signal,
+    ...(extra.systemNote !== undefined ? { systemNote: extra.systemNote } : {}),
     onNarrationSegment: (seg) => {
       if (!streamed && maskTimer !== undefined) clearTimeout(maskTimer); // real audio beat us to it
       streamed = true;

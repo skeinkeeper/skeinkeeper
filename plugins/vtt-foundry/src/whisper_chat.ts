@@ -4,12 +4,14 @@
 import type {
   FoundryChatEvent,
   FoundryClient,
+  FoundrySurfaceLifecycleGate,
   InboundSurface,
   OutboundSurface,
   SurfaceInputEvent,
   SurfaceOutput,
 } from "@skeinkeeper/orchestrator";
 import { AsyncQueue } from "@skeinkeeper/orchestrator";
+import { emitSkippedWhilePaused } from "./public_chat.js";
 
 export interface FoundryWhisperSurfaceOptions {
   client: FoundryClient;
@@ -17,6 +19,8 @@ export interface FoundryWhisperSurfaceOptions {
   resolveFoundryUserId?: (playerId: string) => string | undefined;
   /** When set, only whispers listing this recipient are inbound DM-to-AI. */
   dmFoundryUserId?: string;
+  /** Design doc 0039: while paused-foundry-down, emits no-op (coalesced skip). */
+  lifecycle?: FoundrySurfaceLifecycleGate;
 }
 
 export class FoundryWhisperSurface implements OutboundSurface, InboundSurface {
@@ -28,6 +32,7 @@ export class FoundryWhisperSurface implements OutboundSurface, InboundSurface {
   constructor(private readonly opts: FoundryWhisperSurfaceOptions) {}
 
   async emit(output: SurfaceOutput): Promise<void> {
+    if (emitSkippedWhilePaused(this.opts.lifecycle, this.name, output)) return;
     if (output.audience.kind !== "player") return;
     const foundryUserId = this.opts.resolveFoundryUserId?.(output.audience.playerId);
     if (foundryUserId === undefined) {

@@ -799,3 +799,73 @@ describe("runTurn — side-channel scoping (design doc 0026)", () => {
     expect(prompt).not.toContain("ELIPRIVATE"); // but never a player's private side-channel
   });
 });
+
+describe("runTurn — aborted-foundry-down (design doc 0039)", () => {
+  const pausedState = {
+    kind: "paused-foundry-down" as const,
+    since: "2026-01-01T00:00:00.000Z",
+    cause: "addon-gone" as const,
+    lastError: "socket closed",
+  };
+
+  function setupPausedToolTurn() {
+    const registry = new ToolRegistry();
+    const handled: string[] = [];
+    registry.register(
+      defineTool({
+        name: "probe",
+        description: "Records that the handler ran.",
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        async handle() {
+          handled.push("probe");
+          return {};
+        },
+      }),
+    );
+    const dispatcher = new ToolDispatcher({ registry, lifecycle: { current: () => pausedState } });
+    const llm = new FakeLLMProvider([
+      {
+        events: [
+          { kind: "text_delta", text: "Let me check the map. " },
+          { kind: "tool_call", id: "t1", name: "probe", input: {} },
+          { kind: "done", stopReason: "tool_use", usage: DONE_USAGE },
+        ],
+      },
+    ]);
+    const surface = new FakeOutboundSurface("fake-table", ["table"]);
+    const router = new SurfaceRouter();
+    router.register(surface);
+    const { session, tenantDb } = setupSession({ dispatcher, llm, surfaces: router });
+    return { session, tenantDb, handled, llm, surface };
+  }
+
+  it("ends the turn with aborted-foundry-down when the dispatcher short-circuits", async () => {
+    const { session, handled, llm } = setupPausedToolTurn();
+    const out = await runTurn(session, { speaker: "player1", text: "Go north." });
+    expect(out.stopReason).toBe("aborted-foundry-down");
+    expect(handled).toEqual([]);
+    // No further LLM round-trips after the abort.
+    expect(llm.receivedRequests).toHaveLength(1);
+  });
+
+  it("does not emit the partial narration to surfaces or the dialogue store", async () => {
+    const { session, tenantDb, surface } = setupPausedToolTurn();
+    await runTurn(session, { speaker: "player1", text: "Go north." });
+    expect(surface.emits).toEqual([]);
+    const narrator = tenantDb.dialogue
+      .listBySession("sess-1")
+      .filter((row) => row.speaker === "narrator");
+    expect(narrator).toEqual([]);
+  });
+
+  it("records the abort cause in the audit log", async () => {
+    const { session, tenantDb } = setupPausedToolTurn();
+    await runTurn(session, { speaker: "player1", text: "Go north." });
+    const completed = tenantDb.auditLog
+      .listForSession("sess-1")
+      .find((row) => row.eventType === "turn_completed");
+    expect(completed).toBeDefined();
+    expect(JSON.parse(completed?.payloadJson ?? "{}")["stopReason"]).toBe("aborted-foundry-down");
+  });
+});

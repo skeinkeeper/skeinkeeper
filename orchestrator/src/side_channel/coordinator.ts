@@ -3,6 +3,8 @@
 
 import { playerAudience, playerConversation } from "@skeinkeeper/server";
 import { runTurn, type Session } from "../session.js";
+import type { PausedInputBuffer } from "../sessions/input-buffer.js";
+import type { LifecycleController, Unsubscribe } from "../sessions/lifecycle.js";
 import type { SurfaceInputEvent } from "../surfaces/events.js";
 import type { SurfaceRouter } from "../surfaces/router.js";
 import type { SideChannelIdentityMap } from "./identity_map.js";
@@ -11,7 +13,7 @@ export { SideChannelIdentityMap } from "./identity_map.js";
 
 export type SideChannelDispatchResult =
   | { dispatched: true; playerId: string }
-  | { dispatched: false; reason: "unmapped" | "ignored" | "stopped" };
+  | { dispatched: false; reason: "unmapped" | "ignored" | "stopped" | "paused" };
 
 export interface SideChannelCoordinatorOptions {
   session: Session;
@@ -25,6 +27,15 @@ export interface SideChannelCoordinatorOptions {
   onOperatorCommand?: (
     event: Extract<SurfaceInputEvent, { kind: "chat.command" }>,
   ) => Promise<void>;
+  /**
+   * Foundry-down lifecycle (design doc 0039). While non-`active`, whisper
+   * turns are buffered (typically zero — Foundry is down) and drained as
+   * normal side-channel turns on resume. `chat.command` events still forward
+   * so `/skeinkeeper session action:resume` works the moment the add-on
+   * reconnects. Both fields travel together.
+   */
+  lifecycle?: LifecycleController;
+  pausedInputs?: PausedInputBuffer<{ playerId: string; text: string }>;
 }
 
 /**
@@ -42,12 +53,30 @@ export class SideChannelCoordinator {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private stopWait: Promise<void>;
   private resolveStop: () => void = () => undefined;
+  private readonly unsubscribeLifecycle: Unsubscribe | undefined;
 
   constructor(private readonly opts: SideChannelCoordinatorOptions) {
     this.maxInFlight = opts.semaphore ?? 3;
     this.coalesceMs = opts.coalesceMs ?? 0;
     this.stopWait = new Promise((resolve) => {
       this.resolveStop = resolve;
+    });
+    // Drain paused whispers on the paused→active transition (design doc 0039
+    // §4 step 4); each becomes a normal side-channel turn, in order.
+    this.unsubscribeLifecycle = opts.lifecycle?.onTransition((next, prev) => {
+      if (next.kind !== "active" || prev.kind !== "paused-foundry-down") return;
+      const buffered = opts.pausedInputs?.drain() ?? [];
+      if (buffered.length === 0) return;
+      void (async () => {
+        for (const item of buffered) {
+          try {
+            await this.dispatch(item.playerId, item.text);
+          } catch (err) {
+            // One failed drained turn must not strand the rest of the buffer.
+            console.warn(`[side-channel] drained-turn dispatch failed: ${String(err)}`);
+          }
+        }
+      })();
     });
   }
 
@@ -64,6 +93,7 @@ export class SideChannelCoordinator {
     this.stopped = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
+    this.unsubscribeLifecycle?.();
     this.resolveStop();
   }
 
@@ -82,6 +112,14 @@ export class SideChannelCoordinator {
         `[side-channel] unmapped Foundry whisper from user=${event.foundryUserId}; not dispatched`,
       );
       return { dispatched: false, reason: "unmapped" };
+    }
+    if (
+      this.opts.lifecycle !== undefined &&
+      this.opts.lifecycle.current().kind !== "active" &&
+      this.opts.pausedInputs !== undefined
+    ) {
+      this.opts.pausedInputs.push({ playerId, text: event.text });
+      return { dispatched: false, reason: "paused" };
     }
     if (this.coalesceMs > 0) {
       return this.enqueue(playerId, event.text);

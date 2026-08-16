@@ -16,6 +16,14 @@ import type { TenantDb } from "@skeinkeeper/server";
  */
 export const OPERATOR_SETTING_KEY = "operator.discord_user_id";
 export const OPERATOR_PENDING_USERNAME_KEY = "operator.pending_username";
+/**
+ * Operator-side DM-consent timestamp (design doc 0039 §3 step 4). Separate
+ * from player consent: gates ONLY the pause-notification DM — the second of
+ * two narrow exceptions to "Discord DM = one-time consent only" (the first is
+ * TDD 0034's courtesy redirect). Absent = no consent on file, no DM is sent.
+ * Additive to the existing operator-designation storage; erased with it.
+ */
+export const OPERATOR_DM_CONSENT_KEY = "operator.dm_consented_at";
 
 export class OperatorService {
   constructor(
@@ -68,6 +76,29 @@ export class OperatorService {
 
   clearPending(): void {
     this.tenantDb.settings.delete(this.campaignId, OPERATOR_PENDING_USERNAME_KEY);
+  }
+
+  /** When (epoch ms) the operator consented to pause-notification DMs, or
+   *  undefined when no consent is on file. */
+  dmConsentedAt(): number | undefined {
+    const raw = this.tenantDb.settings.get(this.campaignId, OPERATOR_DM_CONSENT_KEY)?.value;
+    if (raw === undefined || raw.length === 0) return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  /** Grant (persist a timestamp) or revoke (delete the row) DM consent. */
+  setDmConsent(consented: boolean): void {
+    if (!consented) {
+      this.tenantDb.settings.delete(this.campaignId, OPERATOR_DM_CONSENT_KEY);
+      return;
+    }
+    this.tenantDb.settings.set({
+      campaignId: this.campaignId,
+      key: OPERATOR_DM_CONSENT_KEY,
+      value: String(Date.now()),
+      updatedAt: Date.now(),
+    });
   }
 }
 

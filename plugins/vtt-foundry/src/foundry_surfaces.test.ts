@@ -252,3 +252,74 @@ describe("Foundry inbound adapters", () => {
     ).toBeUndefined();
   });
 });
+
+describe("Foundry-side surfaces short-circuit while paused (design doc 0039)", () => {
+  const PAUSED = {
+    kind: "paused-foundry-down" as const,
+    since: "2026-01-01T00:00:00.000Z",
+    cause: "addon-gone" as const,
+    lastError: "socket closed",
+  };
+
+  function makeGate(state: { kind: "active" } | typeof PAUSED) {
+    const skips: Array<{ surface: string; audienceKind: string }> = [];
+    return {
+      gate: {
+        current: () => state,
+        noteEmitSkipped: (surface: string, audienceKind: string) => {
+          skips.push({ surface, audienceKind });
+        },
+      },
+      skips,
+    };
+  }
+
+  it("public chat: no FoundryClient call; one skip note; emit resolves (no-op success)", async () => {
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const { gate, skips } = makeGate(PAUSED);
+    const surface = new FoundryPublicChatSurface({ client, lifecycle: gate });
+    await expect(
+      surface.emit({ audience: { kind: "table" }, text: "x" }),
+    ).resolves.toBeUndefined();
+    expect(client.chatPosts).toEqual([]);
+    expect(skips).toEqual([{ surface: "foundry-public", audienceKind: "table" }]);
+  });
+
+  it("whisper: short-circuits before identity resolution", async () => {
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const { gate, skips } = makeGate(PAUSED);
+    const surface = new FoundryWhisperSurface({
+      client,
+      // Unresolvable player would throw if the gate didn't short-circuit first.
+      resolveFoundryUserId: () => undefined,
+      lifecycle: gate,
+    });
+    await expect(
+      surface.emit({ audience: { kind: "player", playerId: "fake-p1" }, text: "psst" }),
+    ).resolves.toBeUndefined();
+    expect(client.chatPosts).toEqual([]);
+    expect(skips).toEqual([{ surface: "foundry-whisper", audienceKind: "player" }]);
+  });
+
+  it("gm chat: short-circuits escalations too", async () => {
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const { gate, skips } = makeGate(PAUSED);
+    const surface = new FoundryGmChatSurface({
+      client,
+      operatorFoundryUserId: "fake-gm",
+      lifecycle: gate,
+    });
+    await surface.emit({ audience: { kind: "gm" }, text: "warn", meta: { escalation: true } });
+    expect(client.chatPosts).toEqual([]);
+    expect(skips).toEqual([{ surface: "foundry-gm", audienceKind: "gm" }]);
+  });
+
+  it("emits normally while active", async () => {
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const { gate, skips } = makeGate({ kind: "active" });
+    const surface = new FoundryPublicChatSurface({ client, lifecycle: gate });
+    await surface.emit({ audience: { kind: "table" }, text: "hello" });
+    expect(client.chatPosts).toEqual([{ content: "hello", mode: "public" }]);
+    expect(skips).toEqual([]);
+  });
+});

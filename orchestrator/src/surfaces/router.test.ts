@@ -181,3 +181,25 @@ describe("SurfaceRouter inbound multiplex", () => {
     ]);
   });
 });
+
+describe("onEmitResult hook (design doc 0039 detector wiring)", () => {
+  it("reports per-surface ok and failed emits with the reason", async () => {
+    const results: Array<{ surface: string; status: string; reason?: string }> = [];
+    const router = new SurfaceRouter({
+      onEmitResult: (surface, status, reason) =>
+        results.push({ surface, status, ...(reason !== undefined ? { reason } : {}) }),
+    });
+    const good = new FakeOutboundSurface("fake-good", ["table"]);
+    const bad = new FakeOutboundSurface("fake-bad", ["table"]);
+    bad.failWith = new Error("fake-connection-lost");
+    router.register(good);
+    router.register(bad);
+    await router.emit({ audience: { kind: "table" }, text: "hello" });
+    expect(results).toContainEqual({ surface: "fake-good", status: "ok" });
+    expect(results).toContainEqual({
+      surface: "fake-bad",
+      status: "failed",
+      reason: "fake-connection-lost",
+    });
+  });
+});

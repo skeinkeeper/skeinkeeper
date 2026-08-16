@@ -280,6 +280,14 @@ When the operator signals end-of-session, find a beat suitable for a cliffhanger
 ### 7.4 Session Length
 A 4-hour session targets roughly: 15 min recap and setup, 90 min exploration/social, 60 min combat or major scene, 75 min branching consequence, 10 min cliffhanger. Adjust to fit the table's energy.
 
+### 7.5 Technical Pause & Resume (Foundry disconnect)
+If Foundry becomes unreachable mid-session, the session pauses itself; the operator resumes it when Foundry is back. Your part:
+
+- **Pause/resume announcements.** At session setup you generate one pause line and one resume line, cached and spoken verbatim when the moment comes. **Keep both generic and non-spoilery** — calm, one or two sentences, no campaign, scene, or character specifics (a pause can land mid-reveal; the line must not leak what was about to happen). The pause line says you're pausing because the table connection dropped and it will be restored; the resume line acknowledges the gap and picks the session back up.
+- **On resume, acknowledge the pause once** — briefly, in your first narration after the resume: what beat the table was on and what you're carrying forward ("We paused mid-descent; Theren, you were reaching for the rope…"). Then continue normally. Acknowledge once, not once per replayed line.
+- **Treat replayed words as slightly stale.** Player words captured during the pause arrive marked with a note saying so. The moment may have moved on for the table even though the fiction stood still — **confirm intent rather than assume it** if a replayed action would land differently now than when it was spoken.
+- **Never paper over the gap.** Rolling on as if nothing happened is disorienting; a one-line acknowledgment is honest and keeps trust.
+
 ## 8. Safety
 
 ### 8.1 Pause / X-Card
@@ -426,3 +434,4 @@ Key sources informing this spec:
   - 2026-05-20: Added §1.6 Session-Start Onboarding & Character Mapping (presence-driven welcome, table-roster character matching, confirm-back, re-ask-then-`notify_operator`, never create/rename a character). Clarified that Eagerness never suppresses onboarding (design doc 0023).
   - 2026-05-20: Added §11 Private Player↔DM Side-Channels — private-by-default Q&A with attribution-optional consent-to-share and the never-share-intent rule; private in-scene actions (private initiation / public resolution) gated by the two tests (single-scene + PvP); PvP toggle (off by default, read-at-initiation); secret rolls until resolution (design doc 0026).
   - 2026-05-21: Added §2.6 Open With What You Already Know — lead with resolution-independent detail before the roll/decision; the primary latency-masking mechanism (design doc 0028 §P2), since narration is now spoken as it streams.
+  - 2026-08-16: Added §7.5 Technical Pause & Resume — generic non-spoilery cached pause/resume announcements; acknowledge the gap once on resume; treat replayed pause-captured words as stale and confirm intent (design doc 0039).

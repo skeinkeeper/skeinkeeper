@@ -481,3 +481,56 @@ describe("move_party — activates the Foundry scene (ADR-0015)", () => {
     if (r.ok) expect((r.output as { sceneActivated: boolean }).sceneActivated).toBe(false);
   });
 });
+
+describe("ToolDispatcher lifecycle short-circuit (design doc 0039)", () => {
+  const pausedState = {
+    kind: "paused-foundry-down" as const,
+    since: "2026-01-01T00:00:00.000Z",
+    cause: "addon-gone" as const,
+    lastError: "socket closed",
+  };
+
+  it("aborts every dispatch with aborted-foundry-down while paused", async () => {
+    const { tenantDb } = setup();
+    const r = new ToolRegistry();
+    const handled: string[] = [];
+    r.register(
+      defineTool({
+        name: "probe",
+        description: "Record that the handler ran.",
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        async handle() {
+          handled.push("probe");
+          return {};
+        },
+      }),
+    );
+    const d = new ToolDispatcher({ registry: r, lifecycle: { current: () => pausedState } });
+    const result = await d.dispatch(
+      { name: "probe", input: {} },
+      { tenantDb, sessionId: "sess-1", turnId: "turn-1", caller: "llm" },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.kind).toBe("aborted-foundry-down");
+    expect(handled).toEqual([]);
+    const entries = tenantDb.auditLog.listForSession("sess-1");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.eventType).toBe("tool_failed");
+  });
+
+  it("dispatches normally while active", async () => {
+    const { tenantDb } = setup();
+    const r = new ToolRegistry();
+    r.register(echoTool);
+    const d = new ToolDispatcher({
+      registry: r,
+      lifecycle: { current: () => ({ kind: "active" as const }) },
+    });
+    const result = await d.dispatch(
+      { name: "echo", input: { msg: "hi" } },
+      { tenantDb, sessionId: "sess-1", turnId: "turn-1", caller: "operator" },
+    );
+    expect(result.ok).toBe(true);
+  });
+});

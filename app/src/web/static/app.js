@@ -86,11 +86,26 @@ async function refresh() {
     });
   }
 
+  const dmConsent = $("operator-dm-consent");
+  if (!dmConsent.dataset.wired) {
+    dmConsent.dataset.wired = "1";
+    dmConsent.addEventListener("change", async () => {
+      // Success is reflected via the operatorDmConsent SSE echo.
+      await fetch("/api/operator/dm-consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ consented: dmConsent.checked }),
+      });
+    });
+  }
+
   renderOperator(s.operator);
   renderRoster(s.roster ?? []);
   renderIntake(s.intake);
   applyEagerness(s.eagerness);
   applyPvp(s.pvpEnabled);
+  applyDmConsent(s.operator && s.operator.dmConsented);
+  applyLifecycle(s.lifecycle);
   const dmAssign = (s.voiceAssignments ?? []).find((v) => v.subjectKind === "dm");
   if (dmAssign && dmAssign.personaId) applyDmVoice(dmAssign.personaId);
 }
@@ -105,6 +120,31 @@ function applyEagerness(level) {
 function applyPvp(enabled) {
   const box = $("pvp");
   if (box) box.checked = enabled === true;
+}
+
+function applyDmConsent(consented) {
+  const box = $("operator-dm-consent");
+  if (box) box.checked = consented === true;
+}
+
+// Foundry-down lifecycle (design doc 0039): show the paused pill + Resume
+// button while paused-foundry-down; hide them when active / not running.
+function applyLifecycle(state) {
+  const paused = state && state.kind === "paused-foundry-down";
+  const status = $("status");
+  const resume = $("resume");
+  const note = $("lifecycle-note");
+  if (resume) resume.hidden = !paused;
+  if (status) status.classList.toggle("paused", !!paused);
+  if (note) {
+    note.hidden = !paused;
+    if (paused) {
+      note.textContent =
+        `Paused — Foundry unreachable (${state.cause}). Voice stays up; player words are ` +
+        "buffered. Restore Foundry, then Resume.";
+      status.textContent = "paused (Foundry down)";
+    }
+  }
 }
 
 function applyDmVoice(personaId) {
@@ -222,6 +262,15 @@ $("stop").addEventListener("click", async () => {
   await fetch("/api/session/stop", { method: "POST" });
   refresh();
 });
+$("resume").addEventListener("click", async () => {
+  log("resuming…");
+  const r = await fetch("/api/session/resume", { method: "POST" }).then((x) => x.json());
+  if (r.kind === "ok") log("resumed");
+  else if (r.kind === "already-active") log("already active");
+  else if (r.kind === "preflight-failed")
+    log("resume blocked — pre-flight failed (see escalation)");
+  else log(`resume: ${r.kind}`);
+});
 $("apply-voice").addEventListener("click", async () => {
   const personaId = $("persona").value;
   // Success is logged via the dmVoice SSE echo; only surface errors here.
@@ -268,6 +317,18 @@ events.onmessage = (e) => {
   } else if (ev.kind === "intake") {
     renderIntake(ev);
     log(`intake ready=${ev.ready} findings=${(ev.findings || []).length}`);
+  } else if (ev.kind === "lifecycleStateChanged") {
+    applyLifecycle(ev.state === "paused-foundry-down" ? { kind: ev.state, cause: ev.cause } : null);
+    if (ev.state === "paused-foundry-down") log(`⏸ session paused — Foundry down (${ev.cause})`);
+    else {
+      log("▶ session resumed");
+      refresh();
+    }
+  } else if (ev.kind === "operatorDmConsent") {
+    applyDmConsent(ev.consented);
+    log(`pause-notification DMs → ${ev.consented ? "on" : "off"}`);
+  } else if (ev.kind === "operatorEscalation") {
+    log(`⚠ [${ev.severity}] ${ev.message}`);
   }
 };
 

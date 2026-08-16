@@ -31,9 +31,13 @@ export function getState(app: App): ApiResult {
       operator: {
         operatorUserId: app.manager.operatorUserId ?? null,
         displayName: app.manager.operatorDisplayName() ?? null,
+        // Pause-notification DM opt-in (design doc 0039 step 9).
+        dmConsented: app.manager.operatorDmConsented,
       },
       roster: app.manager.currentRoster(),
       intake: app.manager.getIntakeView(),
+      // Foundry-down lifecycle (design doc 0039); null when not running.
+      lifecycle: app.manager.lifecycleState(),
     },
   };
 }
@@ -115,6 +119,27 @@ export async function resolveIntake(app: App, body: unknown): Promise<ApiResult>
   }
   const result = await app.manager.resolveIntakeFinding(findingId, b.optionId.trim());
   return { status: 200, body: result };
+}
+
+/**
+ * Resume a paused-foundry-down session (design doc 0039 §4). Same
+ * SessionManager.resume() write path as `/skeinkeeper session action:resume`
+ * (parity per ADR-0028). A blocked resume is a 409: the session stays paused.
+ */
+export async function resumeSession(app: App): Promise<ApiResult> {
+  const result = await app.manager.resume();
+  const ok = result.kind === "ok" || result.kind === "already-active";
+  return { status: ok ? 200 : 409, body: result };
+}
+
+/** Operator pause-notification DM opt-in/out (design doc 0039 step 9). */
+export function setOperatorDmConsent(app: App, body: unknown): ApiResult {
+  const value = (body as { consented?: unknown } | null)?.consented;
+  if (typeof value !== "boolean") {
+    return { status: 400, body: { error: "consented must be a boolean" } };
+  }
+  app.manager.setOperatorDmConsent(value);
+  return { status: 200, body: { dmConsented: value } };
 }
 
 /** Re-run identity pre-flight (TDD 0036). Same write path as Foundry chat. */

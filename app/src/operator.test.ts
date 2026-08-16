@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { openDb, TenantDb, schema } from "@skeinkeeper/server";
 import {
+  OPERATOR_DM_CONSENT_KEY,
   OperatorService,
   operatorActionIsPrivileged,
   resolveOperatorFromMembers,
@@ -102,5 +103,27 @@ describe("resolveOperatorFromMembers", () => {
   it("returns not_found for an unknown identifier or blank input", () => {
     expect(resolveOperatorFromMembers(members, "nobody")).toEqual({ kind: "not_found" });
     expect(resolveOperatorFromMembers(members, "   ")).toEqual({ kind: "not_found" });
+  });
+});
+
+describe("operator DM consent (design doc 0039 §step 9)", () => {
+  it("has no consent on file by default", () => {
+    const svc = new OperatorService(setup(), "c1");
+    expect(svc.dmConsentedAt()).toBeUndefined();
+  });
+
+  it("persists a consent timestamp on grant", () => {
+    const svc = new OperatorService(setup(), "c1");
+    svc.setDmConsent(true);
+    expect(svc.dmConsentedAt()).toBeTypeOf("number");
+  });
+
+  it("deletes the consent row on revoke (deletion path)", () => {
+    const tenantDb = setup();
+    const svc = new OperatorService(tenantDb, "c1");
+    svc.setDmConsent(true);
+    svc.setDmConsent(false);
+    expect(svc.dmConsentedAt()).toBeUndefined();
+    expect(tenantDb.settings.get("c1", OPERATOR_DM_CONSENT_KEY)).toBeUndefined();
   });
 });

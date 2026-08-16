@@ -3,7 +3,16 @@
 
 import { describe, expect, it } from "vitest";
 import type { App } from "../bootstrap.js";
-import { getState, resolveIntake, setEagerness, setDmVoice, setOperator, setPvp } from "./api.js";
+import {
+  getState,
+  resolveIntake,
+  resumeSession,
+  setEagerness,
+  setDmVoice,
+  setOperator,
+  setOperatorDmConsent,
+  setPvp,
+} from "./api.js";
 
 interface Upsert {
   subjectKind: string;
@@ -25,6 +34,10 @@ interface StubState {
   intakeFindings: Array<{ id: number; code: string; summary: string }>;
   resolveCalls: Array<{ findingId: number; optionId: string }>;
   resolveResult: { status: string };
+  lifecycle: { kind: string } | null;
+  resumeCalls: number;
+  resumeResult: { kind: string };
+  dmConsented: boolean;
 }
 
 function stubApp(): { app: App; state: StubState } {
@@ -42,6 +55,10 @@ function stubApp(): { app: App; state: StubState } {
     intakeFindings: [],
     resolveCalls: [],
     resolveResult: { status: "resolved" },
+    lifecycle: null,
+    resumeCalls: 0,
+    resumeResult: { kind: "ok" },
+    dmConsented: false,
   };
   const app = {
     config: { campaignId: "c1" },
@@ -97,6 +114,19 @@ function stubApp(): { app: App; state: StubState } {
           state.operator = "resolved-1";
         }
         return state.usernameResult;
+      },
+      lifecycleState() {
+        return state.lifecycle;
+      },
+      async resume() {
+        state.resumeCalls += 1;
+        return state.resumeResult;
+      },
+      setOperatorDmConsent(consented: boolean) {
+        state.dmConsented = consented;
+      },
+      get operatorDmConsented() {
+        return state.dmConsented;
       },
     },
     tenantDb: {
@@ -218,5 +248,43 @@ describe("operator API", () => {
       status: 400,
     });
     expect(await resolveIntake(app, {})).toMatchObject({ status: 400 });
+  });
+});
+
+describe("session lifecycle API (design doc 0039)", () => {
+  it("POST /api/session/resume calls the single SessionManager.resume write path", async () => {
+    const { app, state } = stubApp();
+    const r = await resumeSession(app);
+    expect(state.resumeCalls).toBe(1);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ kind: "ok" });
+  });
+
+  it("reports a blocked resume with a conflict status", async () => {
+    const { app, state } = stubApp();
+    state.resumeResult = { kind: "preflight-failed" };
+    const r = await resumeSession(app);
+    expect(r.status).toBe(409);
+  });
+
+  it("exposes lifecycle state and operator DM consent in /api/state", () => {
+    const { app, state } = stubApp();
+    state.lifecycle = { kind: "paused-foundry-down" };
+    state.dmConsented = true;
+    const body = getState(app).body as {
+      lifecycle: { kind: string } | null;
+      operator: { dmConsented: boolean };
+    };
+    expect(body.lifecycle).toEqual({ kind: "paused-foundry-down" });
+    expect(body.operator.dmConsented).toBe(true);
+  });
+
+  it("POST /api/operator/dm-consent validates and writes through the manager", () => {
+    const { app, state } = stubApp();
+    const ok = setOperatorDmConsent(app, { consented: true });
+    expect(ok.status).toBe(200);
+    expect(state.dmConsented).toBe(true);
+    const bad = setOperatorDmConsent(app, { consented: "yes" });
+    expect(bad.status).toBe(400);
   });
 });

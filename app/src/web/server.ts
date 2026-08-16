@@ -10,9 +10,11 @@ import type { EventBus } from "./event_bus.js";
 import {
   getState,
   resolveIntake,
+  resumeSession,
   setDmVoice,
   setEagerness,
   setOperator,
+  setOperatorDmConsent,
   setPvp,
   verifyPreflight,
 } from "./api.js";
@@ -213,6 +215,14 @@ export function createWebServer(app: App, bus: EventBus, auth?: WebAuth): Server
     if (method === "POST" && pathname === "/api/session/stop") {
       await app.manager.stop();
       return sendJson(res, 200, { stopped: true });
+    }
+    if (method === "POST" && pathname === "/api/session/resume") {
+      const r = await resumeSession(app);
+      return sendJson(res, r.status, r.body);
+    }
+    if (method === "POST" && pathname === "/api/operator/dm-consent") {
+      const r = setOperatorDmConsent(app, await readJsonBody(req));
+      return sendJson(res, r.status, r.body);
     }
     if (method === "POST" && pathname === "/api/intake/resolve") {
       const r = await resolveIntake(app, await readJsonBody(req));

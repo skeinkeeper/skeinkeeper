@@ -111,6 +111,13 @@ function mapVerbToControl(verb: string, args: ReadonlyArray<string>): ConsoleCon
       if (action === "claim" || action === "clear" || action === "show") {
         return { control: "operator", action };
       }
+      // Design doc 0039: pause-notification DM opt-in/out (operator-side consent).
+      if (action === "dm-consent") {
+        const value = args[1];
+        if (value === "on") return { control: "operator-dm-consent", enabled: true };
+        if (value === "off") return { control: "operator-dm-consent", enabled: false };
+        return undefined;
+      }
       return undefined;
     }
     case "intake": {

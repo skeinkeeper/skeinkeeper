@@ -35,6 +35,35 @@ Fires when an RPG session ends, whether normally or via abort.
 - `durationSecBucket: string` — coarse bucket (`<15m`, `15-60m`, `1-2h`, `2-4h`, `>4h`) rather than a precise duration.
 - `turnCount: number` — total turns processed in the session.
 
+### `session.paused` (v1)
+
+Fires when the session lifecycle transitions to `paused-foundry-down` (Foundry became unreachable — [TDD 0039](./tdd/0039-foundry-down-session-lifecycle.md)). One event per pause episode; further failures while paused are absorbed.
+
+- `cause: string` — `addon-gone`, `emit-failure`, or `heartbeat-failure`.
+- `consecutiveFailureCount: number` — the detector's failure run length at the moment of transition (1 for `addon-gone`).
+
+### `session.resumed` (v1)
+
+Fires when the operator resumes a paused session and the pre-flight verifier passes.
+
+- `pausedDurationMs: number` — how long the session was paused.
+- `bufferedInputs: number` — inputs captured during the pause and replayed on resume.
+- `preflightStatus: string` — the resume-side pre-flight verdict (`ok` or `warnings-only`).
+
+### `session.resume_failed` (v1)
+
+Fires when the operator requested a resume but the pre-flight verifier returned critical findings; the session stays paused.
+
+- `pausedDurationMs: number` — how long the session had been paused at the attempt.
+- `preflightCriticalCount: number` — critical findings blocking the resume.
+
+### `foundry.heartbeat.failed` (v1)
+
+Fires when a periodic Foundry heartbeat (`listUsers`) call fails while the session is active. Suppressed while already paused (no event-spam).
+
+- `consecutiveFailures: number` — length of the current failure run.
+- `reason: string` — the error message. No content.
+
 ### `tool.called` (v1)
 
 Fires once per tool dispatch by the orchestrator. May be sampled at high call rates.
@@ -242,6 +271,14 @@ Fires when a surface emit fails, times out, or no registered surface handles the
 - `surface: string` — adapter name, or `(none)` when no surface handled the audience.
 - `audience: object` — as `surface.emit`.
 - `reason: string` — `timeout`, `no-handling-surface`, or the error message. No content.
+
+### `surface.emit.skipped` (v1)
+
+Fires when a Foundry-side surface short-circuits an emit to a no-op because the session is `paused-foundry-down` ([TDD 0039](./tdd/0039-foundry-down-session-lifecycle.md)). Coalesced: once per surface per pause episode, not per attempt.
+
+- `surface: string` — adapter name (e.g., `foundry-public`).
+- `audienceKind: string` — `table`, `player`, or `gm`.
+- `lifecycleState: string` — always `paused-foundry-down` today.
 
 ### `surface.input` (v1)
 

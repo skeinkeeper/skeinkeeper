@@ -193,6 +193,32 @@ export {
 } from "./autosetup/identity-preflight.js";
 export { createSessionRunState, type SessionRunState } from "./session/run-state.js";
 export {
+  createLifecycleController,
+  type FoundryDownCause,
+  type FoundrySurfaceLifecycleGate,
+  type LifecycleController,
+  type LifecycleControllerOptions,
+  type LifecyclePreflightOutcome,
+  type LifecycleStateReader,
+  type ResumeResult,
+  type SessionLifecycleState,
+  type Unsubscribe as LifecycleUnsubscribe,
+} from "./sessions/lifecycle.js";
+export {
+  FOUNDRY_HEARTBEAT_INTERVAL_MS,
+  startFoundryHeartbeat,
+  type FoundryHeartbeat,
+} from "./sessions/foundry-heartbeat.js";
+export {
+  DEFAULT_PAUSE_ANNOUNCEMENT,
+  DEFAULT_RESUME_ANNOUNCEMENT,
+  prepareLifecycleAnnouncements,
+  type CachedAnnouncement,
+  type LifecycleAnnouncements,
+} from "./sessions/cached-announcements.js";
+export { PausedInputBuffer, type PausedInputBufferOptions } from "./sessions/input-buffer.js";
+export { runResumePreflight } from "./sessions/resume-preflight.js";
+export {
   MockFoundryEventStream,
   NullFoundryEventStream,
   liveAddonEventStream,
