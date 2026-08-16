@@ -90,12 +90,26 @@ async function main(): Promise<void> {
   // Bind to loopback by default so the console isn't exposed on the network
   // (override with SKEINKEEPER_WEB_HOST=0.0.0.0 only if you understand the risk).
   const host = env["SKEINKEEPER_WEB_HOST"] ?? "127.0.0.1";
+  const hostIsLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+  // Fail closed: never expose an unauthenticated console off-box. A non-loopback
+  // bind without an operator password would put start/stop, state overrides, and
+  // transcripts on the network with no auth. Require the password hash first.
+  if (!hostIsLoopback && auth === undefined) {
+    throw new Error(
+      `Refusing to bind the operator console to ${host} without a password. ` +
+        `Set SKEINKEEPER_OPERATOR_PASSWORD_HASH (see hashPassword) before exposing it off-box, ` +
+        `or bind to 127.0.0.1.`,
+    );
+  }
   const web = createWebServer(app, bus, auth);
   web.listen(config.webPort, host, () => {
     console.log(`Skeinkeeper operator console: http://${host}:${config.webPort}`);
     if (auth === undefined)
-      console.log("  (no operator password set — console is unauthenticated)");
-    if (host !== "127.0.0.1" && host !== "localhost") {
+      console.log(
+        "  (no operator password set — console is unauthenticated; loopback-only. " +
+          "Set SKEINKEEPER_OPERATOR_PASSWORD_HASH to require login.)",
+      );
+    if (!hostIsLoopback) {
       console.log(`  (WARNING: bound to ${host} — the console is reachable on the network)`);
     }
   });

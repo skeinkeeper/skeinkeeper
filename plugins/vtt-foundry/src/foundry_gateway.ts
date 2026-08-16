@@ -255,14 +255,28 @@ export class FoundryGateway {
       return;
     }
 
-    const peerIsLoopback = isLoopback(remote);
+    // Pairing secret is the gateway's authorization. Require it on EVERY
+    // connection when one is configured — loopback included. A WebSocket is not
+    // bound by the browser same-origin policy, so a page the operator merely
+    // visits can open ws://127.0.0.1:<port> and would otherwise impersonate the
+    // add-on: read the `req` traffic (whisper text, gm secrets, user lists) and
+    // inject `evt chat` frames (fake player input, fake operator commands). The
+    // real add-on supplies the secret from its world settings; a web page cannot.
+    // Production always has a secret (createFoundrySource generates one), so this
+    // closes the vector there. An empty configured secret still admits loopback
+    // only, for local dev/tests — an unknown/empty peer address is NOT loopback.
     const secret = typeof msg["pairingSecret"] === "string" ? msg["pairingSecret"] : "";
-    if (!peerIsLoopback && secret !== this.pairingSecret) {
+    const secretConfigured = this.pairingSecret.trim().length > 0;
+    const peerIsLoopback = isLoopback(remote);
+    const authorized = secretConfigured ? secret === this.pairingSecret : peerIsLoopback;
+    if (!authorized) {
       ws.send(
         JSON.stringify({
           type: "hello-reject",
           code: "unauthorized",
-          message: "pairing secret does not match",
+          message: secretConfigured
+            ? "pairing secret does not match"
+            : "gateway requires a loopback peer or a configured pairing secret",
         }),
       );
       ws.close();
@@ -346,5 +360,7 @@ export class FoundryGateway {
 
 function isLoopback(remote: string): boolean {
   const host = remote.replace(/^::ffff:/, "");
-  return host === "127.0.0.1" || host === "::1" || host === "localhost" || host === "";
+  // An empty/unknown remote address is treated as NON-loopback (fail closed):
+  // it must not bypass the pairing check on a secret-less dev gateway.
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
