@@ -133,7 +133,7 @@ export class ErasureService {
             partialSuccess: result.manualRemainder !== undefined ? 1 : 0,
             manualRemainders:
               result.manualRemainder !== undefined
-                ? JSON.stringify([result.manualRemainder])
+                ? JSON.stringify([{ reason: result.manualRemainder.reason }])
                 : null,
           })
           .run();
