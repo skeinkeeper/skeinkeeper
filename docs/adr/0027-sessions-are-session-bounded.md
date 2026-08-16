@@ -4,6 +4,13 @@ Status: accepted
 Date: 2026-05-27
 Scope: session-model
 
+> **Durable-list errata ([ADR-0031](./0031-errata-escalation-carrier-and-durable-surfaces.md)).**
+> The durable-surface list below reads as closed but omits surfaces the shipped
+> schema already makes durable — the dialogue transcript store (TDD 0013),
+> `quest_flags` (ADR-0018), the `sessions`/`campaigns` rows, and voice assignments
+> (TDD 0017). ADR-0031 adds them. The rule — new durable state is named by an
+> ADR/TDD with a deletion path — is unchanged; those surfaces already have one.
+
 ## Context
 
 The §4 surface model (ADR-0025) and the operator-as-host model

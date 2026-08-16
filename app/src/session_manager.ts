@@ -33,6 +33,7 @@ import {
   FoundryGmChatSurface,
   FoundryPublicChatSurface,
   FoundryWhisperSurface,
+  parseSkeinkeeperCommand,
 } from "@skeinkeeper/vtt-foundry";
 import {
   Mutex,
@@ -48,6 +49,7 @@ import {
   createSessionRunState,
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
+  isEagerness,
   createIntakeResolutionState,
   executePreflightVerify,
   formatIntakeReportForOperator,
@@ -70,6 +72,7 @@ import {
   runAlwaysListeningSession,
   startSession,
   VOICE_CONSENT_TEXT,
+  type ConsoleControl,
   type Eagerness,
   type ExtendedIntakeResult,
   type IntakeFinding,
@@ -354,13 +357,161 @@ export class SessionManager {
     return result;
   }
 
+  /**
+   * Operator commands typed as `/skeinkeeper <verb> <args>` in Foundry chat —
+   * the second operator-control surface under ADR-0025 / ADR-0028 (supersedes
+   * the Discord-slash surface of ADR-0016). Authorized by the invoker's Foundry
+   * GM role; dispatched to the same `SessionManager` write paths as the console
+   * (one write path, parity per ADR-0028 / TDD 0040). `consent` is a player
+   * self-action and exempt from the GM gate.
+   */
   private async handleFoundryCommand(event: {
     verb: string;
     args: ReadonlyArray<string>;
+    raw: string;
+    foundryUserId: string;
   }): Promise<void> {
-    if (event.verb === "preflight" && event.args[0] === "verify") {
-      await this.verifyPreflight(event.args[1]);
+    const parsed = parseSkeinkeeperCommand(event.raw);
+    // The surface only forwards ok-parsed commands (it answers parse errors
+    // inline); this is a defensive guard.
+    if (!parsed.ok) return;
+    const control = parsed.control;
+    if (control.control !== "consent" && !(await this.foundryUserIsGm(event.foundryUserId))) {
+      await this.replyToInvoker(
+        event.foundryUserId,
+        "Unauthorized: /skeinkeeper commands require a GM-role Foundry user.",
+      );
+      return;
     }
+    const ack = await this.dispatchOperatorControl(control, event.foundryUserId);
+    if (ack !== undefined) await this.replyToInvoker(event.foundryUserId, ack);
+  }
+
+  /** Whether a Foundry user holds a GM-class role (GAMEMASTER/ASSISTANT).
+   *  Fails closed if listUsers is unavailable (ADR-0024 silence-is-success). */
+  private async foundryUserIsGm(foundryUserId: string): Promise<boolean> {
+    const foundry = this.session?.config.foundry;
+    if (foundry === undefined) return false;
+    try {
+      const users = await foundry.listUsers();
+      const u = users.find((x) => x.id === foundryUserId);
+      return u !== undefined && (u.role === "GAMEMASTER" || u.role === "ASSISTANT");
+    } catch {
+      this.deps.analytics?.track("error.captured", {
+        errorClass: "listusers-unavailable",
+        module: "app:operator_command_auth",
+      });
+      return false;
+    }
+  }
+
+  /** Inline ack/error whispered to the invoking Foundry user via GM chat. */
+  private async replyToInvoker(foundryUserId: string, text: string): Promise<void> {
+    try {
+      await this.surfaces?.emit({
+        audience: { kind: "gm" },
+        text,
+        meta: { replyTo: foundryUserId },
+      });
+    } catch {
+      // inline ack is best-effort
+    }
+  }
+
+  /** Dispatch a parsed control to the shared SessionManager write path. Returns
+   *  the inline ack text, or undefined when a sub-handler replies itself. */
+  private async dispatchOperatorControl(
+    control: ConsoleControl,
+    invokerFoundryUserId: string,
+  ): Promise<string | undefined> {
+    switch (control.control) {
+      case "session":
+        if (control.action === "stop") {
+          await this.stop();
+          return "Session stopped.";
+        }
+        if (control.action === "start") {
+          return "Session start is console-only at v0.5 (cold-start) — open the operator console.";
+        }
+        return `Session ${control.action} isn't available yet (Foundry-down lifecycle is not shipped).`;
+      case "eagerness": {
+        const level = normalizeEagerness(control.level);
+        if (level === undefined) {
+          return `Invalid eagerness '${control.level}'. Use reserved, balanced, or eager.`;
+        }
+        this.setEagerness(level);
+        return `Eagerness → ${level}`;
+      }
+      case "voice":
+        if (control.action === "list") {
+          return `DM voices:\n${this.listPersonas()
+            .map((p) => `• ${p.label} — ${p.description}`)
+            .join("\n")}`;
+        }
+        {
+          const r = this.setDmVoiceByPersona(control.persona);
+          return r.ok ? `DM voice → ${control.persona}` : (r.error ?? "unknown persona");
+        }
+      case "operator":
+        return this.handleOperatorControlFromFoundry(control.action, invokerFoundryUserId);
+      case "pvp":
+        this.setPvpEnabled(control.enabled);
+        return `PvP → ${control.enabled ? "ON" : "OFF"}`;
+      case "intake": {
+        const id = Number(control.id);
+        if (!Number.isInteger(id) || id <= 0) return `Invalid finding id '${control.id}'.`;
+        const result = await this.resolveIntakeFinding(id, control.option);
+        return `Intake ${control.id}: ${result.status}`;
+      }
+      case "preflight": {
+        const result = await this.verifyPreflight(control.player);
+        return `Pre-flight: ${result.status} (${result.findings.length} finding(s)).`;
+      }
+      case "map":
+        return "Map override isn't available via Foundry chat yet — use the operator console.";
+      case "consent":
+        return this.handleConsentFromFoundry(control.decision, invokerFoundryUserId);
+    }
+  }
+
+  /** `/skeinkeeper operator claim|clear|show` — sets the dedicated Foundry user
+   *  that receives escalation whispers (TDD 0040 §2). GM-gated by the caller. */
+  private handleOperatorControlFromFoundry(
+    action: "claim" | "clear" | "show",
+    invokerFoundryUserId: string,
+  ): string {
+    const KEY = "operator.foundry_user_id";
+    if (action === "show") {
+      const cur = this.deps.tenantDb.settings.get(this.deps.campaignId, KEY)?.value;
+      return cur !== undefined && cur.length > 0
+        ? `Escalation whispers go to Foundry user ${cur}.`
+        : "No operator Foundry user is set; escalations broadcast to GM chat.";
+    }
+    const value = action === "claim" ? invokerFoundryUserId : "";
+    this.deps.tenantDb.settings.set({
+      campaignId: this.deps.campaignId,
+      key: KEY,
+      value,
+      updatedAt: Date.now(),
+    });
+    return action === "claim"
+      ? "You'll receive Skeinkeeper escalations as whispers here."
+      : "Cleared the operator Foundry user; escalations broadcast to GM chat.";
+  }
+
+  /** `/skeinkeeper consent accept|decline` from Foundry chat — a player
+   *  self-action. Resolves the invoker's Discord id via the 3-way map. */
+  private handleConsentFromFoundry(decision: "accept" | "decline", foundryUserId: string): string {
+    const discordId = this.identity.discordIdForFoundryUser(foundryUserId);
+    if (discordId === undefined) {
+      return "Couldn't match your Foundry user to a Discord identity — grant consent from the Discord prompt.";
+    }
+    if (decision === "accept") {
+      this.deps.consent.grant(discordId);
+      return "Voice consent granted — thanks!";
+    }
+    this.deps.consent.withdraw(discordId);
+    return "Voice consent withdrawn.";
   }
 
   /** Replace the live intake findings after a minimum/extended run. */
@@ -1107,7 +1258,11 @@ export class SessionManager {
     const mapped =
       discordId !== undefined ? this.identity.foundryUserIdForDiscord(discordId) : undefined;
     return pickOperatorFoundryUserId({
-      ...(dedicated !== undefined ? { dedicatedOperatorFoundryUserId: dedicated } : {}),
+      // An empty stored value means "cleared" — treat it as absent so the
+      // escalation path falls back to GM-broadcast rather than whispering "".
+      ...(dedicated !== undefined && dedicated.length > 0
+        ? { dedicatedOperatorFoundryUserId: dedicated }
+        : {}),
       ...(mapped !== undefined ? { mappedOperatorFoundryUserId: mapped } : {}),
     });
   }
@@ -1123,8 +1278,12 @@ export class SessionManager {
       "operator.foundry_user_id",
     )?.value;
     const picked = pickDmFoundryUserId({
-      ...(campaignDm !== undefined ? { campaignDmFoundryUserId: campaignDm } : {}),
-      ...(dedicated !== undefined ? { dedicatedOperatorFoundryUserId: dedicated } : {}),
+      ...(campaignDm !== undefined && campaignDm.length > 0
+        ? { campaignDmFoundryUserId: campaignDm }
+        : {}),
+      ...(dedicated !== undefined && dedicated.length > 0
+        ? { dedicatedOperatorFoundryUserId: dedicated }
+        : {}),
     });
     if (picked !== undefined && campaignDm === undefined) {
       this.deps.tenantDb.settings.set({
@@ -1277,10 +1436,16 @@ export class SessionManager {
   private async registerSlashCommands(guildId: string): Promise<void> {
     try {
       const guild = await this.client?.guilds.fetch(guildId);
+      // Discord is voice + one-time consent ONLY (ADR-0025 surface model).
+      // Operator controls moved to Foundry chat commands (ADR-0028 / TDD 0040)
+      // and the web console. Registering only `consent` replaces any previously
+      // registered operator subcommands, so they disappear from Discord's UI on
+      // the next start. `/skeinkeeper consent` is a player self-action, exempt
+      // from operator-control parity.
       await guild?.commands.set([
         {
           name: "skeinkeeper",
-          description: "Skeinkeeper controls",
+          description: "Skeinkeeper — voice consent",
           options: [
             {
               type: 1, // SUB_COMMAND
@@ -1288,93 +1453,6 @@ export class SessionManager {
               description: "Grant or withdraw voice-processing consent",
               options: [
                 { type: 3, name: "action", description: "grant or withdraw", required: true },
-              ],
-            },
-            {
-              type: 1, // SUB_COMMAND
-              name: "operator",
-              description: "Designate yourself (or clear/show) the operator who gets setup DMs",
-              options: [
-                { type: 3, name: "action", description: "claim, clear, or show", required: true },
-              ],
-            },
-            {
-              type: 1, // SUB_COMMAND
-              name: "session",
-              description: "Start or stop the session",
-              options: [
-                {
-                  type: 3,
-                  name: "action",
-                  description: "start or stop",
-                  required: true,
-                  choices: [
-                    { name: "start", value: "start" },
-                    { name: "stop", value: "stop" },
-                  ],
-                },
-              ],
-            },
-            {
-              type: 1, // SUB_COMMAND
-              name: "eagerness",
-              description: "Set how readily the DM speaks",
-              options: [
-                {
-                  type: 3,
-                  name: "level",
-                  description: "reserved, balanced, or eager",
-                  required: true,
-                  choices: [
-                    { name: "reserved", value: "reserved" },
-                    { name: "balanced", value: "balanced" },
-                    { name: "eager", value: "eager" },
-                  ],
-                },
-              ],
-            },
-            {
-              type: 1, // SUB_COMMAND
-              name: "voice",
-              description: "List the DM voices or set the active one",
-              options: [
-                {
-                  type: 3,
-                  name: "action",
-                  description: "list or set",
-                  required: true,
-                  choices: [
-                    { name: "list", value: "list" },
-                    { name: "set", value: "set" },
-                  ],
-                },
-                {
-                  type: 3,
-                  name: "persona",
-                  description: "which DM voice to make active (for set)",
-                  required: false,
-                  choices: this.listPersonas()
-                    .slice(0, 25)
-                    .map((p) => ({ name: p.label, value: p.id })),
-                },
-              ],
-            },
-            {
-              type: 1, // SUB_COMMAND
-              name: "pvp",
-              description: "Turn player-vs-player on/off, or show it (operator only)",
-              options: [
-                {
-                  type: 3,
-                  name: "action",
-                  description: "on, off, or show",
-                  required: true,
-                  choices: [
-                    { name: "on", value: "on" },
-                    { name: "off", value: "off" },
-                    { name: "show", value: "show" },
-                  ],
-                },
               ],
             },
           ],
@@ -1416,6 +1494,18 @@ export class SessionManager {
    *  validation live in the pure parseSlashCommand). Operator controls mirror
    *  the console via the same manager methods + AppEvent bus (design doc 0025). */
   private executeSlashCommand(interaction: ChatInputCommandInteraction, cmd: SlashCommand): void {
+    // Operator controls moved to Foundry chat commands + the web console
+    // (ADR-0025 / ADR-0028; TDD 0040). Discord now carries only the player
+    // consent self-action. If a stale operator subcommand still fires (one a
+    // pre-migration boot registered, before registerSlashCommands narrowed the
+    // set), redirect the operator to the current surfaces rather than acting.
+    if (!cmd.kind.startsWith("consent")) {
+      void reply(
+        interaction,
+        "Operator controls moved to Foundry chat (`/skeinkeeper …`) and the web console. Discord is voice + consent only now.",
+      );
+      return;
+    }
     switch (cmd.kind) {
       case "operator":
         void this.handleOperatorSlash(interaction, cmd.action);
@@ -1480,6 +1570,20 @@ export class SessionManager {
         return;
     }
   }
+}
+
+/** Accept both the console idiom (reserved/balanced/eager) and the low/medium/high
+ *  aliases the Foundry command parser allows; return the canonical Eagerness. */
+function normalizeEagerness(level: string): Eagerness | undefined {
+  const mapped =
+    level === "low"
+      ? "reserved"
+      : level === "medium"
+        ? "balanced"
+        : level === "high"
+          ? "eager"
+          : level;
+  return isEagerness(mapped) ? (mapped as Eagerness) : undefined;
 }
 
 function toIntakeView(state: IntakeResolutionState): IntakeView {
