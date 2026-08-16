@@ -87,6 +87,7 @@ import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { AppConfig } from "./config.js";
 import type { ConsentService } from "./consent.js";
 import type { FoundrySource } from "./foundry_source.js";
+import { pickDmFoundryUserId, pickOperatorFoundryUserId } from "./foundry_identity.js";
 import {
   OperatorService,
   operatorActionIsPrivileged,
@@ -392,9 +393,7 @@ export class SessionManager {
     const session = this.session;
     if (session === null) return null;
     const expectedPlayers = this.intakeExpectedPlayers();
-    const dmFoundryUserId =
-      this.deps.tenantDb.settings.get(this.deps.campaignId, "campaign.dm_foundry_user_id")?.value ??
-      this.resolveOperatorFoundryUserId();
+    const dmFoundryUserId = this.resolvedDmFoundryUserId();
     const operatorFoundryUserId = this.resolveOperatorFoundryUserId();
     return {
       ctx: {
@@ -784,6 +783,7 @@ export class SessionManager {
       identityPreflight: {
         verifyPlayer: (player) => this.verifyVoiceJoinIdentity(player),
         onCriticalGap: (player) => this.onVoiceJoinIdentityGap(player),
+        onWarning: (player) => this.onVoiceJoinIdentityWarning(player),
       },
       voiceRouting: this.routing,
       onDecision: (d, frags) =>
@@ -1096,14 +1096,44 @@ export class SessionManager {
     }
   }
 
-  /** Operator Foundry user for whisper targeting (3-way map, then settings). */
+  /** Dedicated GM Foundry user for escalation whispers — never the player map. */
   resolveOperatorFoundryUserId(): string | undefined {
+    const dedicated = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "operator.foundry_user_id",
+    )?.value;
     const discordId = this.operator.get();
-    if (discordId !== undefined) {
-      const mapped = this.identity.foundryUserIdForDiscord(discordId);
-      if (mapped !== undefined) return mapped;
+    const mapped =
+      discordId !== undefined ? this.identity.foundryUserIdForDiscord(discordId) : undefined;
+    return pickOperatorFoundryUserId({
+      ...(dedicated !== undefined ? { dedicatedOperatorFoundryUserId: dedicated } : {}),
+      ...(mapped !== undefined ? { mappedOperatorFoundryUserId: mapped } : {}),
+    });
+  }
+
+  /** Same DM identity at Start and voice-join; persist the resolved campaign setting. */
+  resolvedDmFoundryUserId(): string | undefined {
+    const campaignDm = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "campaign.dm_foundry_user_id",
+    )?.value;
+    const dedicated = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "operator.foundry_user_id",
+    )?.value;
+    const picked = pickDmFoundryUserId({
+      ...(campaignDm !== undefined ? { campaignDmFoundryUserId: campaignDm } : {}),
+      ...(dedicated !== undefined ? { dedicatedOperatorFoundryUserId: dedicated } : {}),
+    });
+    if (picked !== undefined && campaignDm === undefined) {
+      this.deps.tenantDb.settings.set({
+        campaignId: this.deps.campaignId,
+        key: "campaign.dm_foundry_user_id",
+        value: picked,
+        updatedAt: Date.now(),
+      });
     }
-    return this.deps.tenantDb.settings.get(this.deps.campaignId, "operator.foundry_user_id")?.value;
+    return picked;
   }
 
   private async verifyVoiceJoinIdentity(player: {
@@ -1112,10 +1142,7 @@ export class SessionManager {
   }): Promise<"ok" | "critical-gaps" | "warnings-only"> {
     const session = this.session;
     if (session === null) return "ok";
-    const dmFoundryUserId = this.deps.tenantDb.settings.get(
-      this.deps.campaignId,
-      "campaign.dm_foundry_user_id",
-    )?.value;
+    const dmFoundryUserId = this.resolvedDmFoundryUserId();
     const operatorFoundryUserId = this.resolveOperatorFoundryUserId();
     const { result } = await runIdentityPreflight({
       ctx: {
@@ -1152,6 +1179,20 @@ export class SessionManager {
       );
     } catch {
       // escalation undelivered; player still stays off the onboarding set
+    }
+  }
+
+  private async onVoiceJoinIdentityWarning(player: {
+    discordUserId: string;
+    displayName?: string;
+  }): Promise<void> {
+    const name = player.displayName ?? player.discordUserId;
+    try {
+      await this.emitOperatorNote(
+        `Identity pre-flight warning for ${name} — they can play; check Foundry user / ownership when you can.`,
+      );
+    } catch {
+      // warning undelivered; onboarding still proceeds
     }
   }
 

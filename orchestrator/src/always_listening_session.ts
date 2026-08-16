@@ -80,6 +80,8 @@ export interface AlwaysListeningConfig {
       displayName?: string;
     }) => Promise<"ok" | "critical-gaps" | "warnings-only">;
     onCriticalGap: (player: { discordUserId: string; displayName?: string }) => Promise<void>;
+    /** TDD 0036 §3c: warnings-only still onboards; escalate one operator line. */
+    onWarning?: (player: { discordUserId: string; displayName?: string }) => Promise<void>;
   };
   /** Invoked after each respond-decision (for telemetry / operator UI). */
   onDecision?: (decision: RespondDecision, fragments: ReadonlyArray<BufferFragment>) => void;
@@ -204,6 +206,12 @@ export async function runAlwaysListeningSession(
             }
           } else {
             identityBlocked.delete(m.id);
+            if (status === "warnings-only" && identity.onWarning !== undefined) {
+              if (!identityCourtesySent.has(`warn:${m.id}`)) {
+                identityCourtesySent.add(`warn:${m.id}`);
+                await identity.onWarning(player);
+              }
+            }
           }
         }
       }
@@ -211,7 +219,21 @@ export async function runAlwaysListeningSession(
     }
 
     if (event.kind === "utterance") {
-      if (identityBlocked.has(event.utterance.speaker)) continue;
+      if (identityBlocked.has(event.utterance.speaker)) {
+        // TDD 0036 §3c: record unmapped; do not dispatch to a conversation.
+        const cfg = session.config;
+        const u = event.utterance;
+        cfg.tenantDb.dialogue.append({
+          sessionId: cfg.sessionId,
+          speaker: u.speaker,
+          ...(u.displayName !== undefined ? { displayName: u.displayName } : {}),
+          text: u.text,
+          timestamp: u.timestamp,
+          audience: "player:unmapped",
+          conversationId: "player:unmapped",
+        });
+        continue;
+      }
       buffer.append(utteranceToFragment(event.utterance));
       continue;
     }
