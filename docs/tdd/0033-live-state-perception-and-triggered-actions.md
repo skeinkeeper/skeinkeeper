@@ -8,6 +8,18 @@ Author: maintainers
 Date: 2026-05-26
 Related TDDs: [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md), [0022 (DM-action coverage audit)](./0022-dm-action-coverage-audit.md), [0031 (intake + intake report)](./0031-session-intake-and-intake-report.md), [0032 (autonomous setup actions)](./0032-autonomous-pre-game-setup-actions.md), [0034 (surface routing + IO abstraction)](./0034-surface-routing-and-io-abstraction.md), [0035 (side-channels via Foundry whisper)](./0035-side-channels-via-foundry-whisper.md), [0041 (first-party Foundry add-on)](./0041-first-party-foundry-addon.md)
 
+> **Implementation note (add-on write surface).** The orchestrator tools here
+> (`reveal_token`, `hide_token`, `place_hidden_token`, `share_journal_to_audience`,
+> `distribute_loot`) are implemented and unit-tested against `MockFoundryClient`.
+> Against a live Foundry, the first-party add-on currently implements the token
+> **show/hide/move** path (`updateToken`, `getTokenDetails`, `moveToken`) and the
+> journal **read** (`getJournal`) — so `reveal_token`/`hide_token` and the
+> journal-share reads function. **Token spawn** (`place_hidden_token` →
+> `createToken`) and **loot** (`distribute_loot` → `addActorItems`) are the
+> [TDD 0042](./0042-foundry-mechanical-writes.md) write surface: until that lands
+> and is live-validated, the add-on returns a `not-implemented` error and the tool
+> fails loudly (previously these were silent no-ops that reported success).
+
 ## Approach
 
 §4.8 names two distinct AI capabilities for play time: **live state perception** (the AI
