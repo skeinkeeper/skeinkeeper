@@ -2,8 +2,12 @@
 # Copyright 2026 Skeinkeeper Contributors
 #
 # `docker compose up` runs the operator app (console on localhost:3000).
-# Foundry + the OSS MCP bridge run outside this compose (host or their own
-# services); set FOUNDRY_URL accordingly (e.g. http://host.docker.internal:30000).
+# Foundry runs outside this compose, on the operator's own machine/network. There
+# is no third-party connector: enable the first-party Skeinkeeper add-on in your
+# Foundry world and point it at this app's gateway (default ws://127.0.0.1:7733).
+# Same-machine (loopback) is the default; a Foundry that must reach the gateway
+# across the network needs FOUNDRY_GATEWAY_BIND=lan + a pairing secret + TLS
+# (see docs/INSTALL.md). The add-on always presents the pairing secret.
 services:
   app:
     build: .
