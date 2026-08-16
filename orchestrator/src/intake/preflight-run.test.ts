@@ -13,6 +13,7 @@ import {
   IdentityPreflightBlockedError,
   assertIdentityAllowsStart,
   collectIdentityPreflightInput,
+  executePreflightVerify,
   identityFindingsToIntake,
 } from "./preflight-run.js";
 import type { IntakeContext } from "./types.js";
@@ -221,5 +222,63 @@ describe("collectIdentityPreflightInput", () => {
     expect(input.listUsersAvailable).not.toBe(false);
     expect(input.identityMap[0]?.foundryUserId).toBe("u1");
     expect(identityFindingsToIntake({ status: "ok", findings: [] })).toEqual([]);
+  });
+});
+
+describe("executePreflightVerify (TDD 0036 seq 8)", () => {
+  it("reports table-wide findings inline", async () => {
+    const tenantDb = setupDb();
+    tenantDb.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "d1",
+      foundryActorId: "a1",
+      displayName: "Alice",
+      source: "player",
+      confirmedAt: Date.now(),
+    });
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      users: [{ id: "u-gm", name: "GM", role: "GAMEMASTER", ownedActorIds: [] }],
+    });
+    const sent: string[] = [];
+    const result = await executePreflightVerify({
+      ctx: {
+        ...ctx,
+        expectedPlayers: [{ discordUserId: "d1", displayName: "Alice" }],
+        dmFoundryUserId: "u-gm",
+        operatorFoundryUserId: "u-gm",
+      },
+      tenantDb,
+      foundry,
+      emit: async (text) => {
+        sent.push(text);
+      },
+    });
+    expect(result.status).toBe("critical-gaps");
+    expect(sent[0]).toMatch(/Alice|Foundry user/i);
+  });
+
+  it("re-runs the per-player check", async () => {
+    const tenantDb = setupDb();
+    const foundry = new MockFoundryClient({
+      system: "dnd5e",
+      users: [{ id: "u-gm", name: "GM", role: "GAMEMASTER", ownedActorIds: [] }],
+    });
+    const sent: string[] = [];
+    const result = await executePreflightVerify({
+      ctx: {
+        ...ctx,
+        dmFoundryUserId: "u-gm",
+        operatorFoundryUserId: "u-gm",
+      },
+      tenantDb,
+      foundry,
+      player: "d1",
+      emit: async (text) => {
+        sent.push(text);
+      },
+    });
+    expect(result.findings.some((f) => f.kind === "no-foundry-user")).toBe(true);
+    expect(sent).toHaveLength(1);
   });
 });
