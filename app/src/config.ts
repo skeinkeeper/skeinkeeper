@@ -32,10 +32,12 @@ export interface AppConfig {
   elevenLabsApiKey: string;
   foundry: {
     url: string;
-    mcpPort: number;
-    /** argv for the OSS MCP bridge to spawn (from FOUNDRY_MCP_COMMAND). When
-     *  unset, the app runs against a mock Foundry. */
-    mcpCommand?: string[];
+    gateway: {
+      bind: "loopback" | "lan";
+      port: number;
+      pairingSecret: string;
+      tls?: { cert: string; key: string };
+    };
   };
   /** Curated DM persona's provider voice ID (the operator picks a persona; the
    *  app resolves it to this). */
@@ -73,6 +75,29 @@ function parsePort(raw: string | undefined, fallback: number): number {
 
 const DEFAULT_DM_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"; // George — warm storyteller
 
+function gatewayFromEnv(env: Env, missing: string[]): AppConfig["foundry"]["gateway"] {
+  const bindRaw = (env["FOUNDRY_GATEWAY_BIND"] ?? "loopback").trim();
+  const bind = bindRaw === "lan" ? "lan" : "loopback";
+  const secret = (env["FOUNDRY_PAIRING_SECRET"] ?? "").trim();
+  const cert = env["FOUNDRY_GATEWAY_TLS_CERT"];
+  const key = env["FOUNDRY_GATEWAY_TLS_KEY"];
+  const tls =
+    cert !== undefined && cert.length > 0 && key !== undefined && key.length > 0
+      ? { cert, key }
+      : undefined;
+  if (bind === "lan") {
+    if (secret.length === 0 || tls === undefined) {
+      missing.push("FOUNDRY_GATEWAY_TLS_CERT+FOUNDRY_GATEWAY_TLS_KEY+FOUNDRY_PAIRING_SECRET");
+    }
+  }
+  return {
+    bind,
+    port: parsePort(env["FOUNDRY_GATEWAY_PORT"], 7733),
+    pairingSecret: secret,
+    ...(tls !== undefined ? { tls } : {}),
+  };
+}
+
 export function loadConfig(env: Env): AppConfig {
   const missing: string[] = [];
   const config: AppConfig = {
@@ -100,10 +125,7 @@ export function loadConfig(env: Env): AppConfig {
     elevenLabsApiKey: req(env, "ELEVENLABS_API_KEY", missing),
     foundry: {
       url: env["FOUNDRY_URL"] ?? "http://localhost:30000",
-      mcpPort: parsePort(env["FOUNDRY_MCP_PORT"], 31415),
-      ...(env["FOUNDRY_MCP_COMMAND"] && env["FOUNDRY_MCP_COMMAND"].trim().length > 0
-        ? { mcpCommand: env["FOUNDRY_MCP_COMMAND"].trim().split(/\s+/) }
-        : {}),
+      gateway: gatewayFromEnv(env, missing),
     },
     dmVoiceId: env["ELEVENLABS_DM_VOICE_ID"] ?? DEFAULT_DM_VOICE_ID,
     eagerness: isEagerness(env["SKEINKEEPER_EAGERNESS"] ?? "")

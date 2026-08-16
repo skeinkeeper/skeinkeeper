@@ -23,7 +23,10 @@ function makeConfig(): AppConfig {
     anthropicApiKey: "fake-anthropic",
     deepgramApiKey: "fake-deepgram",
     elevenLabsApiKey: "fake-elevenlabs",
-    foundry: { url: "http://localhost:30000", mcpPort: 0 },
+    foundry: {
+      url: "http://localhost:30000",
+      gateway: { bind: "loopback", port: 0, pairingSecret: "test" },
+    },
     dmVoiceId: "fake-voice",
     eagerness: DEFAULT_EAGERNESS,
   };

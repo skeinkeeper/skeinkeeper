@@ -8,7 +8,7 @@
  *
  *   pnpm app:start            # then open the console URL it logs
  *
- * Foundry connects to the real OSS MCP bridge when FOUNDRY_MCP_COMMAND is set
+ * Foundry connects via the first-party add-on (TDD 0041).
  * (spawned at session start); otherwise it falls back to a mock.
  */
 import { randomBytes } from "node:crypto";
