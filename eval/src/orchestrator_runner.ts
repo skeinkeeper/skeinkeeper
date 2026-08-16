@@ -114,6 +114,13 @@ async function dispatchEmitted(
         await foundry.postChatMessage({ content: output.text ?? "", mode: "public" });
       },
     });
+    router.register({
+      name: "foundry-gm",
+      handles: ["gm"],
+      async emit(output) {
+        await foundry.postChatMessage({ content: output.text ?? "", mode: "gm" });
+      },
+    });
     const ctx = {
       tenantDb,
       sessionId: "eval",
