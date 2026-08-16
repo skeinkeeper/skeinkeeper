@@ -1,0 +1,11 @@
+{
+  "id": "skeinkeeper",
+  "title": "Skeinkeeper",
+  "description": "First-party Foundry add-on. Dials out to the operator's Skeinkeeper process. Does not phone home.",
+  "version": "0.5.0",
+  "compatibility": { "minimum": "13", "verified": "14", "maximum": "14" },
+  "esmodules": ["scripts/main.mjs"],
+  "socket": false,
+  "license": "Apache-2.0",
+  "authors": [{ "name": "Skeinkeeper Contributors" }]
+}

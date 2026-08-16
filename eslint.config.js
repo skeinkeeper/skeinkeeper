@@ -16,6 +16,7 @@ export default [
       "docs/**",
       "behavior/**",
       "app/src/web/static/**",
+      "modules/**",
     ],
   },
   js.configs.recommended,

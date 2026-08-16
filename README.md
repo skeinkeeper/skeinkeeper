@@ -18,7 +18,7 @@ To run Skeinkeeper, you need:
 
 - A machine to run it on (Linux, macOS, or Windows with Docker)
 - A Discord account, with a [bot you've registered](https://discord.com/developers/applications) in your own Discord developer account
-- A Foundry VTT instance (self-hosted or via The Forge) with a Foundry MCP bridge installed. We recommend [adambdooley/foundry-vtt-mcp](https://github.com/adambdooley/foundry-vtt-mcp) (fully OSS, no API keys); [laurigates/foundryvtt-mcp](https://github.com/laurigates/foundryvtt-mcp) is supported as a simpler alternative. See [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md).
+- A Foundry VTT instance you run (v13 or v14) with the Skeinkeeper add-on from this repo (`modules/skeinkeeper`) enabled. You do not install a third-party Foundry connector. See [ADR-0029](./docs/adr/0029-first-party-foundry-addon.md).
 - An API key for an LLM provider (Anthropic Claude — the implemented provider today; the interface is pluggable)
 - An API key for a TTS provider (ElevenLabs recommended) and an STT provider (Deepgram recommended)
 - Comfort with `docker compose up` and editing environment variables

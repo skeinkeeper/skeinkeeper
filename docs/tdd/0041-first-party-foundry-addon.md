@@ -1,6 +1,6 @@
 # TDD 0041: First-party Foundry add-on, gateway, and table-text client
 
-Status: draft
+Status: implemented
 PRD refs: 4.2 (FR-F2, FR-F3, FR-F4, FR-F5, FR-F6, load-bearing table-text 1–5), 4.1, 5.2, 5.3, 5.5, 5.8
 PRD-rev: 5c3a198
 ADR constraints: 0003, 0008, 0009, 0010, 0012, 0017, 0018, 0023, 0025, 0029, 0030
@@ -55,11 +55,11 @@ Foundry's API. Player users load the package and do nothing.
 
 `FoundryGateway` binds a WebSocket server.
 
-| Setting | Default | Env |
-| --- | --- | --- |
-| bind | `127.0.0.1` | `FOUNDRY_GATEWAY_BIND=loopback` or `lan` |
-| port | `7733` | `FOUNDRY_GATEWAY_PORT` |
-| pairing secret | generated at first boot, shown on the console | `FOUNDRY_PAIRING_SECRET` |
+| Setting        | Default                                       | Env                                      |
+| -------------- | --------------------------------------------- | ---------------------------------------- |
+| bind           | `127.0.0.1`                                   | `FOUNDRY_GATEWAY_BIND=loopback` or `lan` |
+| port           | `7733`                                        | `FOUNDRY_GATEWAY_PORT`                   |
+| pairing secret | generated at first boot, shown on the console | `FOUNDRY_PAIRING_SECRET`                 |
 
 `lan` bind is refused unless a non-empty pairing secret is configured
 **and** TLS is enabled (`FOUNDRY_GATEWAY_TLS_CERT` + `FOUNDRY_GATEWAY_TLS_KEY`;
@@ -157,17 +157,17 @@ same. There is no env var that selects the mock in the operator app.
 
 ### Add-on method dispatch (Foundry API)
 
-| `method` | Foundry call |
-| --- | --- |
-| `listPartyActors` | `game.actors` filtered to player-owned characters |
-| `getActor` | `game.actors.get` |
-| `getActiveScene` / `listScenes` / `setActiveScene` | `game.scenes` |
-| `listSceneActors` | active scene tokens → actors |
-| `applyActorUpdate` | `token.toggleEffect` / `token.document.update` for position |
-| `postChatMessage` | `ChatMessage.create` with whisper / GM / public style (v13/v14 shim) |
-| `rollDice` | `new Roll(formula).toMessage({ rollMode })` |
-| `deleteChatMessages` | `ChatMessage.deleteDocuments` filtered by speaker/whisper/time |
-| `listUsers` | `game.users` mapped to the role enum |
+| `method`                                           | Foundry call                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------- |
+| `listPartyActors`                                  | `game.actors` filtered to player-owned characters                    |
+| `getActor`                                         | `game.actors.get`                                                    |
+| `getActiveScene` / `listScenes` / `setActiveScene` | `game.scenes`                                                        |
+| `listSceneActors`                                  | active scene tokens → actors                                         |
+| `applyActorUpdate`                                 | `token.toggleEffect` / `token.document.update` for position          |
+| `postChatMessage`                                  | `ChatMessage.create` with whisper / GM / public style (v13/v14 shim) |
+| `rollDice`                                         | `new Roll(formula).toMessage({ rollMode })`                          |
+| `deleteChatMessages`                               | `ChatMessage.deleteDocuments` filtered by speaker/whisper/time       |
+| `listUsers`                                        | `game.users` mapped to the role enum                                 |
 
 Chat subscribe: `Hooks.on("createChatMessage")` → `evt chat`. The add-on
 must not echo Skeinkeeper-authored messages back as player input (tag
@@ -217,50 +217,50 @@ stay in Foundry (ADR-0018).
 
 Observable surface: Start result, console text, Foundry chat, `FoundryClient` returns.
 
-| Observation point | PASS |
-| --- | --- |
-| Start with add-on disabled | Start refuses within 5s; message names the add-on; Discord bot does not join voice |
-| Start with add-on at `ws://127.0.0.1:7733` | Start succeeds; `getActiveScene()` matches the world |
-| `hello` with `foundryVersion: "12.331"` | `hello-reject code=version`; Start refuses; message names the version |
-| Non-loopback connect, empty secret | `hello-reject code=unauthorized`; Start refuses |
-| `FOUNDRY_GATEWAY_BIND=lan` without TLS cert/key | process refuses to listen; console names TLS |
-| Non-loopback connect, matching secret, `wss://` | `hello-ok`; Start can succeed |
-| `postChatMessage({ mode:"public", content:"X" })` | Every player's Foundry public chat shows `X` |
-| `postChatMessage({ mode:"whisper", whisperTo:[u] })` | Only user `u` (and GM view) sees it |
-| `postChatMessage({ mode:"gm", content:"Y" })` | A player client does not show `Y` |
-| Player types "I search the room" in public chat | `subscribeChatEvents` fires with that text and that user's id; our own posts do not fire |
-| `rollDice("1d20", { mode:"gm" })` | A player client does not show the roll; result.total is a number |
-| Production `createApp` with gateway down | no `MockFoundryClient` instance is constructed |
+| Observation point                                    | PASS                                                                                     |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Start with add-on disabled                           | Start refuses within 5s; message names the add-on; Discord bot does not join voice       |
+| Start with add-on at `ws://127.0.0.1:7733`           | Start succeeds; `getActiveScene()` matches the world                                     |
+| `hello` with `foundryVersion: "12.331"`              | `hello-reject code=version`; Start refuses; message names the version                    |
+| Non-loopback connect, empty secret                   | `hello-reject code=unauthorized`; Start refuses                                          |
+| `FOUNDRY_GATEWAY_BIND=lan` without TLS cert/key      | process refuses to listen; console names TLS                                             |
+| Non-loopback connect, matching secret, `wss://`      | `hello-ok`; Start can succeed                                                            |
+| `postChatMessage({ mode:"public", content:"X" })`    | Every player's Foundry public chat shows `X`                                             |
+| `postChatMessage({ mode:"whisper", whisperTo:[u] })` | Only user `u` (and GM view) sees it                                                      |
+| `postChatMessage({ mode:"gm", content:"Y" })`        | A player client does not show `Y`                                                        |
+| Player types "I search the room" in public chat      | `subscribeChatEvents` fires with that text and that user's id; our own posts do not fire |
+| `rollDice("1d20", { mode:"gm" })`                    | A player client does not show the roll; result.total is a number                         |
+| Production `createApp` with gateway down             | no `MockFoundryClient` instance is constructed                                           |
 
 ## Evaluation rubric
 
-| Criterion | High-quality | Acceptable | Failing |
-| --- | --- | --- | --- |
-| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
-| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
-| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
-| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
-| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
-| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
+| Criterion                       | High-quality                                                                                       | Acceptable                                                   | Failing                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Requirement traceability        | Every in-scope FR/NFR maps to a named interface, type, or step                                     | One mapping is slightly coarse but still findable            | An in-scope FR has no row, or the row is "handled in code"        |
+| Interface concreteness          | Method names, args, return types, and error cases are specified                                    | Types are named; one edge payload is implied                 | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason                                    | No new dep, and the section says why                         | New dep with empty or "none considered" analysis                  |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named                                   | Observable but one scenario is console-only                  | Non-actionable plan (no surface, no observation point)            |
+| Scope-bound adherence           | Touched files ≤8, body ≤500, per-file estimates present                                            | One justified exception marker                               | Silent over-bound or missing Touched files / Expected diff        |
+| Naming consistency              | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name                  |
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-| --- | --- | --- |
-| FR-F2 | Foundry support ships with Skeinkeeper | `modules/skeinkeeper` + INSTALL |
-| FR-F3 | Foundry v13 and v14 | `hello` version check; `module.json` compatibility |
-| FR-F4 | Operator-controlled infrastructure | default loopback bind; INSTALL; no hosted-Foundry path |
-| FR-F5 | Unauthorized Foundry refused | pairing secret on non-loopback; `hello-reject unauthorized` |
-| FR-F6 | Missing/unreachable Foundry fails closed | 5s wait; no mock in production Start |
-| 4.2 table-text 1 | AI text in the right Foundry chat | `postChatMessage` modes |
-| 4.2 table-text 2 | AI/GM rolls with intended visibility | `rollDice` modes |
-| 4.2 table-text 3 | Erasure deletes Foundry whispers | `deleteChatMessages` (caller is TDD 0038) |
-| 4.2 table-text 4 | Typed `/skeinkeeper` commands work | `evt chat` → TDD 0040 parser |
-| 4.2 table-text 5 | Player Foundry chat is table input | `subscribeChatEvents` / `evt chat` |
-| 4.1 | Player text lives in Foundry | same subscribe path |
-| 5.3 | Foundry op ≤ 1s p95 | 5s is the fail timeout; happy-path is a local WS call |
-| 5.5 | Add-on does not phone home | no outbound URL in `module.json` except operator-set gateway |
-| 5.8 | Foundry-down pauses | `evt gone` → TDD 0039 |
+| PRD ref          | Requirement                              | Satisfied by                                                 |
+| ---------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| FR-F2            | Foundry support ships with Skeinkeeper   | `modules/skeinkeeper` + INSTALL                              |
+| FR-F3            | Foundry v13 and v14                      | `hello` version check; `module.json` compatibility           |
+| FR-F4            | Operator-controlled infrastructure       | default loopback bind; INSTALL; no hosted-Foundry path       |
+| FR-F5            | Unauthorized Foundry refused             | pairing secret on non-loopback; `hello-reject unauthorized`  |
+| FR-F6            | Missing/unreachable Foundry fails closed | 5s wait; no mock in production Start                         |
+| 4.2 table-text 1 | AI text in the right Foundry chat        | `postChatMessage` modes                                      |
+| 4.2 table-text 2 | AI/GM rolls with intended visibility     | `rollDice` modes                                             |
+| 4.2 table-text 3 | Erasure deletes Foundry whispers         | `deleteChatMessages` (caller is TDD 0038)                    |
+| 4.2 table-text 4 | Typed `/skeinkeeper` commands work       | `evt chat` → TDD 0040 parser                                 |
+| 4.2 table-text 5 | Player Foundry chat is table input       | `subscribeChatEvents` / `evt chat`                           |
+| 4.1              | Player text lives in Foundry             | same subscribe path                                          |
+| 5.3              | Foundry op ≤ 1s p95                      | 5s is the fail timeout; happy-path is a local WS call        |
+| 5.5              | Add-on does not phone home               | no outbound URL in `module.json` except operator-set gateway |
+| 5.8              | Foundry-down pauses                      | `evt gone` → TDD 0039                                        |
 
 ## Dependencies considered
 
