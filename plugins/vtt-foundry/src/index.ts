@@ -3,6 +3,7 @@
 
 export { FoundryGateway, FoundryGatewayError } from "./foundry_gateway.js";
 export { ModuleFoundryClient } from "./module_foundry_client.js";
+export { DND5E_WRITE_TOOLS, FoundryWriteToolError, registerFoundrySystemTools } from "./tools.js";
 export { readCompendiumEntries, type CompendiumEntry } from "./compendium.js";
 export { parseChatConvention } from "./convention.js";
 export {

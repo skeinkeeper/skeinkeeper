@@ -4,6 +4,8 @@
 import type {
   FoundryActor,
   FoundryClient,
+  FoundryCombatAction,
+  FoundryCombatSnapshot,
   FoundryCreatureRef,
   FoundryModuleRef,
   FoundryPackRef,
@@ -30,6 +32,25 @@ interface MutableToken {
   x: number;
   y: number;
   disposition?: number;
+}
+
+interface MutableCombat {
+  id: string;
+  round: number;
+  turn: number;
+  combatantIds: string[];
+}
+
+/** Typed mock error carrying the gateway-style `code` so tool wrappers can
+ *  classify failures the same way against MockFoundryClient and the add-on. */
+class MockFoundryError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(`${code}: ${message}`);
+    this.name = "MockFoundryError";
+  }
 }
 
 export interface MockFoundryClientOptions {
@@ -354,6 +375,10 @@ export class MockFoundryClient implements FoundryClient {
     hidden?: boolean;
     disposition?: "hostile" | "neutral" | "friendly";
   }): Promise<{ tokenId: string; actorId: string }> {
+    if (!Number.isFinite(args.x) || !Number.isFinite(args.y)) {
+      // Coordinates are scene pixels; a non-finite value is a caller bug (TDD 0042).
+      throw new MockFoundryError("bad-args", "x and y must be finite scene-pixel coordinates");
+    }
     let actorId = args.actorId;
     if (actorId === undefined && args.compendiumRef !== undefined) {
       const parsed = parseCompendiumRef(args.compendiumRef);
@@ -427,6 +452,148 @@ export class MockFoundryClient implements FoundryClient {
     items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
   }): Promise<void> {
     this.addedItems.push({ actorId: args.actorId, items: args.items });
+  }
+
+  // ---- TDD 0042 mechanical writes ----
+
+  private combat: MutableCombat | null = null;
+  private combatSeq = 0;
+  /** manageCombat invocations, for wrapper tests. */
+  readonly combatOps: Array<{ action: FoundryCombatAction; combatantIds?: ReadonlyArray<string> }> =
+    [];
+  /** applyDamage invocations, for wrapper tests. */
+  readonly damageOps: Array<{ actorId: string; amount: number }> = [];
+  /** manageFog invocations, for wrapper tests. */
+  readonly fogOps: Array<{ action: "reveal-scene" | "reset"; sceneId: string }> = [];
+
+  private combatSnapshot(): FoundryCombatSnapshot {
+    const c = this.combat;
+    if (c === null) return { combatId: null, round: 0, turn: 0, currentCombatantId: null };
+    return {
+      combatId: c.id,
+      round: c.round,
+      turn: c.turn,
+      currentCombatantId: c.combatantIds[c.turn] ?? null,
+    };
+  }
+
+  async manageCombat(args: {
+    action: FoundryCombatAction;
+    combatantIds?: ReadonlyArray<string>;
+  }): Promise<FoundryCombatSnapshot> {
+    this.combatOps.push({
+      action: args.action,
+      ...(args.combatantIds !== undefined ? { combatantIds: args.combatantIds } : {}),
+    });
+    switch (args.action) {
+      case "start": {
+        // Idempotent: a second start returns the running encounter (TDD 0042).
+        if (this.combat !== null) return this.combatSnapshot();
+        const ids =
+          args.combatantIds !== undefined && args.combatantIds.length > 0
+            ? [...args.combatantIds]
+            : (this.tokensByScene.get(this.activeSceneId ?? "") ?? []).map((t) => t.id);
+        this.combatSeq += 1;
+        this.combat = { id: `combat-${this.combatSeq}`, round: 1, turn: 0, combatantIds: ids };
+        return this.combatSnapshot();
+      }
+      case "end": {
+        if (this.combat === null) return this.combatSnapshot();
+        const ended: FoundryCombatSnapshot = {
+          combatId: this.combat.id,
+          round: this.combat.round,
+          turn: this.combat.turn,
+          currentCombatantId: null,
+        };
+        this.combat = null;
+        return ended;
+      }
+      case "add": {
+        if (args.combatantIds === undefined || args.combatantIds.length === 0) {
+          throw new MockFoundryError("bad-args", "add requires combatantIds");
+        }
+        if (this.combat === null) {
+          throw new MockFoundryError("not-found", "no active combat");
+        }
+        for (const id of args.combatantIds) {
+          if (!this.combat.combatantIds.includes(id)) this.combat.combatantIds.push(id);
+        }
+        return this.combatSnapshot();
+      }
+      case "roll-initiative": {
+        if (this.combat === null) {
+          throw new MockFoundryError("not-found", "no active combat");
+        }
+        return this.combatSnapshot();
+      }
+      case "next-turn": {
+        if (this.combat === null) return this.combatSnapshot();
+        const c = this.combat;
+        if (c.turn + 1 >= c.combatantIds.length) {
+          c.round += 1;
+          c.turn = 0;
+        } else {
+          c.turn += 1;
+        }
+        return this.combatSnapshot();
+      }
+      case "previous-turn": {
+        if (this.combat === null) return this.combatSnapshot();
+        const c = this.combat;
+        if (c.turn > 0) {
+          c.turn -= 1;
+        } else if (c.round > 1) {
+          c.round -= 1;
+          c.turn = Math.max(0, c.combatantIds.length - 1);
+        }
+        return this.combatSnapshot();
+      }
+    }
+  }
+
+  async applyDamage(args: { actorId: string; amount: number }): Promise<{
+    hp: number;
+    tempHp?: number;
+  }> {
+    this.damageOps.push({ actorId: args.actorId, amount: args.amount });
+    const actor = this.actorsById.get(args.actorId);
+    if (actor === undefined) {
+      throw new MockFoundryError("not-found", `actor ${args.actorId} is not in the world`);
+    }
+    const hp = sheetHp(actor.sheet);
+    let value = hp.value;
+    let temp = hp.temp;
+    if (args.amount >= 0) {
+      // dnd5e semantics: temp HP absorbs damage first; hp floors at 0.
+      const fromTemp = Math.min(temp, args.amount);
+      temp -= fromTemp;
+      value = Math.max(0, value - (args.amount - fromTemp));
+    } else {
+      value = Math.min(hp.max, value - args.amount);
+    }
+    this.actorsById.set(actor.id, {
+      ...actor,
+      sheet: {
+        ...actor.sheet,
+        attributes: {
+          ...(actor.sheet["attributes"] as Record<string, unknown> | undefined),
+          hp: { ...hp, value, temp },
+        },
+      },
+    });
+    return { hp: value, ...(hp.hadTemp ? { tempHp: temp } : {}) };
+  }
+
+  async manageFog(args: {
+    action: "reveal-scene" | "reset";
+    sceneId?: string;
+  }): Promise<{ sceneId: string }> {
+    const sceneId = args.sceneId ?? this.activeSceneId;
+    if (sceneId === undefined || !this.scenesById.has(sceneId)) {
+      throw new MockFoundryError("not-found", `scene ${sceneId ?? "(active)"} is not in the world`);
+    }
+    this.fogOps.push({ action: args.action, sceneId });
+    return { sceneId };
   }
 
   async updateToken(args: {
@@ -523,6 +690,25 @@ export class MockFoundryClient implements FoundryClient {
   emitChatEvent(event: FoundryChatEvent): void {
     for (const handler of this.chatHandlers) handler(event);
   }
+}
+
+/** Read `attributes.hp` off an opaque dnd5e-shaped sheet, tolerating absence. */
+function sheetHp(sheet: Readonly<Record<string, unknown>>): {
+  value: number;
+  max: number;
+  temp: number;
+  hadTemp: boolean;
+} {
+  const attributes = sheet["attributes"];
+  const hp =
+    attributes !== null && typeof attributes === "object"
+      ? (attributes as Record<string, unknown>)["hp"]
+      : undefined;
+  const rec = hp !== null && typeof hp === "object" ? (hp as Record<string, unknown>) : {};
+  const value = typeof rec["value"] === "number" ? rec["value"] : 0;
+  const max = typeof rec["max"] === "number" ? rec["max"] : value;
+  const hadTemp = typeof rec["temp"] === "number";
+  return { value, max, temp: hadTemp ? (rec["temp"] as number) : 0, hadTemp };
 }
 
 function actorSourceId(actor: FoundryActor): string | undefined {

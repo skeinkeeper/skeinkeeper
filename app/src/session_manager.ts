@@ -34,6 +34,7 @@ import {
   FoundryPublicChatSurface,
   FoundryWhisperSurface,
   parseSkeinkeeperCommand,
+  registerFoundrySystemTools,
 } from "@skeinkeeper/vtt-foundry";
 import {
   Mutex,
@@ -835,8 +836,12 @@ export class SessionManager {
     };
     this.voiceIO = voiceIO;
 
+    const registry = createDefaultRegistry();
+    // System-scoped mechanical-write tools (TDD 0042) register once the
+    // connected world's system is known; dnd5e is the validated system.
+    registerFoundrySystemTools(registry, foundry.system);
     const dispatcher = new ToolDispatcher({
-      registry: createDefaultRegistry(),
+      registry,
       // Single serialized writer so the table loop and side-channel turns never
       // race shared world-state (design doc 0026 §3).
       writeSerializer: this.writeSerializer,

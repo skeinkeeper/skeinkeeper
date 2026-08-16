@@ -205,15 +205,17 @@ async function dispatch(method, params) {
       return null;
     }
     case "createActorFromCompendium":
+      return createActorFromCompendium(params);
     case "createToken":
+      return createToken(params);
     case "addActorItems":
-      // Token spawn, compendium-to-world import, and inventory writes are the
-      // TDD 0042 write surface — they touch v13/v14 APIs that must be validated
-      // against a live Foundry. Until that lands, fail loudly with a clear code
-      // rather than return null (a silent no-op looked like success to callers).
-      throw Object.assign(new Error(`${method} is not implemented yet (TDD 0042)`), {
-        code: "not-implemented",
-      });
+      return addActorItems(params);
+    case "manageCombat":
+      return manageCombat(params);
+    case "applyDamage":
+      return applyDamage(params);
+    case "manageFog":
+      return manageFog(params);
     case "applyActorUpdate": {
       const actor = game.actors.get(params.actorId);
       if (!actor) throw Object.assign(new Error("not-found"), { code: "not-found" });
@@ -313,6 +315,253 @@ function findTokenDoc(tokenId) {
     if (token) return { token, scene };
   }
   return null;
+}
+
+// ---- TDD 0042: mechanical writes (combat, damage, fog, tokens) ----
+
+function opError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
+/** "pack.entry" → { packId, itemId }: pack ids contain dots, the entry never
+ *  does, so the last segment is the entry (mirrors orchestrator parseCompendiumRef). */
+function splitCompendiumRef(ref) {
+  const parts = String(ref).split(".");
+  if (parts.length < 2) return { packId: "", itemId: String(ref) };
+  return { packId: parts.slice(0, -1).join("."), itemId: parts[parts.length - 1] };
+}
+
+function resolveScene(sceneId) {
+  const scene = sceneId ? game.scenes.get(sceneId) : game.scenes.active;
+  if (!scene) throw opError("not-found", `scene ${sceneId ?? "(active)"} not found`);
+  return scene;
+}
+
+async function createActorFromCompendium(params) {
+  const pack = game.packs.get(params.packId);
+  if (!pack) throw opError("not-found", `compendium pack ${params.packId} is not loaded`);
+  const entry = await pack.getDocument(params.itemId).catch(() => null);
+  if (!entry) throw opError("not-found", `entry ${params.itemId} not in pack ${params.packId}`);
+  // The orchestrator dedupes re-imports by flags.core.sourceId with exactly
+  // this "Compendium.<pack>.<entry>" shape, so record it explicitly rather
+  // than rely on version-dependent _stats.compendiumSource.
+  const actor = await game.actors.importFromCompendium(pack, params.itemId, {
+    flags: { core: { sourceId: `Compendium.${params.packId}.${params.itemId}` } },
+  });
+  return actorPayload(actor);
+}
+
+async function createToken(params) {
+  if (!Number.isFinite(params.x) || !Number.isFinite(params.y)) {
+    throw opError("bad-args", "x and y must be finite scene-pixel coordinates");
+  }
+  let actorId = params.actorId;
+  if (!actorId && params.compendiumRef) {
+    const created = await createActorFromCompendium(splitCompendiumRef(params.compendiumRef));
+    actorId = created.id;
+  }
+  if (!actorId) throw opError("bad-args", "actorId or compendiumRef required");
+  const actor = game.actors.get(actorId);
+  if (!actor) throw opError("not-found", `actor ${actorId} not found`);
+  const scene = resolveScene(params.sceneId);
+  // Build from the prototype token so image/size/vision carry over.
+  const tokenDoc = await actor.getTokenDocument({
+    x: params.x,
+    y: params.y,
+    hidden: params.hidden === true,
+  });
+  const data = tokenDoc.toObject();
+  data.actorId = actor.id;
+  if (typeof params.disposition === "string") {
+    const D = CONST?.TOKEN_DISPOSITIONS ?? { HOSTILE: -1, NEUTRAL: 0, FRIENDLY: 1 };
+    data.disposition =
+      params.disposition === "hostile"
+        ? D.HOSTILE
+        : params.disposition === "friendly"
+          ? D.FRIENDLY
+          : D.NEUTRAL;
+  }
+  const [token] = await scene.createEmbeddedDocuments("Token", [data]);
+  if (!token) throw opError("error", "token creation returned no document");
+  return { tokenId: token.id, actorId: actor.id };
+}
+
+async function addActorItems(params) {
+  const actor = game.actors.get(params.actorId);
+  if (!actor) throw opError("not-found", `actor ${params.actorId} not found`);
+  const toCreate = [];
+  for (const item of params.items ?? []) {
+    const quantity = Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : 1;
+    let source;
+    if (item.compendiumId) {
+      const { packId, itemId } = splitCompendiumRef(item.compendiumId);
+      const pack = game.packs.get(packId);
+      if (!pack) throw opError("not-found", `compendium pack ${packId} is not loaded`);
+      source = await pack.getDocument(itemId).catch(() => null);
+      if (!source) throw opError("not-found", `item ${item.compendiumId} not found`);
+    } else if (item.itemId) {
+      source = game.items.get(item.itemId);
+      if (!source) throw opError("not-found", `world item ${item.itemId} not found`);
+    } else {
+      throw opError("bad-args", "each item requires compendiumId or itemId");
+    }
+    const data = source.toObject();
+    // dnd5e (the validated system) tracks stack size at system.quantity.
+    if (data.system && typeof data.system === "object") data.system.quantity = quantity;
+    toCreate.push(data);
+  }
+  if (toCreate.length > 0) await actor.createEmbeddedDocuments("Item", toCreate);
+  return null;
+}
+
+function combatSnapshot(combat) {
+  if (!combat) return { combatId: null, round: 0, turn: 0, currentCombatantId: null };
+  const current = combat.combatant ?? null;
+  return {
+    combatId: combat.id,
+    round: combat.round ?? 0,
+    turn: combat.turn ?? 0,
+    currentCombatantId: current ? (current.tokenId ?? current.actorId ?? current.id) : null,
+  };
+}
+
+/** Resolve caller-supplied token-or-actor ids to scene token docs. */
+function resolveCombatTokens(scene, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [...(scene?.tokens ?? [])];
+  return ids.map((id) => {
+    const token = scene?.tokens?.get?.(id) ?? scene?.tokens?.find?.((t) => t.actorId === id);
+    if (!token) throw opError("not-found", `no token for ${id} on scene ${scene?.id}`);
+    return token;
+  });
+}
+
+async function addCombatants(combat, tokens) {
+  const existing = new Set([...(combat.combatants ?? [])].map((c) => c.tokenId));
+  const data = tokens
+    .filter((t) => !existing.has(t.id))
+    .map((t) => ({ tokenId: t.id, actorId: t.actorId, sceneId: t.parent?.id }));
+  if (data.length > 0) await combat.createEmbeddedDocuments("Combatant", data);
+}
+
+async function manageCombat(params) {
+  const action = params.action;
+  const combat = game.combat ?? game.combats?.active ?? null;
+  switch (action) {
+    case "start": {
+      // Idempotent: a second start returns the running encounter, it never
+      // creates a second one (TDD 0042).
+      if (combat) return combatSnapshot(combat);
+      const scene = game.scenes.active;
+      const created = await Combat.create({ scene: scene?.id, active: true });
+      await addCombatants(created, resolveCombatTokens(scene, params.combatantIds));
+      await created.startCombat();
+      return combatSnapshot(created);
+    }
+    case "end": {
+      // Missing combat is success, not an error: end is idempotent.
+      if (!combat) return combatSnapshot(null);
+      const snap = {
+        combatId: combat.id,
+        round: combat.round ?? 0,
+        turn: combat.turn ?? 0,
+        currentCombatantId: null,
+      };
+      // Combat#endCombat opens a GM confirmation dialog, which would stall a
+      // headless req; delete() is the same document removal without the prompt.
+      await combat.delete();
+      return snap;
+    }
+    case "add": {
+      if (!Array.isArray(params.combatantIds) || params.combatantIds.length === 0) {
+        throw opError("bad-args", "add requires combatantIds");
+      }
+      if (!combat) throw opError("not-found", "no active combat");
+      const scene = game.scenes.get(combat.scene?.id) ?? game.scenes.active;
+      await addCombatants(combat, resolveCombatTokens(scene, params.combatantIds));
+      return combatSnapshot(combat);
+    }
+    case "roll-initiative": {
+      if (!combat) throw opError("not-found", "no active combat");
+      if (Array.isArray(params.combatantIds) && params.combatantIds.length > 0) {
+        const combatantIds = params.combatantIds.map((id) => {
+          const c = [...combat.combatants].find(
+            (x) => x.id === id || x.tokenId === id || x.actorId === id,
+          );
+          if (!c) throw opError("not-found", `no combatant for ${id}`);
+          return c.id;
+        });
+        await combat.rollInitiative(combatantIds);
+      } else {
+        await combat.rollAll();
+      }
+      return combatSnapshot(combat);
+    }
+    case "next-turn": {
+      if (!combat) return combatSnapshot(null);
+      await combat.nextTurn();
+      return combatSnapshot(combat);
+    }
+    case "previous-turn": {
+      if (!combat) return combatSnapshot(null);
+      await combat.previousTurn();
+      return combatSnapshot(combat);
+    }
+    default:
+      throw opError("bad-args", `unknown combat action ${action}`);
+  }
+}
+
+async function applyDamage(params) {
+  const actor = game.actors.get(params.actorId);
+  if (!actor) throw opError("not-found", `actor ${params.actorId} not found`);
+  const amount = Number(params.amount);
+  if (!Number.isFinite(amount)) throw opError("bad-args", "amount must be a finite number");
+  if (typeof actor.applyDamage === "function") {
+    // dnd5e: route through the system's damage application so temp HP,
+    // resistances, and death saves behave (TDD 0042; negative amounts heal).
+    await actor.applyDamage(amount);
+  } else {
+    const hp = foundry.utils.getProperty(actor, "system.attributes.hp");
+    if (!hp || typeof hp.value !== "number") {
+      throw opError("bad-args", "actor has no system.attributes.hp to write");
+    }
+    const max = typeof hp.max === "number" ? hp.max : hp.value;
+    const next = Math.min(max, Math.max(0, hp.value - amount));
+    await actor.update({ "system.attributes.hp.value": next });
+  }
+  const hp = foundry.utils.getProperty(actor, "system.attributes.hp") ?? {};
+  const result = { hp: typeof hp.value === "number" ? hp.value : 0 };
+  if (typeof hp.temp === "number") result.tempHp = hp.temp;
+  return result;
+}
+
+/** Core-fog reset shim: FogManager is per-viewed-scene, so view the target
+ *  first; the method name gets a v13/v14 fallback like the chat-style shim. */
+async function resetSceneFog(scene) {
+  if (canvas?.scene?.id !== scene.id && typeof scene.view === "function") {
+    await scene.view();
+  }
+  const fog = canvas?.fog;
+  if (typeof fog?.reset === "function") return fog.reset();
+  if (typeof fog?.clear === "function") return fog.clear();
+  throw opError("error", "no core fog reset API on this Foundry version");
+}
+
+async function manageFog(params) {
+  const scene = resolveScene(params.sceneId);
+  if (params.action === "reveal-scene") {
+    // Core fog, not Simple Fog (TDD 0042): disabling fog exploration lifts
+    // the fog overlay for every player on the scene.
+    await scene.update({ "fog.exploration": false });
+    return { sceneId: scene.id };
+  }
+  if (params.action === "reset") {
+    // Fog covers the scene again and prior exploration is discarded.
+    await scene.update({ "fog.exploration": true });
+    await resetSceneFog(scene);
+    return { sceneId: scene.id };
+  }
+  throw opError("bad-args", `unknown fog action ${params.action}`);
 }
 
 function openGateway() {
