@@ -79,7 +79,7 @@ Light editorial touch-ups are fine (typos, broken links, flipping `Proposed` →
 
 The same principle applies to TDDs: substantive revisions go in a new TDD that supersedes the old one. Edit-in-place is reserved for docs still in `Draft` state.
 
-A worked example lives in the repo: [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md) supersedes [ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)'s bridge-choice recommendation after fully-OSS alternatives surfaced. ADR-0001's body remains as originally written; only its status changed.
+A worked example lives in the repo: [ADR-0029](./docs/adr/0029-first-party-foundry-addon.md) supersedes [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md) (which itself superseded [ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)) — the Foundry-integration decision moved from the original MCP module, to a preferred OSS bridge, to today's first-party add-on. Each superseded ADR's body remains as originally written; only its status changed.
 
 ### TDD-first for non-trivial changes
 
@@ -116,7 +116,7 @@ Every PR includes:
 
 ### New persistent storage requires a DeletionAdapter
 
-Any PR that adds a new persistent data store (table, file, vector collection) must also register a `DeletionAdapter` for it under `server/src/adapters/` before merge. Reviewers will reject otherwise. The mechanism is `ErasureService.register(adapter)` per [TDD 0003](./docs/tdd/0003-erasure-and-export.md) / [TDD 0038](./docs/tdd/0038-per-audience-erasure-cascade-to-foundry.md). The same applies to `ExportAdapter` so the new data shows up in operator exports.
+Any PR that adds a new persistent data store (table, file, vector collection) must also register a `DeletionAdapter` for it under `server/src/adapters/` before merge. Reviewers will reject otherwise. The mechanism is `ErasureService.register(adapter)` per [TDD 0038](./docs/tdd/0038-per-audience-erasure-cascade-to-foundry.md) (supersedes [TDD 0003](./docs/tdd/0003-erasure-and-export.md)). The same applies to `ExportAdapter` so the new data shows up in operator exports.
 
 Adapters MAY return `DeletionAdapterResult.manualRemainder` only when full deletion is genuinely impossible within the adapter's scope (the store is not Skeinkeeper-controlled — typically Foundry). Adapters over Skeinkeeper-owned stores (SQLite tables, LanceDB collections, files in `data/`) MUST always fully delete; a `manualRemainder` from such an adapter is a bug, not a runtime condition.
 
