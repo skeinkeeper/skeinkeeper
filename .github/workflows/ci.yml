@@ -28,6 +28,13 @@ jobs:
       - name: Telemetry-event registry
         run: pnpm check:telemetry-events
 
+      - name: Dependency audit
+        # Fail on high/critical advisories in production deps. Known-blocked
+        # advisories (currently `tar` via fastembed) are allowlisted in the root
+        # package.json `pnpm.auditConfig.ignoreGhsas`; remove them there as the
+        # upstream ships fixes. Moderate/low are reported but not gated.
+        run: pnpm audit --prod --audit-level high
+
       - name: Lint
         run: pnpm lint
 
