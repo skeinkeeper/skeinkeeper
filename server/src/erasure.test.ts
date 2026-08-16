@@ -367,6 +367,31 @@ describe("ErasureService — partial success (TDD 0038)", () => {
     const remainders = JSON.parse(row?.manualRemainders ?? "null") as Array<{ reason: string }>;
     expect(remainders).toHaveLength(1);
     expect(remainders[0]?.reason).toBe("addon-unavailable");
+    expect(JSON.stringify(remainders)).not.toMatch(/u-foundry|discord:/);
+  });
+
+  it("does not persist Foundry or Discord ids in deletion_log remainders", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const erasure = new ErasureService({ db, salt: "test-salt-32-chars-aaaaaaaaaaaaaa" });
+    erasure.register({
+      name: "foundry-whisper",
+      supportedScopes: ["player"],
+      async delete() {
+        return {
+          recordsDeleted: 0,
+          manualRemainder: {
+            reason: "foundry-call-failed",
+            foundryUserId: "u-foundry-secret",
+            message: "failed for Discord user discord:alice Foundry user u-foundry-secret",
+          },
+        };
+      },
+    });
+    await erasure.erase({ kind: "player", tenantId: "t1", subjectId: "discord:alice" });
+    const raw = db.select().from(deletionLog).all()[0]?.manualRemainders ?? "";
+    expect(raw).not.toContain("u-foundry-secret");
+    expect(raw).not.toContain("discord:alice");
+    expect(JSON.parse(raw)).toEqual([{ reason: "foundry-call-failed" }]);
   });
 
   it("leaves partialSuccess false when every adapter fully deletes", async () => {
