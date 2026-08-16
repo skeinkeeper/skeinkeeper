@@ -105,6 +105,21 @@ describe("FoundryGmChatSurface outbound", () => {
     ]);
   });
 
+  it("notify_operator via the router records gm + whisper when the operator is known", async () => {
+    const client = new MockFoundryClient({ system: "dnd5e" });
+    const router = new SurfaceRouter();
+    router.register(new FoundryGmChatSurface({ client, operatorFoundryUserId: "u-op" }));
+    await router.emit({
+      audience: { kind: "gm" },
+      text: "x",
+      meta: { escalation: true, severity: "info" },
+    });
+    expect(client.chatPosts).toEqual([
+      { content: "x", mode: "gm" },
+      { content: "x", mode: "whisper", whisperTo: ["u-op"] },
+    ]);
+  });
+
   it("falls back to gm broadcast when the operator Foundry user is unknown", async () => {
     const client = new MockFoundryClient({ system: "dnd5e" });
     const surface = new FoundryGmChatSurface({ client });
