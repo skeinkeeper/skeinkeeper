@@ -6,6 +6,8 @@ import type {
   FoundryActor,
   FoundryChatEvent,
   FoundryClient,
+  FoundryCombatAction,
+  FoundryCombatSnapshot,
   FoundryCreatureRef,
   FoundryJournal,
   FoundryPackRef,
@@ -143,6 +145,24 @@ export class ModuleFoundryClient implements FoundryClient {
     items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
   }): Promise<void> {
     await this.call("addActorItems", { ...args });
+  }
+  async manageCombat(args: {
+    action: FoundryCombatAction;
+    combatantIds?: ReadonlyArray<string>;
+  }): Promise<FoundryCombatSnapshot> {
+    return (await this.call("manageCombat", { ...args })) as FoundryCombatSnapshot;
+  }
+  async applyDamage(args: { actorId: string; amount: number }): Promise<{
+    hp: number;
+    tempHp?: number;
+  }> {
+    return (await this.call("applyDamage", { ...args })) as { hp: number; tempHp?: number };
+  }
+  async manageFog(args: {
+    action: "reveal-scene" | "reset";
+    sceneId?: string;
+  }): Promise<{ sceneId: string }> {
+    return (await this.call("manageFog", { ...args })) as { sceneId: string };
   }
   async postChatMessage(args: PostChatMessageArgs): Promise<{ messageId: string }> {
     return (await this.call("postChatMessage", { ...args })) as { messageId: string };

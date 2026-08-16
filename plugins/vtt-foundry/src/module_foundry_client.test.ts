@@ -352,6 +352,146 @@ describe("ModuleFoundryClient", () => {
     await expect(client.listUsers()).rejects.toMatchObject({ code: "timeout" });
   });
 
+  it("maps the mechanical-write methods to req frames and their results back (TDD 0042)", async () => {
+    const g = await listen({});
+    const ws = connectClient(g);
+    await onceOpen(ws);
+    const reqs: Array<{ method: string; params: Record<string, unknown> }> = [];
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(String(raw)) as Record<string, unknown>;
+      if (msg["type"] !== "req") return;
+      const id = msg["id"];
+      const method = String(msg["method"]);
+      const params = (msg["params"] ?? {}) as Record<string, unknown>;
+      reqs.push({ method, params });
+      if (method === "getWorldInfo") {
+        ws.send(
+          JSON.stringify({
+            type: "res",
+            id,
+            ok: true,
+            result: { connected: true, system: { id: "dnd5e", name: "D&D 5e" }, modules: [] },
+          }),
+        );
+        return;
+      }
+      if (method === "manageCombat") {
+        ws.send(
+          JSON.stringify({
+            type: "res",
+            id,
+            ok: true,
+            result: { combatId: "combat-1", round: 2, turn: 1, currentCombatantId: "tok-1" },
+          }),
+        );
+        return;
+      }
+      if (method === "applyDamage") {
+        ws.send(JSON.stringify({ type: "res", id, ok: true, result: { hp: 5, tempHp: 2 } }));
+        return;
+      }
+      if (method === "manageFog") {
+        ws.send(
+          JSON.stringify({ type: "res", id, ok: true, result: { sceneId: params["sceneId"] } }),
+        );
+        return;
+      }
+      ws.send(JSON.stringify({ type: "res", id, ok: true, result: null }));
+    });
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        moduleId: "skeinkeeper",
+        foundryVersion: "13.345",
+        worldId: "w1",
+        pairingSecret: "s3cret",
+      }),
+    );
+    await onceMessage(ws);
+    const client = await ModuleFoundryClient.connect(g, 1000);
+
+    const combat = await client.manageCombat({ action: "add", combatantIds: ["tok-1"] });
+    expect(combat).toEqual({
+      combatId: "combat-1",
+      round: 2,
+      turn: 1,
+      currentCombatantId: "tok-1",
+    });
+    const hp = await client.applyDamage({ actorId: "pc-1", amount: 7 });
+    expect(hp).toEqual({ hp: 5, tempHp: 2 });
+    const fog = await client.manageFog({ action: "reveal-scene", sceneId: "scene-1" });
+    expect(fog).toEqual({ sceneId: "scene-1" });
+
+    expect(reqs.filter((r) => r.method !== "getWorldInfo")).toEqual([
+      { method: "manageCombat", params: { action: "add", combatantIds: ["tok-1"] } },
+      { method: "applyDamage", params: { actorId: "pc-1", amount: 7 } },
+      { method: "manageFog", params: { action: "reveal-scene", sceneId: "scene-1" } },
+    ]);
+  });
+
+  it("rejects a mechanical write with the add-on's error code (TDD 0042)", async () => {
+    const g = await listen({});
+    const ws = connectClient(g);
+    await onceOpen(ws);
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(String(raw)) as Record<string, unknown>;
+      if (msg["type"] !== "req") return;
+      const id = msg["id"];
+      if (msg["method"] === "getWorldInfo") {
+        ws.send(
+          JSON.stringify({
+            type: "res",
+            id,
+            ok: true,
+            result: { connected: true, system: { id: "dnd5e", name: "D&D 5e" }, modules: [] },
+          }),
+        );
+        return;
+      }
+      if (msg["method"] === "applyDamage") {
+        ws.send(
+          JSON.stringify({
+            type: "res",
+            id,
+            ok: false,
+            error: { code: "not-found", message: "actor fake-nobody not found" },
+          }),
+        );
+        return;
+      }
+      if (msg["method"] === "manageCombat") {
+        ws.send(
+          JSON.stringify({
+            type: "res",
+            id,
+            ok: false,
+            error: { code: "bad-args", message: "add requires combatantIds" },
+          }),
+        );
+        return;
+      }
+      ws.send(JSON.stringify({ type: "res", id, ok: true, result: null }));
+    });
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        moduleId: "skeinkeeper",
+        foundryVersion: "13.345",
+        worldId: "w1",
+        pairingSecret: "s3cret",
+      }),
+    );
+    await onceMessage(ws);
+    const client = await ModuleFoundryClient.connect(g, 1000);
+
+    await expect(client.applyDamage({ actorId: "fake-nobody", amount: 3 })).rejects.toMatchObject({
+      code: "not-found",
+    });
+    await expect(client.manageCombat({ action: "add" })).rejects.toMatchObject({
+      code: "bad-args",
+    });
+  });
+
   it("forwards evt chat and drops nothing after unsubscribe", async () => {
     const { g, ws } = await handshake();
     const client = await ModuleFoundryClient.connect(g, 1000);

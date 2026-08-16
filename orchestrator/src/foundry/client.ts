@@ -124,6 +124,23 @@ export interface FoundryJournal {
   readonly pages?: ReadonlyArray<{ id: string; name?: string; text: string }>;
 }
 
+/** Post-write combat-tracker snapshot (TDD 0042). A `null` combatId means
+ *  no encounter is active (e.g., `end` on an already-ended combat). */
+export interface FoundryCombatSnapshot {
+  readonly combatId: string | null;
+  readonly round: number;
+  readonly turn: number;
+  readonly currentCombatantId: string | null;
+}
+
+export type FoundryCombatAction =
+  | "start"
+  | "end"
+  | "add"
+  | "roll-initiative"
+  | "next-turn"
+  | "previous-turn";
+
 /** Chat event from TDD 0041 `subscribeChatEvents` / add-on `evt chat`. */
 export interface FoundryChatEvent {
   readonly foundryUserId: string;
@@ -218,6 +235,28 @@ export interface FoundryClient {
     disposition?: "hostile" | "neutral" | "friendly";
   }): Promise<{ tokenId: string; actorId: string }>;
   moveToken(args: { tokenId: string; x: number; y: number }): Promise<void>;
+  /**
+   * Combat-tracker management (TDD 0042). `start` on a running combat is
+   * idempotent (returns the existing encounter); `end` / `next-turn` with no
+   * combat succeed with a `combatId: null` snapshot. `add` requires
+   * `combatantIds` (token or actor ids).
+   */
+  manageCombat(args: {
+    action: FoundryCombatAction;
+    combatantIds?: ReadonlyArray<string>;
+  }): Promise<FoundryCombatSnapshot>;
+  /**
+   * HP write on an actor sheet (TDD 0042). Positive damages, negative heals
+   * (capped at max). On dnd5e this routes through `Actor#applyDamage` so
+   * death saves and temp HP behave; the raw hp.value fallback is only for
+   * systems without that method.
+   */
+  applyDamage(args: { actorId: string; amount: number }): Promise<{ hp: number; tempHp?: number }>;
+  /** Core-fog reveal/reset on a scene (TDD 0042). Default: active scene. */
+  manageFog(args: {
+    action: "reveal-scene" | "reset";
+    sceneId?: string;
+  }): Promise<{ sceneId: string }>;
   /** Add items to an actor inventory (TDD 0033). MCP: add-actor-items. */
   addActorItems(args: {
     actorId: string;

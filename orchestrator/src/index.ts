@@ -54,6 +54,8 @@ export {
   type FoundrySearchHit,
   type FoundryJournal,
   type FoundryTokenDetails,
+  type FoundryCombatSnapshot,
+  type FoundryCombatAction,
   type RollResult as FoundryRollResult,
   parseCompendiumRef,
 } from "./foundry/client.js";

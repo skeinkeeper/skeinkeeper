@@ -1,6 +1,6 @@
 # TDD 0042: Foundry mechanical writes (combat, damage, fog, tokens)
 
-Status: draft
+Status: implemented
 PRD refs: 4.2 (functional surface: combat, damage/heal, fog, token spawn), 4.3, 4.8
 PRD-rev: 5c3a198
 ADR constraints: 0003, 0012, 0018, 0023, 0029, 0030

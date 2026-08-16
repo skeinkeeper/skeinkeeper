@@ -14,11 +14,10 @@ import {
 
 /**
  * Core tools — system-agnostic, owned by Skeinkeeper. Per design doc
- * 0007, system-specific mutation tools (apply_damage, heal,
- * set_condition for D&D; apply_stress, take_consequence for Fate;
- * apply_harm, tick_harm_clock for PbtA) are planned to be registered by
- * the Foundry plugin at session start — not yet wired (the OSS bridge
- * mutation gap, design doc 0014).
+ * 0007, system-specific mutation tools (apply_damage, heal, combat and
+ * fog wrappers for dnd5e — the validated system) live in
+ * plugins/vtt-foundry and are registered by the session manager at
+ * session start once the world's system is known (design doc 0042).
  *
  * The tools here are universal:
  *  - Dice: tries FoundryClient.rollDice() so rolls land in Foundry's chat
