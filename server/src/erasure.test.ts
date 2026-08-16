@@ -342,9 +342,9 @@ describe("ErasureService — partial success (TDD 0038)", () => {
 
     const names = events.map((e) => e.name);
     expect(names).toContain("erasure.completed");
-    expect(names).toContain("erasure.partial-success");
+    expect(names).toContain("erasure.partial_success");
     expect(names).toContain("erasure.adapter.failed");
-    expect(events.find((e) => e.name === "erasure.partial-success")?.props).toMatchObject({
+    expect(events.find((e) => e.name === "erasure.partial_success")?.props).toMatchObject({
       scope: "player",
       remainderCount: 1,
       reasons: ["addon-unavailable"],

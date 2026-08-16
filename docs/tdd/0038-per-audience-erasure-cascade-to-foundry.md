@@ -150,7 +150,7 @@ export interface ErasureReport {
 }
 ```
 
-`ErasureService.erase` aggregates per-adapter results, sets `partialSuccess: manualRemainders.length > 0`, and emits an additional `erasure.partial-success` telemetry event when applicable (see §Telemetry).
+`ErasureService.erase` aggregates per-adapter results, sets `partialSuccess: manualRemainders.length > 0`, and emits an additional `erasure.partial_success` telemetry event when applicable (see §Telemetry).
 
 ### 3. CLI behavior change
 
@@ -314,7 +314,7 @@ If the design-PR reviewer thinks the partial-success policy is durable enough to
 | Event                     | Payload                                                                     | Description                                                                                                  |
 | ------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `erasure.completed`       | `{ scope: "player" \| "campaign" \| "tenant", totalRecords, adapterCount }` | Existing event from TDD 0003; carries forward                                                                |
-| `erasure.partial-success` | `{ scope, remainderCount, reasons: ReadonlyArray<string> }`                 | NEW: a `partialSuccess` erasure completed; `reasons` is the deduped list of manualRemainder reasons (no IDs) |
+| `erasure.partial_success` | `{ scope, remainderCount, reasons: ReadonlyArray<string> }`                 | NEW: a `partialSuccess` erasure completed; `reasons` is the deduped list of manualRemainder reasons (no IDs) |
 | `erasure.adapter.failed`  | `{ adapter, reason }`                                                       | NEW: an adapter returned a `manualRemainder` with the given reason                                           |
 
 All PII-free per [ADR-0010](../adr/0010-privacy-as-architecture.md). The `subjectId` (Discord user ID) is hashed (existing pattern from TDD 0003); the new events do NOT include it.

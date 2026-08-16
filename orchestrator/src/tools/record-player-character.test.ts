@@ -107,7 +107,7 @@ describe("record_player_character — Foundry user binding (TDD 0036)", () => {
     expect(gm.emits[0]?.text).toMatch(/preflight verify/i);
   });
 
-  it("emits identity.player-character.recorded with hasFoundryUser", async () => {
+  it("emits identity.player_character.recorded with hasFoundryUser", async () => {
     const { tenantDb, dispatcher } = bootstrap();
     const track = vi.fn();
     const foundry = new MockFoundryClient({
@@ -133,7 +133,7 @@ describe("record_player_character — Foundry user binding (TDD 0036)", () => {
       },
     );
     expect(track).toHaveBeenCalledWith(
-      "identity.player-character.recorded",
+      "identity.player_character.recorded",
       expect.objectContaining({ source: "player", hasFoundryUser: true }),
     );
   });

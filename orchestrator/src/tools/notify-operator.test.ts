@@ -41,7 +41,7 @@ describe("notify_operator — Foundry GM routing (TDD 0036)", () => {
         meta: { escalation: true, severity: "warning" },
       },
     ]);
-    expect(track).toHaveBeenCalledWith("escalation.notify-operator", { severity: "warning" });
+    expect(track).toHaveBeenCalledWith("escalation.notify_operator", { severity: "warning" });
   });
 
   it("still delivers via ctx.notifyOperator when no router is wired", async () => {

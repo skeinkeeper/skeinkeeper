@@ -273,7 +273,7 @@ Fires once per identity finding. Kind and severity only — no player IDs.
 - `kind: string` — finding kind (e.g. `no-foundry-user`).
 - `severity: string` — `critical` | `warning` | `info`.
 
-### `preflight.identity.blocked-start` (v1)
+### `preflight.identity.blocked_start` (v1)
 
 Fires when Start is blocked by critical identity findings.
 
@@ -291,13 +291,13 @@ Fires when an inactive Foundry user comes back online.
 
 - `foundryUserIdHashed: string` — salted hash of the Foundry user id.
 
-### `escalation.notify-operator` (v1)
+### `escalation.notify_operator` (v1)
 
 Fires when `notify_operator` emits. No content.
 
 - `severity: string` — `info` | `warning` | `critical`.
 
-### `identity.player-character.recorded` (v1)
+### `identity.player_character.recorded` (v1)
 
 Fires when `record_player_character` writes a map row.
 
@@ -312,7 +312,7 @@ Fires when an erasure run finishes (TDD 0003 / TDD 0038). No subject IDs.
 - `totalRecords: number` — sum of per-adapter `recordsDeleted`.
 - `adapterCount: number` — adapters that ran for the scope.
 
-### `erasure.partial-success` (v1)
+### `erasure.partial_success` (v1)
 
 Fires when at least one adapter returned a manual remainder (TDD 0038). Reasons only — no Foundry or Discord IDs.
 

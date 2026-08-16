@@ -163,7 +163,7 @@ export class ErasureService {
     });
     if (manualRemainders.length > 0) {
       const reasons = [...new Set(manualRemainders.map((r) => r.reason))];
-      analytics?.track("erasure.partial-success", {
+      analytics?.track("erasure.partial_success", {
         scope: scope.kind,
         remainderCount: manualRemainders.length,
         reasons,

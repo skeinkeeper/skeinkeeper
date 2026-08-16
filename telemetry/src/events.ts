@@ -246,7 +246,7 @@ export const events = {
     description: "One identity pre-flight finding. Kind and severity only; no player IDs.",
     props: {} as { kind: string; severity: "critical" | "warning" | "info" },
   },
-  "preflight.identity.blocked-start": {
+  "preflight.identity.blocked_start": {
     v: 1,
     description: "Start was blocked by critical identity pre-flight findings.",
     props: {} as { criticalCount: number },
@@ -261,12 +261,12 @@ export const events = {
     description: "An inactive Foundry user came back online.",
     props: {} as { foundryUserIdHashed: string },
   },
-  "escalation.notify-operator": {
+  "escalation.notify_operator": {
     v: 1,
     description: "notify_operator emitted. Severity only; no content.",
     props: {} as { severity: "info" | "warning" | "critical" },
   },
-  "identity.player-character.recorded": {
+  "identity.player_character.recorded": {
     v: 1,
     description: "record_player_character wrote a 3-way map row.",
     props: {} as { source: "player" | "operator"; hasFoundryUser: boolean },
@@ -280,7 +280,7 @@ export const events = {
       adapterCount: number;
     },
   },
-  "erasure.partial-success": {
+  "erasure.partial_success": {
     v: 1,
     description: "An erasure finished with one or more manual remainders.",
     props: {} as {

@@ -394,11 +394,11 @@ If the design-PR reviewer disagrees, a refining ADR (`Refines: 0018`) on the 3-w
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | `preflight.identity.ran`             | `{ trigger: "start" \| "voice-join" \| "operator-command", playerCount, findingCount, criticalCount }` | Verifier ran; counts only                                                             |
 | `preflight.identity.finding`         | `{ kind, severity: "critical" \| "warning" \| "info" }` (NO player IDs; kind only)                     | One event per finding emitted                                                         |
-| `preflight.identity.blocked-start`   | `{ criticalCount }`                                                                                    | Start was blocked due to critical findings                                            |
+| `preflight.identity.blocked_start`   | `{ criticalCount }`                                                                                    | Start was blocked due to critical findings                                            |
 | `presence.foundry.dropped`           | `{ foundryUserIdHashed }` (salted hash per TDD 0003/0038)                                              | A previously-active Foundry user went inactive                                        |
 | `presence.foundry.restored`          | `{ foundryUserIdHashed }`                                                                              | An inactive Foundry user came back online                                             |
-| `escalation.notify-operator`         | `{ severity }`                                                                                         | `notify_operator` emitted (no content; severity only)                                 |
-| `identity.player-character.recorded` | `{ source: "player" \| "operator", hasFoundryUser: boolean }`                                          | `record_player_character` ran; surfaces whether Foundry user was bound at record-time |
+| `escalation.notify_operator`         | `{ severity }`                                                                                         | `notify_operator` emitted (no content; severity only)                                 |
+| `identity.player_character.recorded` | `{ source: "player" \| "operator", hasFoundryUser: boolean }`                                          | `record_player_character` ran; surfaces whether Foundry user was bound at record-time |
 
 All PII-free per [ADR-0010](../adr/0010-privacy-as-architecture.md). The `preflight.identity.finding` event deliberately omits player IDs — knowing _how many_ findings of each kind fire is operational signal; knowing _which player_ would correlate operator-machine telemetry to specific people.
 

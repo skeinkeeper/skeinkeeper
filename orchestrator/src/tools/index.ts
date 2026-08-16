@@ -312,7 +312,7 @@ const recordPlayerCharacterDef = defineTool({
         meta: { escalation: true, severity: "warning" },
       });
     }
-    ctx.analytics?.track("identity.player-character.recorded", {
+    ctx.analytics?.track("identity.player_character.recorded", {
       source: "player",
       hasFoundryUser: foundryUserId !== null,
     });
@@ -336,7 +336,7 @@ const notifyOperatorDef = defineTool({
   outputSchema: z.object({ delivered: z.boolean() }),
   async handle(input, ctx) {
     const severity = input.severity ?? "info";
-    ctx.analytics?.track("escalation.notify-operator", { severity });
+    ctx.analytics?.track("escalation.notify_operator", { severity });
     if (ctx.surfaces !== undefined) {
       try {
         const report = await ctx.surfaces.emit({

@@ -163,7 +163,7 @@ export function emitIdentityPreflightTelemetry(
     });
   }
   if (result.status === "critical-gaps" && trigger === "start") {
-    onTelemetry("preflight.identity.blocked-start", { criticalCount });
+    onTelemetry("preflight.identity.blocked_start", { criticalCount });
   }
 }
 
