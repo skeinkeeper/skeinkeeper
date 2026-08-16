@@ -1,6 +1,6 @@
 # TDD 0039: Foundry-Down Session Lifecycle
 
-Status: draft
+Status: implemented
 PRD refs: 5.8
 PRD-rev: 5c3a198
 ADR constraints: 0003, 0008, 0016, 0018, 0023, 0024, 0025, 0027, 0029, 0030
