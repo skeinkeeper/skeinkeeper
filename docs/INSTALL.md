@@ -12,9 +12,7 @@ You need:
 - **pnpm 9 or later** (`npm install -g pnpm`).
 - **ffmpeg** on your `PATH` (`ffmpeg -version`). The voice stack decodes/encodes audio through it; without it the bot connects but plays no sound. (`sudo apt install ffmpeg`, `brew install ffmpeg`, etc.)
 - **A Discord bot** you've registered in your own [Discord developer account](https://discord.com/developers/applications). Skeinkeeper needs your bot's token; it never sees your Discord account password.
-- **A Foundry VTT instance** (self-hosted or via The Forge), with one of the OSS Foundry MCP bridges installed and running. See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md):
-  - **Default:** [`adambdooley/foundry-vtt-mcp`](https://github.com/adambdooley/foundry-vtt-mcp) — Foundry module + Node MCP server, both MIT, fully self-hosted, no API key.
-  - **Simpler alternative:** [`laurigates/foundryvtt-mcp`](https://github.com/laurigates/foundryvtt-mcp) — single standalone server via `bunx`.
+- **A Foundry VTT instance** you run (self-hosted), Foundry v13 or v14. Enable the Skeinkeeper add-on shipped in this repo (`modules/skeinkeeper`). You do not install a third-party Foundry connector.
 - **An API key for an LLM provider.** Anthropic Claude is the default; OpenAI and others land in v2+.
 - **An API key for a TTS provider** (ElevenLabs recommended) and **an STT provider** (Deepgram recommended). Local Whisper is also supported for STT.
 
@@ -154,14 +152,12 @@ so you can diagnose):
 - **WSL2** → if you run under WSL, Discord voice works on the default NAT
   networking; mirrored mode is _not_ required.
 
-> **Foundry.** Set `FOUNDRY_MCP_COMMAND` to the command that launches your OSS
-> MCP bridge server — it speaks MCP over **stdio**, so the app spawns it. The
-> app connects at session start and discovers your Foundry system. If it's
-> unset, or the bridge can't be reached, the app falls back to a mock Foundry so
-> a session can still run. The `McpFoundryClient` read/mutation surface and its
-> mutation-gap findings are in [TDD 0014](./tdd/0014-mcp-foundry-client.md)
-> — note the OSS bridge can't do a direct HP-set or a server-side roll, so some
-> D&D mutations aren't available yet.
+> **Foundry.** Copy `modules/skeinkeeper` into your Foundry Data `modules/`
+> folder (or symlink it), enable **Skeinkeeper** in the world, and leave the
+> gateway URL at `ws://127.0.0.1:7733` for a same-machine setup. Start
+> Skeinkeeper first; the add-on dials out when the GM session is ready.
+> Start refuses if the add-on does not connect within 5 seconds — there is
+> no mock Foundry in the operator app.
 
 ## Running with Docker
 
@@ -171,10 +167,9 @@ docker compose up
 ```
 
 The `app` service builds the image, installs ffmpeg + the native deps, and serves
-the console on `localhost:3000`. Your Foundry instance and the MCP bridge run
-outside the container (on the host or their own services); the app reaches
-Foundry through the bridge it spawns via `FOUNDRY_MCP_COMMAND`. Data persists in
-the `./data` volume.
+the console on `localhost:3000`. Foundry runs on the host; the Skeinkeeper add-on
+dials `ws://127.0.0.1:7733` (publish that port if the add-on is not on the same
+network namespace). Data persists in the `./data` volume.
 
 ## Configuration
 
@@ -183,9 +178,11 @@ the `./data` volume.
 | Variable                                                      | Purpose                                                                                                                                                                                                                                                           |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DISCORD_BOT_TOKEN`                                           | Your bot's token from the Discord developer portal.                                                                                                                                                                                                               |
-| `FOUNDRY_URL`                                                 | Informational: the app connects via the MCP bridge (`FOUNDRY_MCP_COMMAND`), not this URL. Your bridge may use it in its own config.                                                                                                                               |
-| `FOUNDRY_MCP_COMMAND`                                         | Command to launch the OSS MCP bridge server (spawned over stdio), e.g. `node /path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js`. Unset = mock Foundry.                                                                                                   |
-| `FOUNDRY_MCP_PORT`                                            | Port the bridge uses for its own Foundry-module link. Default `31415`.                                                                                                                                                                                            |
+| `FOUNDRY_URL`                                                 | Informational (your Foundry web URL). The app does not open this URL; the add-on dials the gateway.                                                                                                                                                               |
+| `FOUNDRY_GATEWAY_BIND`                                        | `loopback` (default, `127.0.0.1`) or `lan` (`0.0.0.0`). `lan` requires a pairing secret **and** TLS cert/key.                                                                                                                                                     |
+| `FOUNDRY_GATEWAY_PORT`                                        | Gateway listen port. Default `7733`.                                                                                                                                                                                                                              |
+| `FOUNDRY_PAIRING_SECRET`                                      | Shared secret the add-on sends on `hello`. Generated and printed on the console if unset (loopback). Required for `lan`.                                                                                                                                          |
+| `FOUNDRY_GATEWAY_TLS_CERT` / `FOUNDRY_GATEWAY_TLS_KEY`        | PEM cert + key. Required when `FOUNDRY_GATEWAY_BIND=lan`. Add-on URL must be `wss://`.                                                                                                                                                                            |
 | `ANTHROPIC_API_KEY`                                           | Your Anthropic API key (Claude).                                                                                                                                                                                                                                  |
 | `ELEVENLABS_API_KEY`                                          | Your ElevenLabs API key (TTS).                                                                                                                                                                                                                                    |
 | `DEEPGRAM_API_KEY`                                            | Your Deepgram API key (STT). Skip if using local Whisper.                                                                                                                                                                                                         |
@@ -231,21 +228,18 @@ It walks every PII table, encrypts the values, and backfills the salted-hash loo
 2. Under **Bot**, generate a token; paste it into `.env` as `DISCORD_BOT_TOKEN`. Enable the _message content_, _server members_, and _voice state_ intents.
 3. Under **OAuth2 → URL Generator**, select the `bot` and `applications.commands` scopes, plus the permissions: _View Channels_, _Send Messages_, _Read Message History_, _Connect_, _Speak_, _Use Voice Activity_. Use the generated URL to invite the bot to the server where your group plays.
 
-## Setting up Foundry + the MCP bridge
+## Setting up Foundry + the Skeinkeeper add-on
 
-You need Foundry VTT running and one of the OSS MCP bridges installed. The bridge connects to your Foundry instance and exposes its API over MCP to Skeinkeeper.
+You need Foundry VTT v13 or v14 running as a GM session (the add-on attaches in that window). Do not install a third-party Foundry connector.
 
-**For the `adambdooley` bridge (recommended):**
+1. Copy or symlink `modules/skeinkeeper` from this repo into your Foundry Data `modules/` directory.
+2. In the world, enable **Skeinkeeper**. Open its settings: gateway URL `ws://127.0.0.1:7733` (same machine) and, for LAN, the pairing secret printed on the Skeinkeeper console.
+3. Start Skeinkeeper. The console prints the listen address and pairing secret. Then reload the Foundry GM session so the add-on sends `hello`.
+4. Start a session from the web console. If the add-on does not connect within 5 seconds, Start refuses and the Discord bot does not join voice.
 
-1. Install the _FoundryVTT MCP_ module in Foundry from the URL in the [bridge's README](https://github.com/adambdooley/foundry-vtt-mcp), and build its `mcp-server` package per its docs.
-2. Set `FOUNDRY_MCP_COMMAND` to launch that server, e.g. `node /path/to/foundry-vtt-mcp/packages/mcp-server/dist/index.js`. Skeinkeeper spawns it over stdio; the server makes its own connection to the Foundry module (default port `FOUNDRY_MCP_PORT=31415`).
+A second GM window that also enables the add-on is rejected (`duplicate`); keep one GM session.
 
-**For the `laurigates` bridge:**
-
-1. Install the bridge's Foundry module.
-2. Set `FOUNDRY_MCP_COMMAND` to the command that starts its MCP server (e.g. via `bunx`), if it speaks MCP over stdio.
-
-Either bridge works with Skeinkeeper through the same `FoundryClient` interface (see [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md)).
+**LAN (another machine on your network):** set `FOUNDRY_GATEWAY_BIND=lan`, `FOUNDRY_PAIRING_SECRET`, and `FOUNDRY_GATEWAY_TLS_CERT` + `FOUNDRY_GATEWAY_TLS_KEY`. Point the add-on at `wss://<host>:7733`. Without TLS, Skeinkeeper refuses to listen.
 
 ## Seeding your first campaign
 
@@ -265,15 +259,15 @@ When a player first joins a Skeinkeeper-monitored voice channel, the bot DMs the
 
 ## What works in the alpha vs. what's coming
 
-| Feature                                 |                            Alpha                            | v0.5 | v1.0+ |
-| --------------------------------------- | :---------------------------------------------------------: | :--: | :---: |
-| Local orchestrator + tool registry      |                             ✅                              |      |       |
-| Foundry MCP integration                 | real (stdio bridge; some D&D mutations gated by the bridge) |  ✅  |       |
-| Discord voice (STT/TTS)                 |                                                             |  ✅  |       |
-| Web UI for state inspection / overrides |                           minimal                           |  ✅  |       |
-| `docker compose` deployment             |                                                             |  ✅  |       |
-| Multiple ruleset support beyond D&D 5e  |                                                             |      |  ✅   |
-| Multiple VTT support beyond Foundry     |                                                             |      |  ✅   |
+| Feature                                 |                       Alpha                        | v0.5 | v1.0+ |
+| --------------------------------------- | :------------------------------------------------: | :--: | :---: |
+| Local orchestrator + tool registry      |                         ✅                         |      |       |
+| Foundry first-party add-on              | real (WebSocket gateway; table-text on the add-on) |  ✅  |       |
+| Discord voice (STT/TTS)                 |                                                    |  ✅  |       |
+| Web UI for state inspection / overrides |                      minimal                       |  ✅  |       |
+| `docker compose` deployment             |                                                    |  ✅  |       |
+| Multiple ruleset support beyond D&D 5e  |                                                    |      |  ✅   |
+| Multiple VTT support beyond Foundry     |                                                    |      |  ✅   |
 
 The alpha is meant for tinkering by people comfortable running TypeScript from source. The v0.5 milestone targets the friend-group-can-actually-play experience.
 
@@ -283,7 +277,7 @@ The alpha is meant for tinkering by people comfortable running TypeScript from s
 
 **`pnpm install` is slow:** the workspace pulls a fair number of deps (Drizzle, vitest, eslint, etc.). First install takes a couple minutes; subsequent installs are fast.
 
-**Foundry MCP bridge isn't responding:** confirm `FOUNDRY_MCP_COMMAND` points at a built bridge server and runs on its own (`node …/mcp-server/dist/index.js`), that Foundry is up with the bridge module connected (default port `31415`), and check the bridge's own logs. If the app logs "Foundry MCP bridge unavailable … using mock Foundry", the spawn or connect failed and it fell back to the mock.
+**Start refuses because the Foundry add-on did not connect:** enable `modules/skeinkeeper` in the world, confirm you are logged in as a GM, and that the add-on's gateway URL matches the listen address printed on the Skeinkeeper console (`ws://127.0.0.1:7733` by default). There is no mock fallback.
 
 **Tests fail with database errors:** Skeinkeeper uses an in-memory SQLite for unit tests. If you see "no such table," try `pnpm install` again and confirm the Drizzle migrations directory `server/drizzle/` is present.
 

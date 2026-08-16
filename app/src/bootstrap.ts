@@ -22,8 +22,8 @@ import { SessionManager, type AppEvent } from "./session_manager.js";
  * Wires the operator app from config: opens the on-disk DB, ensures the
  * tenant + campaign rows, builds providers + the per-tenant memory store, and
  * constructs the SessionManager. Returns the pieces the web UI mounts on.
- * Foundry is the real OSS MCP bridge when FOUNDRY_MCP_COMMAND is
- * set (connected at session start), else a mock.
+ * Foundry is the first-party add-on (TDD 0041), connected at session
+ * start. Tests inject MockFoundryClient at the FoundrySource seam.
  */
 export interface App {
   config: AppConfig;

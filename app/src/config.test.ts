@@ -20,7 +20,8 @@ describe("loadConfig", () => {
     expect(cfg.dataDir).toBe("./data");
     expect(cfg.webPort).toBe(3000);
     expect(cfg.eagerness).toBe("balanced");
-    expect(cfg.foundry.mcpPort).toBe(31415);
+    expect(cfg.foundry.gateway.port).toBe(7733);
+    expect(cfg.foundry.gateway.bind).toBe("loopback");
   });
 
   it("throws ConfigError listing every missing required key", () => {
@@ -61,7 +62,7 @@ describe("loadConfig", () => {
 
   it("falls back to the default port on a non-numeric value (no NaN)", () => {
     expect(loadConfig({ ...FULL, SKEINKEEPER_WEB_PORT: "not-a-port" }).webPort).toBe(3000);
-    expect(loadConfig({ ...FULL, FOUNDRY_MCP_PORT: "abc" }).foundry.mcpPort).toBe(31415);
+    expect(loadConfig({ ...FULL, FOUNDRY_GATEWAY_PORT: "abc" }).foundry.gateway.port).toBe(7733);
     expect(loadConfig({ ...FULL, SKEINKEEPER_WEB_PORT: "70000" }).webPort).toBe(3000); // out of range
   });
 
@@ -75,5 +76,9 @@ describe("loadConfig", () => {
     expect(cfg.eagerness).toBe("balanced");
     const eager = loadConfig({ ...FULL, SKEINKEEPER_EAGERNESS: "eager" });
     expect(eager.eagerness).toBe("eager");
+  });
+
+  it("refuses lan bind without TLS and a pairing secret", () => {
+    expect(() => loadConfig({ ...FULL, FOUNDRY_GATEWAY_BIND: "lan" })).toThrow(ConfigError);
   });
 });

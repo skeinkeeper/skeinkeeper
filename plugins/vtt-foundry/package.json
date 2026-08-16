@@ -13,6 +13,10 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@skeinkeeper/core": "workspace:*",
-    "@skeinkeeper/orchestrator": "workspace:*"
+    "@skeinkeeper/orchestrator": "workspace:*",
+    "ws": "^8.20.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
   }
 }

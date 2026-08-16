@@ -58,7 +58,6 @@ import {
   startFoundryPresencePoll,
   type FoundryPresencePoller,
   type IdentityPreflightResult,
-  MockFoundryClient,
   NullFoundryEventStream,
   persistFindingResolution,
   persistSurfacedFindings,
@@ -151,8 +150,8 @@ export interface SessionManagerDeps {
   config: AppConfig;
   tenantDb: TenantDb;
   providers: AppProviders;
-  /** Mechanical state. Resolved at session start: the real OSS MCP bridge
-   *  (over stdio) when FOUNDRY_MCP_COMMAND is set, else a mock. */
+  /** Mechanical state. Production Start uses the first-party add-on
+   *  (TDD 0041). Tests inject MockFoundryClient at this seam. */
   foundry: FoundrySource;
   consent: ConsentService;
   memoryStore: MemoryStore;
@@ -579,6 +578,15 @@ export class SessionManager {
     this.deps.onEvent?.({ kind: "status", status: "starting" });
     const { config, providers } = this.deps;
 
+    // TDD 0041 FR-F6: fail closed before the Discord bot joins voice.
+    let foundry;
+    try {
+      foundry = await this.deps.foundry.connect();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(`Refusing to Start: Foundry add-on is not connected. ${reason}`);
+    }
+
     const client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -684,13 +692,6 @@ export class SessionManager {
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     const behaviorSpec = loadBehaviorSpec(findDefaultBehaviorSpec(import.meta.dirname));
-    let foundry;
-    try {
-      foundry = await this.deps.foundry.connect();
-    } catch {
-      // Minimum intake fails fast as FOUNDRY_NOT_CONNECTED (TDD 0031).
-      foundry = new MockFoundryClient({ system: "", connected: false });
-    }
     const routing = {
       dmVoiceId: this.controls.dmVoiceId,
       getNpcVoice: (key: string) =>

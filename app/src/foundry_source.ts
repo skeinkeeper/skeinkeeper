@@ -1,21 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
+import { randomBytes } from "node:crypto";
 import {
   foundryWorldContentReader,
-  MockFoundryClient,
   type FoundryClient,
   type WorldContentReader,
 } from "@skeinkeeper/orchestrator";
-import { McpFoundryClient, StdioMcpToolCaller } from "@skeinkeeper/vtt-foundry";
+import { FoundryGateway, ModuleFoundryClient } from "@skeinkeeper/vtt-foundry";
 import type { AppConfig } from "./config.js";
 
 /**
- * Resolves a FoundryClient at session-start (TDD 0007 / 0020).
- * Production transport is TDD 0041 (`ModuleFoundryClient`). Until that
- * lands, Start still uses the shipped TDD 0014 MCP spawn when
- * FOUNDRY_MCP_COMMAND is set. World-content indexing always goes through
- * FoundryClient (`foundryWorldContentReader`) — not MCP tool names.
+ * Production Foundry source (TDD 0041). Starts the gateway, waits for the
+ * add-on hello-ok, and never constructs MockFoundryClient.
+ * Tests inject a FoundrySource that returns MockFoundryClient.
  */
 export interface FoundrySource {
   connect(): Promise<FoundryClient>;
@@ -23,53 +21,53 @@ export interface FoundrySource {
   close(): Promise<void>;
 }
 
-function envRecord(env: NodeJS.ProcessEnv): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(env).filter((e): e is [string, string] => e[1] !== undefined),
-  );
-}
-
-export function createFoundrySource(config: AppConfig, env: NodeJS.ProcessEnv): FoundrySource {
-  const cmd = config.foundry.mcpCommand;
-  if (cmd === undefined || cmd.length === 0) {
-    const mock = new MockFoundryClient({ system: "dnd5e" });
-    return {
-      connect: () => Promise.resolve(mock),
-      worldContent: () => foundryWorldContentReader(mock),
-      close: () => Promise.resolve(),
-    };
-  }
-
-  let caller: StdioMcpToolCaller | null = null;
+export function createFoundrySource(config: AppConfig, _env: NodeJS.ProcessEnv): FoundrySource {
+  const secret =
+    config.foundry.gateway.pairingSecret.trim().length > 0
+      ? config.foundry.gateway.pairingSecret
+      : randomBytes(24).toString("base64url");
+  const gateway = new FoundryGateway({
+    bind: config.foundry.gateway.bind,
+    port: config.foundry.gateway.port,
+    pairingSecret: secret,
+    ...(config.foundry.gateway.tls !== undefined ? { tls: config.foundry.gateway.tls } : {}),
+    log: (line) => console.info(line),
+  });
   let lastClient: FoundryClient | null = null;
+  let listening = false;
+
   return {
     connect: async () => {
-      const c = new StdioMcpToolCaller({
-        command: cmd[0]!,
-        args: cmd.slice(1),
-        env: envRecord(env),
-      });
+      if (!listening) {
+        await gateway.listen();
+        listening = true;
+        console.info(`Foundry add-on pairing secret: ${secret}`);
+        console.info(`Foundry gateway: ${gateway.listenUrl}`);
+      }
       try {
-        const client = await McpFoundryClient.connect(c);
-        caller = c;
+        const client = await ModuleFoundryClient.connect(gateway, 5000);
         lastClient = client;
         return client;
       } catch (err) {
-        await c.close().catch(() => undefined);
-        caller = null;
-        console.warn(
-          `Foundry MCP bridge unavailable (${err instanceof Error ? err.message : String(err)}); intake will report FOUNDRY_NOT_CONNECTED.`,
+        lastClient = null;
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Foundry add-on did not connect: ${reason}. Enable the Skeinkeeper add-on in your Foundry world and point it at ${gateway.listenUrl}.`,
         );
-        lastClient = new MockFoundryClient({ system: "", connected: false });
-        return lastClient;
       }
     },
-    worldContent: () =>
-      foundryWorldContentReader(lastClient ?? new MockFoundryClient({ system: "dnd5e" })),
+    worldContent: () => {
+      if (lastClient === null) {
+        throw new Error("Foundry add-on is not connected.");
+      }
+      return foundryWorldContentReader(lastClient);
+    },
     close: async () => {
-      await caller?.close().catch(() => undefined);
-      caller = null;
       lastClient = null;
+      if (listening) {
+        await gateway.close();
+        listening = false;
+      }
     },
   };
 }
