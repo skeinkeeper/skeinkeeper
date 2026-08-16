@@ -29,9 +29,16 @@ describe("intake types", () => {
       "RECO_PROPOSED_OWNERSHIP_MAP",
       "RECO_PROPOSED_PRIMARY_PACK",
       "RECO_FOUNDRY_OWNERSHIP_UNRESOLVED",
+      "IDENTITY_NO_FOUNDRY_USER",
+      "IDENTITY_FOUNDRY_USER_NOT_OWNING_ACTOR",
+      "IDENTITY_NO_DM_FOUNDRY_USER",
+      "IDENTITY_DM_IS_OPERATOR_PLAYER",
+      "IDENTITY_OPERATOR_NOT_GM_ROLE",
+      "IDENTITY_EXTRA_FOUNDRY_USERS",
+      "IDENTITY_BRIDGE_LISTUSERS_UNAVAILABLE",
     ];
     expect([...FINDING_CODES]).toEqual(expected);
-    expect(new Set(FINDING_CODES).size).toBe(15);
+    expect(new Set(FINDING_CODES).size).toBe(22);
   });
 
   it("isFindingCode accepts only members of the closed union", () => {

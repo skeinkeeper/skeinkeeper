@@ -20,6 +20,7 @@ import {
   readSceneSummaries,
   readWorldInfo,
 } from "./foundry_reads.js";
+import { runIdentityPreflight } from "./preflight-run.js";
 import type {
   ExtendedIntakeResult,
   IntakeContext,
@@ -80,8 +81,18 @@ export async function runExtendedIntake(
   const loadedModules = await readModuleSummaries(foundry);
   const compendiumPacks = await readPackSummaries(foundry);
   const existingScenes = await readSceneSummaries(foundry);
-  const currentOwnershipMap = await readOwnershipMap(foundry);
-  const users = await foundry.listUsers();
+  let currentOwnershipMap: Record<string, string> = {};
+  try {
+    currentOwnershipMap = await readOwnershipMap(foundry);
+  } catch {
+    // listUsers failed — identity pre-flight records the warning; do not abort.
+  }
+  const identity = await runIdentityPreflight({
+    ctx,
+    tenantDb,
+    foundry,
+    trigger: "start",
+  });
   const warmStateSummary = readWarmState(tenantDb, ctx.campaignId);
 
   const creatures = await foundry.listCreaturesByCriteria({});
@@ -123,7 +134,8 @@ export async function runExtendedIntake(
     findings: [],
     creatureSources,
     raceSources,
-    usersAvailable: users.length > 0,
+    usersAvailable:
+      identity.input.listUsersAvailable !== false && identity.input.foundryUsers.length > 0,
   };
 
   const sceneCriticals = classifyCriticalGaps(
@@ -140,6 +152,7 @@ export async function runExtendedIntake(
     ...sceneCriticals,
     ...classifyAmbiguities(input, ctx),
     ...classifyRecommendations(input, ctx),
+    ...identity.findings,
   ];
 
   return {
@@ -149,6 +162,7 @@ export async function runExtendedIntake(
     currentOwnershipMap,
     warmStateSummary,
     findings,
+    identityPreflight: identity.result,
   };
 }
 

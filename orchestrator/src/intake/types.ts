@@ -23,6 +23,13 @@ export const FINDING_CODES = [
   "RECO_PROPOSED_OWNERSHIP_MAP",
   "RECO_PROPOSED_PRIMARY_PACK",
   "RECO_FOUNDRY_OWNERSHIP_UNRESOLVED",
+  "IDENTITY_NO_FOUNDRY_USER",
+  "IDENTITY_FOUNDRY_USER_NOT_OWNING_ACTOR",
+  "IDENTITY_NO_DM_FOUNDRY_USER",
+  "IDENTITY_DM_IS_OPERATOR_PLAYER",
+  "IDENTITY_OPERATOR_NOT_GM_ROLE",
+  "IDENTITY_EXTRA_FOUNDRY_USERS",
+  "IDENTITY_BRIDGE_LISTUSERS_UNAVAILABLE",
 ] as const;
 
 export type FindingCode = (typeof FINDING_CODES)[number];
@@ -64,6 +71,12 @@ export interface IntakeContext {
   campaignId: string;
   sessionId: string;
   sessionConfig: IntakeSessionConfigSlice;
+  /** Seated / expected Discord players for TDD 0036 identity pre-flight. */
+  expectedPlayers?: ReadonlyArray<{ discordUserId: string; displayName?: string }>;
+  /** Campaign-config DM Foundry user (side-channel whisper routing). */
+  dmFoundryUserId?: string;
+  /** Operator Foundry user from TDD 0024 designation. */
+  operatorFoundryUserId?: string;
 }
 
 export interface ActorSummary {
@@ -115,6 +128,11 @@ export interface ExtendedIntakeResult {
   findings: IntakeFinding[];
   /** After-the-fact "I did the following" lines (TDD 0032). */
   actions?: string[];
+  /** 3-way identity pre-flight (TDD 0036). Absent only on pre-0036 callers. */
+  identityPreflight?: {
+    status: "ok" | "critical-gaps" | "warnings-only";
+    findings: ReadonlyArray<{ kind: string }>;
+  };
 }
 
 export interface ResolutionOptions {

@@ -21,6 +21,13 @@ const EXPECTED_DM_ONLY: Record<FindingCode, boolean | "conditional"> = {
   RECO_PROPOSED_OWNERSHIP_MAP: false,
   RECO_PROPOSED_PRIMARY_PACK: "conditional",
   RECO_FOUNDRY_OWNERSHIP_UNRESOLVED: false,
+  IDENTITY_NO_FOUNDRY_USER: false,
+  IDENTITY_FOUNDRY_USER_NOT_OWNING_ACTOR: false,
+  IDENTITY_NO_DM_FOUNDRY_USER: false,
+  IDENTITY_DM_IS_OPERATOR_PLAYER: false,
+  IDENTITY_OPERATOR_NOT_GM_ROLE: false,
+  IDENTITY_EXTRA_FOUNDRY_USERS: false,
+  IDENTITY_BRIDGE_LISTUSERS_UNAVAILABLE: false,
 };
 
 describe("buildFindingSummary spoiler table", () => {

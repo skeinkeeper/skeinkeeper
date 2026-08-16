@@ -10,6 +10,7 @@ import type { EmbeddingProvider } from "../interfaces/embedding.js";
 import type { SessionRunState } from "../session/run-state.js";
 import type { WorldContentReader } from "../autosetup/world-types.js";
 import { persistSurfacedFindings } from "./persist.js";
+import { runIdentityPreflight } from "./preflight-run.js";
 import { formatIntakeReportForOperator } from "./report.js";
 import {
   announceReadyAllowed,
@@ -57,12 +58,17 @@ export async function runSessionStartIntake(
   });
   const started = Date.now();
   const minimum = await runMinimumIntake(ctx, foundry, memory, tenantDb);
-  const surfaced = persistSurfacedFindings(
+  const identity = await runIdentityPreflight({
+    ctx,
     tenantDb,
-    ctx.campaignId,
-    ctx.sessionId,
-    minimum.criticalFindings,
-  );
+    foundry,
+    trigger: "start",
+    ...(onTelemetry !== undefined ? { onTelemetry } : {}),
+  });
+  const surfaced = persistSurfacedFindings(tenantDb, ctx.campaignId, ctx.sessionId, [
+    ...minimum.criticalFindings,
+    ...identity.findings,
+  ]);
   const state = createIntakeResolutionState(surfaced, ctx.sessionConfig.intake);
   const blockingFindings = state.findings
     .filter((f) => f.kind === "critical-gap")

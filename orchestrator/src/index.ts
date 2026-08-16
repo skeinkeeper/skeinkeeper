@@ -78,6 +78,16 @@ export {
   type IdentityPreflightResult,
 } from "./intake/preflight-identity.js";
 export { runSessionStartIntake, kickExtendedIntake } from "./intake/session_start.js";
+export {
+  IdentityPreflightBlockedError,
+  assertIdentityAllowsStart,
+  collectIdentityPreflightInput,
+  emitIdentityPreflightTelemetry,
+  formatIdentityPreflightReport,
+  identityFindingsToIntake,
+  runIdentityPreflight,
+  shouldSurfaceIdentityFindings,
+} from "./intake/preflight-run.js";
 export { formatIntakeReportForOperator } from "./intake/report.js";
 export {
   applyIntakeResolution,

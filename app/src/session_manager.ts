@@ -334,11 +334,19 @@ export class SessionManager {
   private intakeDeps() {
     const session = this.session;
     if (session === null) return null;
+    const expectedPlayers = this.intakeExpectedPlayers();
+    const dmFoundryUserId =
+      this.deps.tenantDb.settings.get(this.deps.campaignId, "campaign.dm_foundry_user_id")?.value ??
+      this.resolveOperatorFoundryUserId();
+    const operatorFoundryUserId = this.resolveOperatorFoundryUserId();
     return {
       ctx: {
         campaignId: this.deps.campaignId,
         sessionId: session.config.sessionId,
         sessionConfig: { intake: this.intakeState.intake },
+        ...(expectedPlayers.length > 0 ? { expectedPlayers } : {}),
+        ...(dmFoundryUserId !== undefined ? { dmFoundryUserId } : {}),
+        ...(operatorFoundryUserId !== undefined ? { operatorFoundryUserId } : {}),
       },
       foundry: session.config.foundry,
       memory: this.deps.memoryStore,
@@ -348,6 +356,31 @@ export class SessionManager {
       runState: this.runState,
       onTelemetry: (name: string, props?: Record<string, unknown>) => this.trackIntake(name, props),
     };
+  }
+
+  /** Seated consented roster ∪ persistent 3-way map (TDD 0036 start check). */
+  private intakeExpectedPlayers(): Array<{ discordUserId: string; displayName?: string }> {
+    const out: Array<{ discordUserId: string; displayName?: string }> = [];
+    const seen = new Set<string>();
+    for (const row of this.deps.tenantDb.playerCharacterMap.listByCampaign(this.deps.campaignId)) {
+      seen.add(row.discordUserId);
+      const player: { discordUserId: string; displayName?: string } = {
+        discordUserId: row.discordUserId,
+      };
+      if (row.displayName !== null && row.displayName.length > 0) {
+        player.displayName = row.displayName;
+      }
+      out.push(player);
+    }
+    for (const member of this.presenceSource?.current() ?? []) {
+      if (seen.has(member.id)) continue;
+      if (!this.deps.consent.isGranted(member.id)) continue;
+      seen.add(member.id);
+      const player: { discordUserId: string; displayName?: string } = { discordUserId: member.id };
+      if (member.displayName !== undefined) player.displayName = member.displayName;
+      out.push(player);
+    }
+    return out;
   }
 
   private async runIntakeAtStart(): Promise<void> {

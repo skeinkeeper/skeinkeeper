@@ -23,6 +23,13 @@ export const SPOILER_DM_ONLY: Record<FindingCode, boolean | "if-names-creature-o
   RECO_PROPOSED_OWNERSHIP_MAP: false,
   RECO_PROPOSED_PRIMARY_PACK: "if-names-creature-or-location",
   RECO_FOUNDRY_OWNERSHIP_UNRESOLVED: false,
+  IDENTITY_NO_FOUNDRY_USER: false,
+  IDENTITY_FOUNDRY_USER_NOT_OWNING_ACTOR: false,
+  IDENTITY_NO_DM_FOUNDRY_USER: false,
+  IDENTITY_DM_IS_OPERATOR_PLAYER: false,
+  IDENTITY_OPERATOR_NOT_GM_ROLE: false,
+  IDENTITY_EXTRA_FOUNDRY_USERS: false,
+  IDENTITY_BRIDGE_LISTUSERS_UNAVAILABLE: false,
 };
 
 export const DM_ONLY_MARKER = "*DM-only — affects tonight's session:*";
@@ -100,5 +107,21 @@ function defaultSummary(code: FindingCode, payload: FindingSummaryPayload): stri
         : "A primary source pack has been proposed.";
     case "RECO_FOUNDRY_OWNERSHIP_UNRESOLVED":
       return "A player's Foundry-user mapping needs attention.";
+    case "IDENTITY_NO_FOUNDRY_USER":
+      return payload.label !== undefined
+        ? `${payload.label} has no Foundry user.`
+        : "A seated player has no Foundry user.";
+    case "IDENTITY_FOUNDRY_USER_NOT_OWNING_ACTOR":
+      return "A player's Foundry user does not own their character actor.";
+    case "IDENTITY_NO_DM_FOUNDRY_USER":
+      return "No DM Foundry user is designated for side-channel routing.";
+    case "IDENTITY_DM_IS_OPERATOR_PLAYER":
+      return "The DM Foundry user is also the operator's player user.";
+    case "IDENTITY_OPERATOR_NOT_GM_ROLE":
+      return "The operator's Foundry user is not a GM-role user.";
+    case "IDENTITY_EXTRA_FOUNDRY_USERS":
+      return "Some Foundry users are not in the 3-way identity map.";
+    case "IDENTITY_BRIDGE_LISTUSERS_UNAVAILABLE":
+      return "Could not list Foundry users (bridge unavailable).";
   }
 }
