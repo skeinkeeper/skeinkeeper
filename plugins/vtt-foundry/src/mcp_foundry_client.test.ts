@@ -7,7 +7,9 @@ import { FakeMcpToolCaller } from "./mcp_tool_caller.js";
 
 describe("McpFoundryClient.connect", () => {
   it("derives the system from get-world-info", async () => {
-    const caller = new FakeMcpToolCaller({ "get-world-info": { system: "dnd5e", title: "Phandelver" } });
+    const caller = new FakeMcpToolCaller({
+      "get-world-info": { system: "dnd5e", title: "Phandelver" },
+    });
     const client = await McpFoundryClient.connect(caller);
     expect(client.system).toBe("dnd5e");
   });
@@ -24,8 +26,18 @@ describe("McpFoundryClient — reads", () => {
     const caller = new FakeMcpToolCaller({
       "list-characters": {
         characters: [
-          { id: "actor-1", name: "Aragorn", type: "character", system: { attributes: { hp: { value: 22, max: 30 } } } },
-          { id: "actor-2", name: "Gimli", type: "character", system: { attributes: { hp: { value: 28, max: 28 } } } },
+          {
+            id: "actor-1",
+            name: "Aragorn",
+            type: "character",
+            system: { attributes: { hp: { value: 22, max: 30 } } },
+          },
+          {
+            id: "actor-2",
+            name: "Gimli",
+            type: "character",
+            system: { attributes: { hp: { value: 28, max: 28 } } },
+          },
         ],
       },
     });
@@ -35,7 +47,9 @@ describe("McpFoundryClient — reads", () => {
     expect(party[0]?.name).toBe("Aragorn");
     expect(party[0]?.id).toBe("actor-1");
     expect(party[0]?.system).toBe("dnd5e");
-    expect((party[0]?.sheet as { attributes: { hp: { value: number } } }).attributes.hp.value).toBe(22);
+    expect((party[0]?.sheet as { attributes: { hp: { value: number } } }).attributes.hp.value).toBe(
+      22,
+    );
   });
 
   it("accepts a bare array response for list-characters", async () => {
@@ -50,7 +64,15 @@ describe("McpFoundryClient — reads", () => {
 
   it("gets a single actor from get-character", async () => {
     const caller = new FakeMcpToolCaller({
-      "get-character": { character: { id: "a1", name: "Sildar", type: "npc", system: { foo: 1 }, flags: { note: "ally" } } },
+      "get-character": {
+        character: {
+          id: "a1",
+          name: "Sildar",
+          type: "npc",
+          system: { foo: 1 },
+          flags: { note: "ally" },
+        },
+      },
     });
     const client = new McpFoundryClient(caller, "dnd5e");
     const actor = await client.getActor("a1");
@@ -95,15 +117,19 @@ describe("McpFoundryClient — writes (bridge mutation gap)", () => {
     const client = new McpFoundryClient(caller, "dnd5e");
     await client.applyActorUpdate("a1", { condition: "frightened", active: true });
     expect(caller.calls[0]?.name).toBe("toggle-token-condition");
-    expect(caller.calls[0]?.args).toMatchObject({ actorId: "a1", condition: "frightened", active: true });
+    expect(caller.calls[0]?.args).toMatchObject({
+      actorId: "a1",
+      condition: "frightened",
+      active: true,
+    });
   });
 
   it("rejects a direct HP update with an actionable error", async () => {
     const caller = new FakeMcpToolCaller({});
     const client = new McpFoundryClient(caller, "dnd5e");
-    await expect(client.applyActorUpdate("a1", { "system.attributes.hp.value": 5 })).rejects.toThrow(
-      /no generic actor-update tool/,
-    );
+    await expect(
+      client.applyActorUpdate("a1", { "system.attributes.hp.value": 5 }),
+    ).rejects.toThrow(/no generic actor-update tool/);
   });
 
   it("rejects server-side rollDice (bridge has only interactive rolls)", async () => {
@@ -145,6 +171,25 @@ describe("McpFoundryClient — scenes (ADR-0015)", () => {
     ]);
   });
 
+  it("createActorFromCompendium calls create-actor-from-compendium", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-world-info": { system: "dnd5e" },
+      "create-actor-from-compendium": {
+        actor: { id: "imp-1", name: "Goblin", type: "npc" },
+      },
+    });
+    const client = await McpFoundryClient.connect(caller);
+    const actor = await client.createActorFromCompendium({
+      packId: "dnd5e.monsters",
+      itemId: "goblin",
+    });
+    expect(actor.name).toBe("Goblin");
+    expect(caller.calls.find((c) => c.name === "create-actor-from-compendium")?.args).toEqual({
+      packId: "dnd5e.monsters",
+      itemId: "goblin",
+    });
+  });
+
   it("setActiveScene calls switch-scene with scene_identifier", async () => {
     const caller = new FakeMcpToolCaller({
       "get-world-info": { system: "dnd5e" },
@@ -154,5 +199,150 @@ describe("McpFoundryClient — scenes (ADR-0015)", () => {
     await client.setActiveScene("Cragmaw Hideout");
     const call = caller.calls.find((c) => c.name === "switch-scene");
     expect(call?.args).toEqual({ scene_identifier: "Cragmaw Hideout" });
+  });
+});
+
+describe("McpFoundryClient — intake reads (TDD 0031)", () => {
+  it("maps get-world-info to system + modules", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-world-info": {
+        system: "dnd5e",
+        systemTitle: "D&D 5e",
+        modules: [
+          { id: "lmop", title: "Lost Mine of Phandelver", active: true },
+          { id: "dice-so-nice", title: "Dice So Nice", active: true },
+        ],
+      },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const info = await client.getWorldInfo();
+    expect(info.connected).toBe(true);
+    expect(info.system).toEqual({ id: "dnd5e", name: "D&D 5e" });
+    expect(info.modules).toHaveLength(2);
+    expect(info.modules[0]?.id).toBe("lmop");
+  });
+
+  it("returns no users (MCP has no list-users tool)", async () => {
+    const client = new McpFoundryClient(new FakeMcpToolCaller({}), "dnd5e");
+    expect(await client.listUsers()).toEqual([]);
+  });
+
+  it("lists packs, creatures, and search hits", async () => {
+    const caller = new FakeMcpToolCaller({
+      "list-compendium-packs": {
+        packs: [{ id: "dnd5e.monsters", label: "Monsters", type: "Actor" }],
+      },
+      "list-creatures-by-criteria": {
+        creatures: [{ id: "gob-1", name: "Goblin", packId: "dnd5e.monsters" }],
+      },
+      "search-compendium": {
+        results: [{ id: "r-1", name: "Human", pack: { id: "dnd5e.races" }, type: "race" }],
+      },
+      "search-journals": { results: [{ id: "j-1", name: "Gundren" }] },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    expect((await client.listCompendiumPacks())[0]?.id).toBe("dnd5e.monsters");
+    expect((await client.listCreaturesByCriteria({ name: "Goblin" }))[0]?.name).toBe("Goblin");
+    expect((await client.searchCompendium("Human"))[0]?.packId).toBe("dnd5e.races");
+    expect((await client.searchJournals("Gundren"))[0]?.name).toBe("Gundren");
+  });
+});
+
+describe("McpFoundryClient — getJournal (TDD 0033)", () => {
+  it("maps get-quest-journal", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-quest-journal": { id: "j1", name: "Note", text: "hello" },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const j = await client.getJournal("j1");
+    expect(j).toEqual({ id: "j1", name: "Note", text: "hello" });
+  });
+});
+
+describe("McpFoundryClient — create-token / move-token (TDD 0033)", () => {
+  it("createToken is add-on-only (no MCP tool)", async () => {
+    const caller = new FakeMcpToolCaller({});
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await expect(
+      client.createToken({ actorId: "gob-1", sceneId: "s1", x: 10, y: 20, hidden: true }),
+    ).rejects.toThrow(/TDD 0041/);
+    expect(caller.calls).toEqual([]);
+  });
+
+  it("moveToken wraps move-token", async () => {
+    const caller = new FakeMcpToolCaller({ "move-token": { ok: true } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await client.moveToken({ tokenId: "tok-9", x: 400, y: 300 });
+    expect(caller.calls[0]).toEqual({
+      name: "move-token",
+      args: { tokenId: "tok-9", x: 400, y: 300 },
+    });
+  });
+});
+
+describe("McpFoundryClient — add-actor-items (TDD 0033)", () => {
+  it("addActorItems is add-on-only (no MCP tool)", async () => {
+    const caller = new FakeMcpToolCaller({});
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await expect(
+      client.addActorItems({ actorId: "hero-1", items: [{ itemId: "potion", quantity: 2 }] }),
+    ).rejects.toThrow(/TDD 0041/);
+    expect(caller.calls).toEqual([]);
+  });
+});
+
+describe("McpFoundryClient — token visibility (TDD 0033)", () => {
+  it("updateToken wraps update-token", async () => {
+    const caller = new FakeMcpToolCaller({ "update-token": { ok: true } });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await client.updateToken({ tokenId: "tok-1", hidden: false });
+    expect(caller.calls[0]).toEqual({
+      name: "update-token",
+      args: { tokenId: "tok-1", hidden: false },
+    });
+  });
+
+  it("getTokenDetails wraps get-token-details", async () => {
+    const caller = new FakeMcpToolCaller({
+      "get-token-details": { token: { id: "tok-1", actorId: "a1", name: "Goblin", hidden: true } },
+    });
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const tok = await client.getTokenDetails("tok-1");
+    expect(tok).toEqual({ id: "tok-1", actorId: "a1", name: "Goblin", hidden: true });
+  });
+});
+
+describe("McpFoundryClient — table-text (TDD 0034)", () => {
+  it("postChatMessage is add-on-only (no MCP tool)", async () => {
+    const caller = new FakeMcpToolCaller({});
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await expect(
+      client.postChatMessage({ content: "x", mode: "whisper", whisperTo: ["u1"] }),
+    ).rejects.toThrow(/TDD 0041/);
+    expect(caller.calls).toEqual([]);
+  });
+
+  it("deleteChatMessages is add-on-only (no MCP tool)", async () => {
+    const caller = new FakeMcpToolCaller({});
+    const client = new McpFoundryClient(caller, "dnd5e");
+    await expect(
+      client.deleteChatMessages({ scope: "by-recipient", recipientFoundryUserId: "u1" }),
+    ).rejects.toThrow(/TDD 0041/);
+    expect(caller.calls).toEqual([]);
+  });
+
+  it("subscribeChatEvents is a no-op until TDD 0041 evt chat", () => {
+    const caller = new FakeMcpToolCaller({});
+    const client = new McpFoundryClient(caller, "dnd5e");
+    const received: string[] = [];
+    const unsub = client.subscribeChatEvents((e) => received.push(e.text));
+    caller.emitNotification("chat", {
+      foundryUserId: "u1",
+      text: "I search the room",
+      isWhisper: false,
+      timestamp: "t0",
+    });
+    unsub();
+    expect(received).toEqual([]);
   });
 });

@@ -252,6 +252,40 @@ describe("TenantDb — player↔character map", () => {
       beta.playerCharacterMap.currentForPlayer("shared-campaign", "discord:1"),
     ).toBeUndefined();
   });
+
+  it("persists and returns foundryUserId on the 3-way map (TDD 0036)", () => {
+    const { t } = setup();
+    seedCampaign(t);
+    t.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:1",
+      foundryUserId: "foundry-user-1",
+      foundryActorId: "actor-a",
+      source: "player",
+      confirmedAt: Date.now(),
+    });
+    const current = t.playerCharacterMap.currentForPlayer("c1", "discord:1");
+    expect(current?.foundryUserId).toBe("foundry-user-1");
+    expect(current?.foundryActorId).toBe("actor-a");
+    expect(t.playerCharacterMap.currentForFoundryUser("c1", "foundry-user-1")?.discordUserId).toBe(
+      "discord:1",
+    );
+  });
+
+  it("treats a missing foundryUserId as null (pre-migration / unbound)", () => {
+    const { t } = setup();
+    seedCampaign(t);
+    t.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:1",
+      foundryActorId: "actor-a",
+      source: "player",
+      confirmedAt: Date.now(),
+    });
+    expect(t.playerCharacterMap.currentForPlayer("c1", "discord:1")?.foundryUserId ?? null).toBe(
+      null,
+    );
+  });
 });
 
 describe("TenantDb — voice assignments", () => {

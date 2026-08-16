@@ -5,11 +5,23 @@ export { openDb, type Db, type OpenOptions } from "./db.js";
 export * as schema from "./schema/index.js";
 export {
   ErasureService,
+  renderErasureSummary,
   type DeletionAdapter,
+  type DeletionAdapterResult,
+  type ManualRemainder,
   type ErasureScope,
   type ErasureReport,
   type ErasureServiceOptions,
+  type ErasureAnalytics,
 } from "./erasure.js";
+export {
+  FoundryWhisperDeletionAdapter,
+  DbPlayerCharacterMapStore,
+  type FoundryChatDeletionClient,
+  type PlayerCharacterMapStore,
+  type DeleteChatMessagesArgs,
+} from "./adapters/foundry-whisper-deletion.js";
+export { checkFoundryAddonConnected, type FoundryConnectionCheck } from "./foundry_connection.js";
 export {
   ExportService,
   type ExportAdapter,
@@ -21,6 +33,7 @@ export { CampaignAdapter } from "./adapters/campaign-adapter.js";
 export { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 export { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 export { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
+export { SessionIntakeFindingAdapter } from "./adapters/session-intake-finding-adapter.js";
 export { loadOrCreateSalt } from "./salt.js";
 export { seal, open, SecretOpenError } from "./secrets.js";
 export {

@@ -10,11 +10,12 @@ import { decryptPcmapRow } from "../pii_columns.js";
 import { playerCharacterMap } from "../schema/index.js";
 
 /**
- * Erasure + export for the player↔character map (design doc 0016). The rows
- * carry a Discord user ID + display name (PII), AEAD-encrypted at rest (TDD
- * 0030). Player-scoped erasure matches the key-free `discord_user_id_hash`
- * companion (plaintext fallback for legacy rows); export decrypts. Campaign
- * scope is handled by FK cascade.
+ * Erasure + export for the 3-way player map (TDD 0036). The rows carry a
+ * Discord user ID, Foundry user ID, and display name (all PII), AEAD-encrypted
+ * at rest (TDD 0030). Player-scoped erasure matches the key-free
+ * `discord_user_id_hash` companion (plaintext fallback for legacy rows) and
+ * deletes the whole row — discord, foundry-user, and actor ids together.
+ * Export decrypts. Campaign scope is handled by FK cascade.
  */
 export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter {
   readonly name = "player_character_map";
@@ -33,7 +34,7 @@ export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter
     );
   }
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "player") {
       const res = this.db
         .delete(playerCharacterMap)
@@ -41,7 +42,7 @@ export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter
           and(eq(playerCharacterMap.tenantId, scope.tenantId), this.bySubject(scope.subjectId)),
         )
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "campaign") {
       // Redundant with the campaigns→pcmap FK cascade, but explicit so the
@@ -55,16 +56,16 @@ export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter
           ),
         )
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "tenant") {
       const res = this.db
         .delete(playerCharacterMap)
         .where(eq(playerCharacterMap.tenantId, scope.tenantId))
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
-    return 0;
+    return { recordsDeleted: 0 };
   }
 
   async export(scope: ErasureScope): Promise<ExportPayload> {

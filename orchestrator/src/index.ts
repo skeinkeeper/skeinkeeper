@@ -10,9 +10,20 @@ export {
   type ToolHandlerContext,
   type ToolResult,
   type ToolDispatcherOptions,
+  type JournalShareDelivery,
+  type JournalSharePayload,
 } from "./registry.js";
 export { rollFormula, type RollResult, type RollOptions } from "./dice.js";
 export { BUILTIN_TOOLS, registerBuiltinTools, createDefaultRegistry } from "./tools/index.js";
+export {
+  JOURNAL_EXCERPT_DEFAULT,
+  TriggeredActionError,
+  distributeLootDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  revealTokenDef,
+  shareJournalToAudienceDef,
+} from "./tools/triggered.js";
 export {
   assembleHotContext,
   formatHotContextAsText,
@@ -28,12 +39,83 @@ export {
 export { buildWarmStateSnapshot, summarizeWarmStateForOperator } from "./warm_state.js";
 export {
   type FoundryClient,
+  type FoundryChatEvent,
+  type PostChatMessageArgs,
+  type DeleteChatMessagesArgs,
   type FoundryActor,
   type FoundryScene,
   type FoundrySceneToken,
   type FoundrySceneRef,
+  type FoundryWorldInfo,
+  type FoundryModuleRef,
+  type FoundryUser,
+  type FoundryPackRef,
+  type FoundryCreatureRef,
+  type FoundrySearchHit,
+  type FoundryJournal,
+  type FoundryTokenDetails,
   type RollResult as FoundryRollResult,
+  parseCompendiumRef,
 } from "./foundry/client.js";
+export * from "./intake/types.js";
+export {
+  isStarterSceneName,
+  isKnownFoundrySystem,
+  classifyModuleKind,
+  readWorldInfo,
+  readPartyActorSummaries,
+  readSceneSummaries,
+  readModuleSummaries,
+  readPackSummaries,
+  readOwnershipMap,
+} from "./intake/foundry_reads.js";
+export { runMinimumIntake, runExtendedIntake } from "./intake/runner.js";
+export {
+  identityFindingSeverity,
+  verifyIdentityPreflight,
+  type IdentityFindingSeverity,
+  type IdentityPreflightFinding,
+  type IdentityPreflightInput,
+  type IdentityPreflightResult,
+} from "./intake/preflight-identity.js";
+export { runSessionStartIntake, kickExtendedIntake } from "./intake/session_start.js";
+export {
+  IdentityPreflightBlockedError,
+  assertIdentityAllowsStart,
+  collectIdentityPreflightInput,
+  emitIdentityPreflightTelemetry,
+  executePreflightVerify,
+  formatIdentityPreflightReport,
+  identityFindingsToIntake,
+  runIdentityPreflight,
+  shouldSurfaceIdentityFindings,
+} from "./intake/preflight-run.js";
+export {
+  FOUNDRY_PRESENCE_INTERVAL_MS,
+  applyFoundryPresenceTick,
+  startFoundryPresencePoll,
+  type FoundryPresencePoller,
+  type FoundryPresenceTransition,
+  type FoundryPresenceUser,
+} from "./intake/foundry-presence.js";
+export { formatIntakeReportForOperator } from "./intake/report.js";
+export {
+  applyIntakeResolution,
+  createIntakeResolutionState,
+  announceReadyAllowed,
+  unresolvedCriticalCodes,
+  type IntakeResolutionState,
+  type IntakeResolutionHooks,
+} from "./intake/resolve.js";
+export { DM_ONLY_MARKER } from "./intake/summary.js";
+export {
+  INTAKE_SETTING_KEY,
+  emptyIntakeConfig,
+  loadIntakeConfig,
+  saveIntakeConfig,
+  persistSurfacedFindings,
+  persistFindingResolution,
+} from "./intake/persist.js";
 export { MockFoundryClient, type MockFoundryClientOptions } from "./foundry/mock.js";
 export { renderActorState } from "./foundry/render.js";
 export { resolveCharacterName, type NameResolution } from "./identity.js";
@@ -56,10 +138,14 @@ export {
   InMemoryMemoryStore,
   cosineSimilarity,
   effectiveAudience,
+  matchesMetadataFilter,
   type MemoryStore,
   type MemoryRecord,
   type MemoryKind,
+  type MemorySource,
+  type MemoryMetadataFilter,
   type MemoryQueryOptions,
+  type ByMetadataOptions,
 } from "./memory/store.js";
 export { allowedAudiencesFor, audienceVisibleInConversation } from "./audience.js";
 export { Mutex } from "./util/mutex.js";
@@ -70,6 +156,12 @@ export {
   type PrivateActionClassification,
   type GuardrailDecision,
 } from "./side_channel/guardrail.js";
+export {
+  SideChannelCoordinator,
+  SideChannelIdentityMap,
+  type SideChannelCoordinatorOptions,
+  type SideChannelDispatchResult,
+} from "./side_channel/coordinator.js";
 export { retrieveMemory, buildMemoryQuery, DEFAULT_RETRIEVAL_TOP_K } from "./memory/retrieval.js";
 export {
   generateEpisodicSummary,
@@ -77,6 +169,58 @@ export {
   type EpisodicSummary,
 } from "./memory/summarize.js";
 export { ingestColdEntries, type ColdEntry } from "./memory/ingest.js";
+export { extractKeys, type ExtractedKeys, type WorldEntrySource } from "./memory/world-metadata.js";
+export {
+  activateScene,
+  applyInitialScene,
+  chooseInitialScene,
+  stripSceneFindings,
+  type ApplyInitialSceneResult,
+  type SceneChoice,
+} from "./autosetup/initial-scene.js";
+export { preloadExpectedContent, type PreloadReport } from "./autosetup/preload.js";
+export {
+  dispatchPostIntakeAutosetup,
+  type DispatchAutosetupArgs,
+  type DispatchAutosetupResult,
+} from "./autosetup/dispatch.js";
+export { foundryWorldContentReader } from "./autosetup/foundry-world-reader.js";
+export {
+  invokeIdentityPreflight,
+  type VerifyIdentityPreflight,
+} from "./autosetup/identity-preflight.js";
+export { createSessionRunState, type SessionRunState } from "./session/run-state.js";
+export {
+  MockFoundryEventStream,
+  NullFoundryEventStream,
+  liveAddonEventStream,
+  parseFoundryEvent,
+  takePerceptionEvents,
+  wireFoundryEventStream,
+  type FoundryEvent,
+  type FoundryEventStream,
+  type PerceptionKind,
+  type PerceptionBuffer,
+  type Unsubscribe as PerceptionUnsubscribe,
+} from "./perception/event-stream.js";
+export {
+  refreshIndex,
+  resetIndexRefreshMutexForTests,
+  type RefreshCounts,
+  type RefreshIndexContext,
+  type RefreshReport,
+} from "./autosetup/index-refresh.js";
+export type {
+  CreatureCriteria,
+  IndexSource,
+  SearchQuery,
+  WorldContentReader,
+  WorldCreatureEntry,
+  WorldItemEntry,
+  WorldJournalEntry,
+  WorldJournalPage,
+  WorldSceneEntry,
+} from "./autosetup/world-types.js";
 export {
   runVoiceSession,
   VOICE_CONSENT_TEXT,
@@ -149,3 +293,22 @@ export {
   type AlwaysListeningConfig,
   type AlwaysListeningResult,
 } from "./always_listening_session.js";
+export {
+  audienceKind,
+  AsyncQueue,
+  FakeInboundSurface,
+  FakeOutboundSurface,
+  isInboundSurface,
+  isOutboundSurface,
+  NoHandlingSurfaceError,
+  SurfaceRouter,
+  type Audience as SurfaceAudience,
+  type ConsoleControl,
+  type EmitReport,
+  type InboundSurface,
+  type OutboundSurface,
+  type SurfaceInputEvent,
+  type SurfaceOutput,
+  type SurfaceRouterOptions,
+  type TtsStream,
+} from "./surfaces/index.js";

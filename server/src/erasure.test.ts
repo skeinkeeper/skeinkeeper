@@ -152,7 +152,7 @@ describe("ConsentsAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:111",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     expect(db.select().from(consents).all()).toHaveLength(0);
   });
 
@@ -228,6 +228,8 @@ describe("ExportService + ConsentsAdapter", () => {
     expect(html).toContain("<!doctype html>");
     expect(html).toContain("Player discord:hi");
     expect(html).toContain("discord:hi"); // subject id appears in the JSON section too
+    expect(html).toContain("Foundry-side data not exported");
+    expect(html).toMatch(/Foundry's own (GM )?.*export/i);
   });
 });
 
@@ -239,10 +241,10 @@ class FakeAdapter implements DeletionAdapter {
     private readonly count = 1,
     private readonly throwOn?: ErasureScope["kind"],
   ) {}
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     this.calls.push(scope.kind);
     if (this.throwOn === scope.kind) throw new Error(`${this.name} boom`);
-    return this.count;
+    return { recordsDeleted: this.count };
   }
 }
 
@@ -290,6 +292,126 @@ describe("ErasureService — multi-adapter fan-out", () => {
     // No deletion_log row for the failed adapter; one each for the successes.
     const logs = db.select().from(deletionLog).all();
     expect(logs.map((l) => l.adapterName).sort()).toEqual(["ok1", "ok2"]);
+  });
+});
+
+class RemainderAdapter implements DeletionAdapter {
+  readonly name = "foundry-whisper";
+  readonly supportedScopes = ["player"] as const;
+  constructor(private readonly remainderReason: string) {}
+  async delete(): Promise<{
+    recordsDeleted: number;
+    manualRemainder: { reason: string; message: string; foundryUserId: string };
+  }> {
+    return {
+      recordsDeleted: 0,
+      manualRemainder: {
+        reason: this.remainderReason,
+        foundryUserId: "u1",
+        message: "Foundry-side cleanup required",
+      },
+    };
+  }
+}
+
+describe("ErasureService — partial success (TDD 0038)", () => {
+  it("sets partialSuccess and aggregates manualRemainders", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const events: Array<{ name: string; props: Record<string, unknown> }> = [];
+    const erasure = new ErasureService({
+      db,
+      salt: "test-salt-32-chars-aaaaaaaaaaaaaa",
+      analytics: { track: (name, props) => events.push({ name, props }) },
+    });
+    erasure.register(new FakeAdapter("consents", ["player"], 2));
+    erasure.register(new RemainderAdapter("addon-unavailable"));
+
+    const report = await erasure.erase({
+      kind: "player",
+      tenantId: "t1",
+      subjectId: "d1",
+    });
+
+    expect(report.partialSuccess).toBe(true);
+    expect(report.totalRecords).toBe(2);
+    expect(report.manualRemainders).toHaveLength(1);
+    expect(report.manualRemainders[0]?.reason).toBe("addon-unavailable");
+    const foundry = report.perAdapter.find((p) => p.adapter === "foundry-whisper");
+    expect(foundry?.recordsDeleted).toBe(0);
+    expect(foundry?.manualRemainder?.reason).toBe("addon-unavailable");
+
+    const names = events.map((e) => e.name);
+    expect(names).toContain("erasure.completed");
+    expect(names).toContain("erasure.partial-success");
+    expect(names).toContain("erasure.adapter.failed");
+    expect(events.find((e) => e.name === "erasure.partial-success")?.props).toMatchObject({
+      scope: "player",
+      remainderCount: 1,
+      reasons: ["addon-unavailable"],
+    });
+    expect(events.find((e) => e.name === "erasure.adapter.failed")?.props).toMatchObject({
+      adapter: "foundry-whisper",
+      reason: "addon-unavailable",
+    });
+  });
+
+  it("records partial_success and manual_remainders on the deletion_log row", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const erasure = new ErasureService({ db, salt: "test-salt-32-chars-aaaaaaaaaaaaaa" });
+    erasure.register(new RemainderAdapter("addon-unavailable"));
+    await erasure.erase({ kind: "player", tenantId: "t1", subjectId: "d1" });
+
+    const row = db.select().from(deletionLog).all()[0];
+    expect(row?.adapterName).toBe("foundry-whisper");
+    expect(row?.partialSuccess).toBe(1);
+    const remainders = JSON.parse(row?.manualRemainders ?? "null") as Array<{ reason: string }>;
+    expect(remainders).toHaveLength(1);
+    expect(remainders[0]?.reason).toBe("addon-unavailable");
+    expect(JSON.stringify(remainders)).not.toMatch(/u-foundry|discord:/);
+  });
+
+  it("does not persist Foundry or Discord ids in deletion_log remainders", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const erasure = new ErasureService({ db, salt: "test-salt-32-chars-aaaaaaaaaaaaaa" });
+    erasure.register({
+      name: "foundry-whisper",
+      supportedScopes: ["player"],
+      async delete() {
+        return {
+          recordsDeleted: 0,
+          manualRemainder: {
+            reason: "foundry-call-failed",
+            foundryUserId: "u-foundry-secret",
+            message: "failed for Discord user discord:alice Foundry user u-foundry-secret",
+          },
+        };
+      },
+    });
+    await erasure.erase({ kind: "player", tenantId: "t1", subjectId: "discord:alice" });
+    const raw = db.select().from(deletionLog).all()[0]?.manualRemainders ?? "";
+    expect(raw).not.toContain("u-foundry-secret");
+    expect(raw).not.toContain("discord:alice");
+    expect(JSON.parse(raw)).toEqual([{ reason: "foundry-call-failed" }]);
+  });
+
+  it("leaves partialSuccess false when every adapter fully deletes", async () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    const events: Array<{ name: string }> = [];
+    const erasure = new ErasureService({
+      db,
+      salt: "test-salt-32-chars-aaaaaaaaaaaaaa",
+      analytics: { track: (name) => events.push({ name }) },
+    });
+    erasure.register(new FakeAdapter("consents", ["player"], 1));
+    const report = await erasure.erase({
+      kind: "player",
+      tenantId: "t1",
+      subjectId: "d1",
+    });
+    expect(report.partialSuccess).toBe(false);
+    expect(report.manualRemainders).toEqual([]);
+    expect(events.map((e) => e.name)).toEqual(["erasure.completed"]);
+    expect(db.select().from(deletionLog).get()?.partialSuccess).toBe(0);
   });
 });
 

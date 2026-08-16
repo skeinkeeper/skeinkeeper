@@ -1,6 +1,6 @@
 # TDD 0035: 1:1 Player↔DM Side-Channels via Foundry Whisper
 
-Status: draft
+Status: implemented
 PRD refs: 4.1, 4.3, 4.7, 5.5
 PRD-rev: 5c3a198
 ADR constraints: 0003, 0008, 0010, 0014, 0016, 0017, 0018, 0020, 0023, 0025, 0026, 0029, 0030
@@ -138,14 +138,14 @@ Anti-abuse remains primarily structural (layer 1: a `player:<id>` context exclud
 
 ### What changes from the 0026-shipped code
 
-| Area                  | Today (per 0026, implemented)                                   | Changed for this TDD                                                                                                                                    |
-| --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Side-channel inbound  | Discord DM listener → Coordinator routes to player conversation | TDD 0034's `FoundryWhisperSurface` inbound; Coordinator subscribes to `router.events()` filtered for `chat.whisper.player-to-dm`                        |
-| Side-channel outbound | `whisper`-tool → bot DM via discord.js                          | `whisper`-tool emits `{ audience: { kind: "player", playerId } }`; router fans to `FoundryWhisperSurface`                                               |
-| Secret roll           | Local crypto roller (fallback per 0026 §5)                      | TDD 0041 `rollDice(formula, { mode: "whisperTo" \| "gm", whisperTo })`; local roller only if that call throws |
-| Per-player erasure    | DialogueAdapter delete (Skeinkeeper-only)                       | DialogueAdapter delete + bridge `delete-chat-messages` filtered by recipient (TDD 0038 implementation)                                                  |
-| Operator visibility   | Skeinkeeper console replay pane (only)                          | Foundry-native GM-view whispers (default + free) + Skeinkeeper console replay pane (preserved for export/erasure)                                       |
-| Audio additive        | Planned Discord DM audio attachment (0026 §8)                   | Dropped from scope                                                                                                                                      |
+| Area                  | Today (per 0026, implemented)                                   | Changed for this TDD                                                                                                             |
+| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Side-channel inbound  | Discord DM listener → Coordinator routes to player conversation | TDD 0034's `FoundryWhisperSurface` inbound; Coordinator subscribes to `router.events()` filtered for `chat.whisper.player-to-dm` |
+| Side-channel outbound | `whisper`-tool → bot DM via discord.js                          | `whisper`-tool emits `{ audience: { kind: "player", playerId } }`; router fans to `FoundryWhisperSurface`                        |
+| Secret roll           | Local crypto roller (fallback per 0026 §5)                      | TDD 0041 `rollDice(formula, { mode: "whisperTo" \| "gm", whisperTo })`; local roller only if that call throws                    |
+| Per-player erasure    | DialogueAdapter delete (Skeinkeeper-only)                       | DialogueAdapter delete + bridge `delete-chat-messages` filtered by recipient (TDD 0038 implementation)                           |
+| Operator visibility   | Skeinkeeper console replay pane (only)                          | Foundry-native GM-view whispers (default + free) + Skeinkeeper console replay pane (preserved for export/erasure)                |
+| Audio additive        | Planned Discord DM audio attachment (0026 §8)                   | Dropped from scope                                                                                                               |
 
 ### Coordinator + the dispatcher single-writer (unchanged in shape)
 
@@ -288,11 +288,11 @@ Fixture transport updates: `FakeDiscordBot.dmUser` recordings → `FakeFoundryCl
 
 ## Evaluation rubric
 
-| Criterion | High-quality | Acceptable | Failing |
-| --- | --- | --- | --- |
-| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
-| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
-| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
-| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
-| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
-| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
+| Criterion                       | High-quality                                                                                       | Acceptable                                                   | Failing                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Requirement traceability        | Every in-scope FR/NFR maps to a named interface, type, or step                                     | One mapping is slightly coarse but still findable            | An in-scope FR has no row, or the row is "handled in code"        |
+| Interface concreteness          | Method names, args, return types, and error cases are specified                                    | Types are named; one edge payload is implied                 | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason                                    | No new dep, and the section says why                         | New dep with empty or "none considered" analysis                  |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named                                   | Observable but one scenario is console-only                  | Non-actionable plan (no surface, no observation point)            |
+| Scope-bound adherence           | Touched files ≤8, body ≤500, per-file estimates present                                            | One justified exception marker                               | Silent over-bound or missing Touched files / Expected diff        |
+| Naming consistency              | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name                  |

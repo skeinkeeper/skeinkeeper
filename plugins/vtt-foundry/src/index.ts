@@ -10,3 +10,16 @@ export {
   type StdioMcpToolCallerOptions,
 } from "./stdio_mcp_tool_caller.js";
 export { readCompendiumEntries, type CompendiumEntry } from "./compendium.js";
+export { parseChatConvention } from "./convention.js";
+export {
+  isSkeinkeeperCommand,
+  parseSkeinkeeperCommand,
+  type CommandParseResult,
+} from "./command_parse.js";
+export { FoundryPublicChatSurface, type FoundryPublicChatSurfaceOptions } from "./public_chat.js";
+export { FoundryWhisperSurface, type FoundryWhisperSurfaceOptions } from "./whisper_chat.js";
+export { FoundryGmChatSurface, type FoundryGmChatSurfaceOptions } from "./gm_chat.js";
+export {
+  FoundryChatCommandSurface,
+  type FoundryChatCommandSurfaceOptions,
+} from "./chat_command.js";

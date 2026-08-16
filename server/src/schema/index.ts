@@ -20,3 +20,4 @@ export * from "./consents";
 export * from "./deletion_log";
 export * from "./quest_flags";
 export * from "./settings";
+export * from "./session_intake_finding";

@@ -22,6 +22,7 @@ export function decryptPcmapRow(
   return {
     ...row,
     discordUserId: crypto.dec(row.discordUserId),
+    foundryUserId: row.foundryUserId === null ? null : crypto.dec(row.foundryUserId),
     displayName: row.displayName === null ? null : crypto.dec(row.displayName),
   };
 }

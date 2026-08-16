@@ -34,8 +34,21 @@ import type {
   ModelTier,
   StopReason,
 } from "./interfaces/llm.js";
-import type { ToolDispatcher } from "./registry.js";
+import type { JournalShareDelivery, ToolDispatcher } from "./registry.js";
 import { toolDefinitionToLlmSpec } from "./tool_definition_to_spec.js";
+import type { SessionIntakeConfig } from "./intake/types.js";
+import type { SessionRunState } from "./session/run-state.js";
+import {
+  NullFoundryEventStream,
+  wireFoundryEventStream,
+  type FoundryEvent,
+  type FoundryEventStream,
+  type PerceptionKind,
+  type Unsubscribe,
+} from "./perception/event-stream.js";
+import type { SideChannelIdentityMap } from "./side_channel/identity_map.js";
+import type { SurfaceRouter } from "./surfaces/router.js";
+import type { TtsStream } from "./surfaces/events.js";
 import type { Eagerness } from "./voice/eagerness.js";
 import type { NarrationSegment } from "./voice/markers.js";
 import { StreamingNarrationSegmenter } from "./voice/streaming_segmenter.js";
@@ -86,6 +99,27 @@ export interface SessionConfig {
   /** Send a private DM to the operator for setup escalations (design doc
    *  0023). Wired by the operator app; tools reach it via ctx.notifyOperator. */
   notifyOperator?: (message: string) => Promise<void>;
+  /** Prior intake decisions (TDD 0031). Persisted per-campaign. */
+  intake?: SessionIntakeConfig;
+  /** Per-session transient flags (TDD 0032). */
+  runState?: SessionRunState;
+  /** Live Foundry perception (TDD 0033). Default: no-op null stream. */
+  foundryEvents?: FoundryEventStream;
+  perceptionKind?: PerceptionKind;
+  isPlayerConsented?: (playerId: string) => boolean;
+  journalShare?: JournalShareDelivery;
+  notifyTable?: (message: string) => Promise<void>;
+  whisperPlayer?: (playerId: string, message: string) => Promise<void>;
+  /** TDD 0034: table narration fans out through this instead of VoiceIO. */
+  surfaces?: SurfaceRouter;
+  /** TDD 0035 ephemeral 3-way identity (persisted by TDD 0036). */
+  identity?: SideChannelIdentityMap;
+  /** TDD 0036: SSE echo when notify_operator has no operator Foundry user. */
+  onOperatorEscalation?: (event: {
+    message: string;
+    severity: "info" | "warning" | "critical";
+  }) => void;
+  operatorFoundryUserKnown?: () => boolean;
 }
 
 export class Session {
@@ -94,8 +128,29 @@ export class Session {
   readonly dialogue: DialogueTurn[] = [];
   /** Number of turns processed in this session; used for session.ended. */
   turnCount = 0;
+  perceptionReady = false;
+  readonly perceptionEvents: FoundryEvent[] = [];
+  perceptionKind: PerceptionKind = "null";
+  private perceptionUnsub: Unsubscribe | undefined;
+  private perceptionFlush: (() => void) | undefined;
 
   constructor(readonly config: SessionConfig) {}
+
+  /** Flush the session-start event queue (TDD 0033). */
+  releasePerception(): void {
+    this.perceptionReady = true;
+    this.perceptionFlush?.();
+  }
+
+  closePerception(): void {
+    this.perceptionUnsub?.();
+    this.perceptionUnsub = undefined;
+  }
+
+  attachPerception(unsub: Unsubscribe, flush: () => void): void {
+    this.perceptionUnsub = unsub;
+    this.perceptionFlush = flush;
+  }
 }
 
 /**
@@ -141,11 +196,27 @@ export function startSession(config: SessionConfig): Session {
     sizeKbBucket: bucketSpecSizeKb(Buffer.byteLength(config.behaviorSpec.content, "utf8")),
   });
 
+  const kind = config.perceptionKind ?? (config.foundryEvents !== undefined ? "real" : "null");
+  session.perceptionKind = kind;
+  const stream = config.foundryEvents ?? new NullFoundryEventStream();
+  const wired = wireFoundryEventStream({
+    stream,
+    campaignId: config.campaignId,
+    kind,
+    isReady: () => session.perceptionReady,
+    onEvent: (event) => {
+      session.perceptionEvents.push(event);
+    },
+    ...(config.analytics !== undefined ? { analytics: config.analytics } : {}),
+  });
+  session.attachPerception(wired.unsubscribe, wired.flush);
+
   return session;
 }
 
 /** End a session: stamp endedAt, store an optional summary, emit session.ended. */
 export function endSession(session: Session, summaryJson?: string): void {
+  session.closePerception();
   const cfg = session.config;
   const row = cfg.tenantDb.sessions.get(cfg.sessionId);
   const endedAt = Date.now();
@@ -244,6 +315,8 @@ export interface TurnOptions {
    * 0026 §6 "read-at-initiation").
    */
   systemNote?: string;
+  /** Optional TTS stream forwarded to DiscordVoiceSurface via the router. */
+  audio?: TtsStream;
 }
 
 export interface DispatchedToolCall {
@@ -435,10 +508,30 @@ async function runLlmIterations(
       tenantDb: cfg.tenantDb,
       sessionId: cfg.sessionId,
       turnId,
+      campaignId: cfg.campaignId,
       caller: "llm" as const,
       foundry: cfg.foundry,
       ...(cfg.notifyOperator !== undefined ? { notifyOperator: cfg.notifyOperator } : {}),
       ...(cfg.fudgeAllowed !== undefined ? { flags: { fudgeAllowed: cfg.fudgeAllowed } } : {}),
+      ...(cfg.runState !== undefined ? { runState: cfg.runState } : {}),
+      ...(cfg.analytics !== undefined ? { analytics: cfg.analytics } : {}),
+      ...(cfg.isPlayerConsented !== undefined ? { isPlayerConsented: cfg.isPlayerConsented } : {}),
+      ...(cfg.journalShare !== undefined ? { journalShare: cfg.journalShare } : {}),
+      ...(cfg.notifyTable !== undefined ? { notifyTable: cfg.notifyTable } : {}),
+      ...(cfg.whisperPlayer !== undefined ? { whisperPlayer: cfg.whisperPlayer } : {}),
+      ...(cfg.surfaces !== undefined ? { surfaces: cfg.surfaces } : {}),
+      ...(cfg.identity !== undefined
+        ? {
+            identity: cfg.identity,
+            resolveFoundryUserId: (id: string) => cfg.identity?.foundryUserIdForDiscord(id),
+          }
+        : {}),
+      ...(cfg.onOperatorEscalation !== undefined
+        ? { onOperatorEscalation: cfg.onOperatorEscalation }
+        : {}),
+      ...(cfg.operatorFoundryUserKnown !== undefined
+        ? { operatorFoundryUserKnown: cfg.operatorFoundryUserKnown }
+        : {}),
     };
     for (const tc of iterationToolCalls) {
       const result = await cfg.dispatcher.dispatch({ name: tc.name, input: tc.input }, ctx);
@@ -588,6 +681,22 @@ export async function runTurn(
       { speaker: "narrator", text: narration, audience, conversationId },
       Date.now(),
     );
+    // Table-audience narration goes through the router (voice + Foundry public
+    // chat). Player-audience side-channel replies whisper via Foundry (TDD 0035).
+    if (cfg.surfaces !== undefined) {
+      if (options.conversation === undefined) {
+        await cfg.surfaces.emit({
+          audience: { kind: "table" },
+          text: narration,
+          ...(options.audio !== undefined ? { audio: options.audio } : {}),
+        });
+      } else if (audience.startsWith("player:")) {
+        await cfg.surfaces.emit({
+          audience: { kind: "player", playerId: input.speaker },
+          text: narration,
+        });
+      }
+    }
   }
 
   // Tools may have mutated state — refresh for the output, but only if any

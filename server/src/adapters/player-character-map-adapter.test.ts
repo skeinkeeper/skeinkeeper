@@ -60,7 +60,7 @@ describe("PlayerCharacterMapAdapter — delete", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     const remaining = db.select().from(playerCharacterMap).all();
     expect(remaining.map((r) => r.discordUserId)).toEqual(["discord:bob"]);
   });
@@ -70,7 +70,7 @@ describe("PlayerCharacterMapAdapter — delete", () => {
     seedMappings(db);
     const adapter = new PlayerCharacterMapAdapter(db);
     const deleted = await adapter.delete({ kind: "tenant", tenantId: "default" });
-    expect(deleted).toBe(2);
+    expect(deleted).toEqual({ recordsDeleted: 2 });
     expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
   });
 
@@ -83,7 +83,7 @@ describe("PlayerCharacterMapAdapter — delete", () => {
       tenantId: "default",
       campaignId: "c1",
     });
-    expect(deleted).toBe(2);
+    expect(deleted).toEqual({ recordsDeleted: 2 });
     expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
   });
 
@@ -143,7 +143,7 @@ describe("PlayerCharacterMapAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
   });
 
@@ -171,5 +171,45 @@ describe("PlayerCharacterMapAdapter — encrypted rows (TDD 0030)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.discordUserId).toBe("discord:alice");
     expect(rows[0]?.displayName).toBe("Alice");
+  });
+
+  it("player erasure removes discord, foundry user, and actor ids (TDD 0036)", async () => {
+    const { db } = setup();
+    const t = new TenantDb(db, "default");
+    t.playerCharacterMap.record({
+      campaignId: "c1",
+      discordUserId: "discord:alice",
+      foundryUserId: "foundry-user-alice",
+      foundryActorId: "actor-alice",
+      displayName: "Alice",
+      source: "player",
+      confirmedAt: Date.now(),
+    });
+    const exported = await new PlayerCharacterMapAdapter(db).export({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:alice",
+    });
+    const before = exported.data as Array<{
+      discordUserId: string;
+      foundryUserId: string | null;
+      foundryActorId: string;
+    }>;
+    expect(before).toHaveLength(1);
+    expect(before[0]?.discordUserId).toBe("discord:alice");
+    expect(before[0]?.foundryUserId).toBe("foundry-user-alice");
+    expect(before[0]?.foundryActorId).toBe("actor-alice");
+
+    const deleted = await new PlayerCharacterMapAdapter(db).delete({
+      kind: "player",
+      tenantId: "default",
+      subjectId: "discord:alice",
+    });
+    expect(deleted).toEqual({ recordsDeleted: 1 });
+    const remaining = db.select().from(playerCharacterMap).all();
+    expect(remaining).toHaveLength(0);
+    expect(remaining.some((r) => r.discordUserId === "discord:alice")).toBe(false);
+    expect(remaining.some((r) => r.foundryUserId === "foundry-user-alice")).toBe(false);
+    expect(remaining.some((r) => r.foundryActorId === "actor-alice")).toBe(false);
   });
 });

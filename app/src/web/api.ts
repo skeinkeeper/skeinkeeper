@@ -33,6 +33,7 @@ export function getState(app: App): ApiResult {
         displayName: app.manager.operatorDisplayName() ?? null,
       },
       roster: app.manager.currentRoster(),
+      intake: app.manager.getIntakeView(),
     },
   };
 }
@@ -96,4 +97,31 @@ export function setDmVoice(app: App, body: unknown): ApiResult {
   const r = app.manager.setDmVoiceByPersona(personaId);
   if (!r.ok) return { status: 400, body: { error: r.error ?? "unknown persona" } };
   return { status: 200, body: { personaId, voiceId: r.voiceId } };
+}
+
+/**
+ * Resolve an intake finding from the web console (ADR-0016 / ADR-0028).
+ * The Foundry chat-command row lands in TDD 0040 against the same
+ * SessionManager.resolveIntakeFinding write path.
+ */
+export async function resolveIntake(app: App, body: unknown): Promise<ApiResult> {
+  const b = (body ?? {}) as { findingId?: unknown; optionId?: unknown };
+  const findingId = typeof b.findingId === "number" ? b.findingId : Number(b.findingId);
+  if (!Number.isInteger(findingId) || findingId <= 0) {
+    return { status: 400, body: { error: "findingId must be a positive integer" } };
+  }
+  if (typeof b.optionId !== "string" || b.optionId.trim().length === 0) {
+    return { status: 400, body: { error: "optionId required" } };
+  }
+  const result = await app.manager.resolveIntakeFinding(findingId, b.optionId.trim());
+  return { status: 200, body: result };
+}
+
+/** Re-run identity pre-flight (TDD 0036). Same write path as Foundry chat. */
+export async function verifyPreflight(app: App, body: unknown): Promise<ApiResult> {
+  const player = (body as { player?: unknown } | null)?.player;
+  const result = await app.manager.verifyPreflight(
+    typeof player === "string" && player.trim().length > 0 ? player.trim() : undefined,
+  );
+  return { status: 200, body: result };
 }

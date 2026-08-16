@@ -6,11 +6,8 @@
  * is authoritative for mechanical state (characters, NPCs, locations,
  * sheets, conditions, inventory, combat). Application code reads and
  * writes that state exclusively through this interface; the concrete
- * implementation in `plugins/vtt-foundry/` wraps an MCP bridge.
- *
- * Tests use `MockFoundryClient` from ./mock.js — an in-memory
- * implementation that lets the orchestrator be exercised without a
- * live Foundry process.
+ * implementation in `plugins/vtt-foundry/` is TDD 0041's add-on client
+ * (`ModuleFoundryClient`). Tests use `MockFoundryClient` from ./mock.js.
  */
 
 export interface FoundryActor {
@@ -29,6 +26,31 @@ export interface FoundrySceneToken {
   readonly actorId: string;
   readonly name: string;
   /** Foundry token disposition: -1 hostile, 0 neutral, 1 friendly. */
+  readonly disposition?: number;
+  readonly id?: string;
+  readonly hidden?: boolean;
+  readonly x?: number;
+  readonly y?: number;
+}
+
+/** Split `pack.entry` (or `system.pack.entry`) into packId + itemId. */
+export function parseCompendiumRef(ref: string): { packId: string; itemId: string } {
+  const parts = ref.split(".");
+  if (parts.length < 2) return { packId: "", itemId: ref };
+  const itemId = parts[parts.length - 1] ?? ref;
+  const packId = parts.slice(0, -1).join(".");
+  return { packId, itemId };
+}
+
+/** Token snapshot used by reveal/hide and place-hidden-token (TDD 0033). */
+export interface FoundryTokenDetails {
+  readonly id: string;
+  readonly actorId: string;
+  readonly name: string;
+  readonly hidden: boolean;
+  readonly x?: number;
+  readonly y?: number;
+  readonly sceneId?: string;
   readonly disposition?: number;
 }
 
@@ -53,6 +75,80 @@ export interface FoundrySceneRef {
   readonly active: boolean;
 }
 
+/** World metadata used by session intake (TDD 0031). */
+export interface FoundryModuleRef {
+  readonly id: string;
+  readonly title: string;
+  readonly kind?: "campaign" | "system" | "utility";
+  readonly active?: boolean;
+}
+
+export interface FoundryWorldInfo {
+  readonly connected: boolean;
+  readonly system: { id: string; name: string } | null;
+  readonly modules: ReadonlyArray<FoundryModuleRef>;
+}
+
+export interface FoundryUser {
+  readonly id: string;
+  readonly name: string;
+  readonly role?: string;
+  readonly isActive?: boolean;
+  readonly ownedActorIds?: ReadonlyArray<string>;
+}
+
+export interface FoundryPackRef {
+  readonly id: string;
+  readonly label: string;
+  readonly type?: string;
+}
+
+export interface FoundryCreatureRef {
+  readonly id: string;
+  readonly name: string;
+  readonly packId: string;
+  readonly type?: string;
+}
+
+export interface FoundrySearchHit {
+  readonly id: string;
+  readonly name: string;
+  readonly packId?: string;
+  readonly type?: string;
+}
+
+export interface FoundryJournal {
+  readonly id: string;
+  readonly name: string;
+  readonly text: string;
+  readonly pages?: ReadonlyArray<{ id: string; name?: string; text: string }>;
+}
+
+/** Chat event from TDD 0041 `subscribeChatEvents` / add-on `evt chat`. */
+export interface FoundryChatEvent {
+  readonly foundryUserId: string;
+  readonly text: string;
+  readonly isWhisper: boolean;
+  readonly recipients?: ReadonlyArray<string>;
+  readonly timestamp: string;
+}
+
+export interface PostChatMessageArgs {
+  content: string;
+  mode: "public" | "gm" | "whisper";
+  whisperTo?: ReadonlyArray<string>;
+  speaker?: { actor?: string; alias?: string };
+}
+
+/** TDD 0038 / 0041: filtered chat-log delete for per-player whisper cascade. */
+export interface DeleteChatMessagesArgs {
+  scope: "by-author" | "by-recipient" | "by-time-range";
+  authorFoundryUserId?: string;
+  recipientFoundryUserId?: string;
+  since?: string;
+  until?: string;
+}
+
 export interface FoundryClient {
   /** Identifier of the active Foundry system for the connected world,
    *  e.g., "dnd5e", "fate-core", "dungeon-world". */
@@ -65,10 +161,79 @@ export interface FoundryClient {
   getActiveScene(): Promise<FoundryScene | null>;
   /** All scenes in the world, so the AI knows what it can switch to. */
   listScenes(): Promise<ReadonlyArray<FoundrySceneRef>>;
+  /** Active system + installed modules (TDD 0031 intake). */
+  getWorldInfo(): Promise<FoundryWorldInfo>;
+  /**
+   * Foundry users + owned actors. The first-party add-on (TDD 0041) is
+   * the real source; today's MCP bridge has no list-users tool, so the
+   * MCP client returns an empty list and intake degrades to a
+   * recommendation (ADR-0024).
+   */
+  listUsers(): Promise<ReadonlyArray<FoundryUser>>;
+  listCompendiumPacks(): Promise<ReadonlyArray<FoundryPackRef>>;
+  listCreaturesByCriteria(criteria: {
+    name?: string;
+    type?: string;
+  }): Promise<ReadonlyArray<FoundryCreatureRef>>;
+  searchCompendium(
+    query: string,
+    opts?: { packType?: string },
+  ): Promise<ReadonlyArray<FoundrySearchHit>>;
+  searchJournals(query: string): Promise<ReadonlyArray<FoundrySearchHit>>;
+  getJournal(journalId: string): Promise<FoundryJournal | null>;
+  /** All world actors (party + NPCs already imported). Used by preload existence checks. */
+  listWorldActors(): Promise<ReadonlyArray<FoundryActor>>;
 
   // ---- writes (tool handlers route through these) ----
   applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void>;
-  rollDice(formula: string, opts?: { speaker?: string; whisperTo?: ReadonlyArray<string> }): Promise<RollResult>;
+  /** Import a compendium actor into the world without placing a token (TDD 0032). */
+  createActorFromCompendium(args: { packId: string; itemId: string }): Promise<FoundryActor>;
+  rollDice(
+    formula: string,
+    opts?: {
+      speaker?: string;
+      whisperTo?: ReadonlyArray<string>;
+      mode?: "public" | "gm" | "blind" | "whisperTo";
+    },
+  ): Promise<RollResult>;
   /** Activate a scene by id or name — an in-play DM action (ADR-0015). */
   setActiveScene(sceneIdOrName: string): Promise<void>;
+  /** Token visibility / position (TDD 0033). MCP: update-token. */
+  updateToken(args: {
+    tokenId: string;
+    hidden?: boolean;
+    x?: number;
+    y?: number;
+    sceneId?: string;
+  }): Promise<void>;
+  getTokenDetails(tokenId: string): Promise<FoundryTokenDetails | null>;
+  /** Place a token (TDD 0033 / TDD 0042). MCP: create-token or two-step fallback. */
+  createToken(args: {
+    actorId?: string;
+    compendiumRef?: string;
+    sceneId?: string;
+    x: number;
+    y: number;
+    hidden?: boolean;
+    disposition?: "hostile" | "neutral" | "friendly";
+  }): Promise<{ tokenId: string; actorId: string }>;
+  moveToken(args: { tokenId: string; x: number; y: number }): Promise<void>;
+  /** Add items to an actor inventory (TDD 0033). MCP: add-actor-items. */
+  addActorItems(args: {
+    actorId: string;
+    items: ReadonlyArray<{ compendiumId?: string; itemId?: string; quantity: number }>;
+  }): Promise<void>;
+
+  /** Table-text write (TDD 0034 / 0041). Public, GM-only, or whisper. */
+  postChatMessage(args: PostChatMessageArgs): Promise<{ messageId: string }>;
+  /**
+   * Delete Foundry chat messages (TDD 0038 cascade / TDD 0041 add-on).
+   * `by-recipient` / `by-author` cover a player's whisper history.
+   */
+  deleteChatMessages(args: DeleteChatMessagesArgs): Promise<{ deletedCount: number }>;
+  /**
+   * All public-chat and whisper events. Not only `/`-prefixed commands.
+   * Returns an unsubscribe. No WebSocket gateway here — TDD 0041 owns that.
+   */
+  subscribeChatEvents(handler: (event: FoundryChatEvent) => void): () => void;
 }
