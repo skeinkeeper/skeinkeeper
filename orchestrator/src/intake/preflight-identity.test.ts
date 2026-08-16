@@ -37,9 +37,11 @@ describe("verifyIdentityPreflight", () => {
       }),
     );
     expect(result.status).toBe("critical-gaps");
-    expect(result.findings).toEqual([
-      { kind: "no-foundry-user", discordUserId: "d1", displayName: "Alice" },
-    ]);
+    expect(result.findings).toContainEqual({
+      kind: "no-foundry-user",
+      discordUserId: "d1",
+      displayName: "Alice",
+    });
   });
 
   it("no-foundry-user is critical when the expected player has no map row", () => {

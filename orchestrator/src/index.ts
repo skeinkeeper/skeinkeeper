@@ -69,6 +69,14 @@ export {
   readOwnershipMap,
 } from "./intake/foundry_reads.js";
 export { runMinimumIntake, runExtendedIntake } from "./intake/runner.js";
+export {
+  identityFindingSeverity,
+  verifyIdentityPreflight,
+  type IdentityFindingSeverity,
+  type IdentityPreflightFinding,
+  type IdentityPreflightInput,
+  type IdentityPreflightResult,
+} from "./intake/preflight-identity.js";
 export { runSessionStartIntake, kickExtendedIntake } from "./intake/session_start.js";
 export { formatIntakeReportForOperator } from "./intake/report.js";
 export {
