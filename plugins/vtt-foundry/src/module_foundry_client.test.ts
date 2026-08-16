@@ -76,6 +76,7 @@ describe("FoundryGateway hello", () => {
         moduleId: "skeinkeeper",
         foundryVersion: "13.345",
         worldId: "w1",
+        pairingSecret: "s3cret",
       }),
     );
     const reply = await onceMessage(ws);
@@ -113,6 +114,7 @@ describe("FoundryGateway hello", () => {
         moduleId: "skeinkeeper",
         foundryVersion: "14.1",
         worldId: "w1",
+        pairingSecret: "s3cret",
       }),
     );
     await onceMessage(a);
@@ -126,11 +128,69 @@ describe("FoundryGateway hello", () => {
         moduleId: "skeinkeeper",
         foundryVersion: "14.1",
         worldId: "w1",
+        pairingSecret: "s3cret",
       }),
     );
     const reply = await onceMessage(b);
     expect(reply["code"]).toBe("duplicate");
     expect(g.session?.worldId).toBe("w1");
+  });
+
+  it("rejects a loopback hello that omits the configured pairing secret", async () => {
+    // A WebSocket ignores same-origin policy, so a page the operator visits can
+    // dial the loopback gateway. When a secret is configured it must be presented
+    // even from loopback, or the connection is unauthorized (security A1).
+    const g = await listen({ secret: "s3cret" });
+    const ws = connectClient(g);
+    await onceOpen(ws);
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        moduleId: "skeinkeeper",
+        foundryVersion: "13.345",
+        worldId: "w1",
+        // no pairingSecret
+      }),
+    );
+    const reply = await onceMessage(ws);
+    expect(reply["type"]).toBe("hello-reject");
+    expect(reply["code"]).toBe("unauthorized");
+    await expect(g.waitForHello(200)).rejects.toBeInstanceOf(FoundryGatewayError);
+  });
+
+  it("rejects a loopback hello with the wrong pairing secret", async () => {
+    const g = await listen({ secret: "s3cret" });
+    const ws = connectClient(g);
+    await onceOpen(ws);
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        moduleId: "skeinkeeper",
+        foundryVersion: "13.345",
+        worldId: "w1",
+        pairingSecret: "wrong",
+      }),
+    );
+    const reply = await onceMessage(ws);
+    expect(reply["code"]).toBe("unauthorized");
+  });
+
+  it("admits a loopback hello with no secret only when none is configured (dev)", async () => {
+    const g = await listen({ secret: "" });
+    const ws = connectClient(g);
+    await onceOpen(ws);
+    const helloP = g.waitForHello(1000);
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        moduleId: "skeinkeeper",
+        foundryVersion: "13.345",
+        worldId: "w1",
+      }),
+    );
+    const reply = await onceMessage(ws);
+    expect(reply).toEqual({ type: "hello-ok", protocol: 1 });
+    await helloP;
   });
 
   it("refuses lan bind without TLS", async () => {
@@ -197,6 +257,7 @@ describe("ModuleFoundryClient", () => {
         moduleId: "skeinkeeper",
         foundryVersion: "13.345",
         worldId: "w1",
+        pairingSecret: "s3cret",
       }),
     );
     await onceMessage(ws);
@@ -236,6 +297,7 @@ describe("ModuleFoundryClient", () => {
         moduleId: "skeinkeeper",
         foundryVersion: "13.345",
         worldId: "w1",
+        pairingSecret: "s3cret",
       }),
     );
     await onceMessage(ws);
