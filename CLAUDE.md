@@ -80,7 +80,7 @@ These are enforced via lint, CI, or code review. Violations are not negotiable.
 - **LLM:** Anthropic Messages API (Claude) as default. Other providers via the plugin interface per [ADR-0004](./docs/adr/0004-plugin-interface-pattern.md).
 - **Discord bot:** discord.js v14+, with `@discordjs/voice` for audio. The operator runs their own bot under their own token.
 - **Voice:** Deepgram (STT, default), ElevenLabs (TTS, default). Plugin-swappable. Operator brings their own API keys.
-- **Foundry integration:** OSS Foundry MCP bridge ([ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md), superseding [ADR-0001](./docs/adr/0001-use-foundry-mcp-for-vtt.md)) — consume, don't reimplement.
+- **Foundry integration:** first-party Skeinkeeper Foundry add-on (`modules/skeinkeeper`) that dials a local WebSocket gateway ([ADR-0029](./docs/adr/0029-first-party-foundry-addon.md) / [TDD 0041](./docs/tdd/0041-first-party-foundry-addon.md), superseding the third-party MCP bridge of [ADR-0011](./docs/adr/0011-prefer-oss-foundry-mcp-bridges.md)). `FoundryClient` is the internal seam (`MockFoundryClient` in tests); there is no third-party connector.
 - **Observability (local):** structured logging to file. Langfuse for LLM tracing (operator-configured if desired).
 - **Observability (opt-in remote):** PostHog (product analytics), Sentry (errors), both off by default per [ADR-0009](./docs/adr/0009-telemetry-opt-in.md).
 - **Deployment:** `docker compose up`. Web UI served on `localhost:3000`.

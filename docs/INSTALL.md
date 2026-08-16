@@ -55,7 +55,7 @@ It serves the **operator console** at `http://localhost:3000`. From there you:
 - **Start / Stop** a session (the bot joins/leaves your voice channel).
 - Pick the **DM voice** from a curated persona list (you never see provider IDs).
 - Set **Eagerness** (Reserved / Balanced / Eager) — changeable mid-session.
-- Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([TDD 0026](./tdd/0026-player-dm-side-channels.md)).
+- Toggle **PvP** (off by default) — whether the DM resolves a private action against another player's character ([TDD 0035](./tdd/0035-side-channels-via-foundry-whisper.md)).
 - _(Optional)_ Watch the **live feed**: each respond/skip decision, the DM's turns, consent prompts.
 
 During play you only need to watch **Foundry + Discord voice** — operator notes
@@ -64,7 +64,7 @@ live feed is optional observability, not something you have to babysit.
 
 **Same controls from Discord.** Every operator control above is also a slash
 command, and the two surfaces stay in sync live — change the DM voice in Discord
-and the console reflects it without a refresh, and vice versa ([TDD 0025](./tdd/0025-operator-control-parity.md)):
+and the console reflects it without a refresh, and vice versa ([TDD 0040](./tdd/0040-operator-control-parity-foundry-chat-commands.md)):
 
 - `/skeinkeeper session action:stop` — end the session.
 - `/skeinkeeper eagerness level:reserved|balanced|eager`.
@@ -76,7 +76,7 @@ and the console reflects it without a refresh, and vice versa ([TDD 0025](./tdd/
 receive a slash command, and starting is what brings it online.)
 
 **Before you click Start (pre-flight).** You ready the _world_; Skeinkeeper
-onboards the _people_ live ([TDD 0023](./tdd/0023-session-onboarding-presence-operator-channel.md)).
+onboards the _people_ live ([TDD 0036](./tdd/0036-onboarding-and-foundry-user-preflight.md)).
 Make sure:
 
 - Foundry is running with the **Skeinkeeper add-on enabled** and connected to the gateway. Start fails closed within ~5 s if the add-on isn't connected — there is no mock fallback (FR-F6).
