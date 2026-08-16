@@ -64,6 +64,19 @@
       "axios@<1.18.0": "^1.18.0",
       "form-data@<4.0.6": "^4.0.6",
       "ws@<8.21.0": "^8.21.0"
+    },
+    "auditConfig": {
+      "_comment": "GHSAs the `pnpm audit` CI gate ignores. All are `tar` advisories reachable only through fastembed (the local embedding model download), whose patched range (tar >=7.5.19) is a major bump over the v6 fastembed pins — forcing it breaks fastembed's default import (see the overrides note). They are blocked on a fastembed release, not on us. Remove entries here as fastembed updates. Re-check with `pnpm audit --prod`.",
+      "ignoreGhsas": [
+        "GHSA-23hp-3jrh-7fpw",
+        "GHSA-34x7-hfp2-rc4v",
+        "GHSA-8qq5-rm4j-mr97",
+        "GHSA-83g3-92jg-28cx",
+        "GHSA-qffp-2rhf-9h96",
+        "GHSA-9ppj-qmqm-q256",
+        "GHSA-r6q2-hw4h-h46w",
+        "GHSA-8x88-c5mf-7j5w"
+      ]
     }
   }
 }
