@@ -6,6 +6,8 @@ export * as schema from "./schema/index.js";
 export {
   ErasureService,
   type DeletionAdapter,
+  type DeletionAdapterResult,
+  type ManualRemainder,
   type ErasureScope,
   type ErasureReport,
   type ErasureServiceOptions,

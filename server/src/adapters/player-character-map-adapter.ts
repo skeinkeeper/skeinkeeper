@@ -34,7 +34,7 @@ export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter
     );
   }
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "player") {
       const res = this.db
         .delete(playerCharacterMap)
@@ -42,7 +42,7 @@ export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter
           and(eq(playerCharacterMap.tenantId, scope.tenantId), this.bySubject(scope.subjectId)),
         )
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "campaign") {
       // Redundant with the campaigns→pcmap FK cascade, but explicit so the
@@ -56,16 +56,16 @@ export class PlayerCharacterMapAdapter implements DeletionAdapter, ExportAdapter
           ),
         )
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "tenant") {
       const res = this.db
         .delete(playerCharacterMap)
         .where(eq(playerCharacterMap.tenantId, scope.tenantId))
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
-    return 0;
+    return { recordsDeleted: 0 };
   }
 
   async export(scope: ErasureScope): Promise<ExportPayload> {

@@ -17,7 +17,7 @@ export class SessionIntakeFindingAdapter implements DeletionAdapter, ExportAdapt
 
   constructor(private readonly db: Db) {}
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "campaign") {
       const res = this.db
         .delete(sessionIntakeFindings)
@@ -28,16 +28,16 @@ export class SessionIntakeFindingAdapter implements DeletionAdapter, ExportAdapt
           ),
         )
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "tenant") {
       const res = this.db
         .delete(sessionIntakeFindings)
         .where(eq(sessionIntakeFindings.tenantId, scope.tenantId))
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
-    return 0;
+    return { recordsDeleted: 0 };
   }
 
   async export(scope: ErasureScope): Promise<ExportPayload> {

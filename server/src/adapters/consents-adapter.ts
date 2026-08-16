@@ -33,19 +33,19 @@ export class ConsentsAdapter implements DeletionAdapter, ExportAdapter {
     );
   }
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "player") {
       const res = this.db
         .delete(consents)
         .where(and(eq(consents.tenantId, scope.tenantId), this.bySubject(scope.subjectId)))
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "tenant") {
       const res = this.db.delete(consents).where(eq(consents.tenantId, scope.tenantId)).run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
-    return 0;
+    return { recordsDeleted: 0 };
   }
 
   async export(scope: ErasureScope): Promise<ExportPayload> {
