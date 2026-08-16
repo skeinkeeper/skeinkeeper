@@ -10,6 +10,8 @@ import { ToolDispatcher, ToolRegistry } from "../registry.js";
 import { startSession, type Session } from "../session.js";
 import { FakeInboundSurface, SurfaceRouter } from "../surfaces/index.js";
 import { SideChannelCoordinator, SideChannelIdentityMap } from "./coordinator.js";
+import { createLifecycleController } from "../sessions/lifecycle.js";
+import { PausedInputBuffer } from "../sessions/input-buffer.js";
 
 const SPEC: BehaviorSpec = {
   content: "You are the AI DM.",
@@ -174,5 +176,97 @@ describe("SideChannelCoordinator inbound (TDD 0035)", () => {
     );
     expect(rows[0]?.text).toBe("psst");
     expect(rows[0]?.audience).toBe(playerAudience(hasher, "discord-p1"));
+  });
+});
+
+describe("side-channel whispers under the Foundry-down lifecycle (design doc 0039)", () => {
+  function makeController() {
+    return createLifecycleController({
+      preflight: async () => ({ status: "ok", findings: [], criticalCount: 0 }),
+    });
+  }
+
+  const whisper = (text: string) =>
+    ({
+      kind: "chat.whisper.player-to-dm",
+      surface: "foundry-whisper",
+      foundryUserId: "foundry-user-p1",
+      text,
+    }) as const;
+
+  it("buffers whisper turns while paused instead of dispatching", async () => {
+    const { session, tenantDb, identity } = setup();
+    const lifecycle = makeController();
+    const pausedInputs = new PausedInputBuffer<{ playerId: string; text: string }>();
+    const coordinator = new SideChannelCoordinator({
+      session,
+      router: new SurfaceRouter(),
+      identity,
+      lifecycle,
+      pausedInputs,
+    });
+    lifecycle.reportAddonGone("socket closed");
+
+    const result = await coordinator.handleEvent(whisper("still there?"));
+    expect(result).toEqual({ dispatched: false, reason: "paused" });
+    expect(pausedInputs.size).toBe(1);
+    expect(tenantDb.dialogue.listBySession("sess-1")).toHaveLength(0);
+    coordinator.stop();
+  });
+
+  it("drains buffered whispers as side-channel turns on resume", async () => {
+    const { session, tenantDb, identity } = setup();
+    const lifecycle = makeController();
+    const pausedInputs = new PausedInputBuffer<{ playerId: string; text: string }>();
+    const coordinator = new SideChannelCoordinator({
+      session,
+      router: new SurfaceRouter(),
+      identity,
+      lifecycle,
+      pausedInputs,
+    });
+    lifecycle.reportAddonGone("socket closed");
+    await coordinator.handleEvent(whisper("one"));
+    await coordinator.handleEvent(whisper("two"));
+
+    await lifecycle.requestResume();
+    await waitUntil(() => tenantDb.dialogue.listBySession("sess-1").length >= 4);
+
+    const hasher = tenantDb.piiCrypto;
+    const rows = tenantDb.dialogue.listByConversation(
+      "sess-1",
+      playerConversation(hasher, "discord-p1"),
+    );
+    const playerTexts = rows.filter((r) => r.speaker === "discord-p1").map((r) => r.text);
+    expect(playerTexts).toEqual(["one", "two"]);
+    expect(pausedInputs.size).toBe(0);
+    coordinator.stop();
+  });
+
+  it("still forwards operator chat.command events while paused (resume path)", async () => {
+    const { session, identity } = setup();
+    const lifecycle = makeController();
+    const commands: string[] = [];
+    const coordinator = new SideChannelCoordinator({
+      session,
+      router: new SurfaceRouter(),
+      identity,
+      lifecycle,
+      pausedInputs: new PausedInputBuffer<{ playerId: string; text: string }>(),
+      onOperatorCommand: async (event) => {
+        commands.push(event.verb);
+      },
+    });
+    lifecycle.reportAddonGone("socket closed");
+    await coordinator.handleEvent({
+      kind: "chat.command",
+      surface: "foundry-chat-command",
+      foundryUserId: "foundry-user-p1",
+      verb: "session",
+      args: ["action:resume"],
+      raw: "/skeinkeeper session action:resume",
+    });
+    expect(commands).toEqual(["session"]);
+    coordinator.stop();
   });
 });

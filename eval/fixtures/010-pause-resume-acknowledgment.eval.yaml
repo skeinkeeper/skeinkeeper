@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Skeinkeeper Contributors
+name: pause-resume-acknowledgment
+description: |
+  Design doc 0039 / behavior spec §7.5: after a Foundry-down pause, replayed
+  player words arrive with a system note saying they were captured while the
+  session was paused. The DM's first narration must acknowledge the gap
+  (briefly — "we paused", "welcome back", "picking up") rather than rolling on
+  as if nothing happened, and must not read as an error message. Scripted mode
+  pins the contract; `eval:live` exercises the real model against §7.5.
+behavior_spec_version: v0.1
+behavior_spec: default
+scenario:
+  turns:
+    - speaker: system
+      text: >-
+        The session just resumed after a technical pause (the Foundry table
+        connection was lost and has been restored). The following player input
+        was captured while the session was paused and is being replayed now.
+    - speaker: player
+      text: "I keep easing the vault door open, slow as I can."
+llm_script:
+  narration: >-
+    We paused mid-heist — picking back up: your hand is still on the vault
+    door. It gives another inch with a groan of old iron.
+expectations:
+  - kind: contains_any_of
+    field: narration
+    texts:
+      - "pause"
+      - "We're back"
+      - "we are back"
+      - "welcome back"
+      - "picking up"
+      - "picking back up"
+      - "left off"
+    description: first narration after resume acknowledges the gap
+  - kind: not_contains
+    field: narration
+    text: "error"
+    description: the acknowledgment is in-fiction, not a technical apology

@@ -22,6 +22,8 @@ import {
   mergeFragmentsToTurnInput,
 } from "./always_listening_session.js";
 import type { BufferFragment } from "./voice/buffer.js";
+import { createLifecycleController } from "./sessions/lifecycle.js";
+import { PausedInputBuffer } from "./sessions/input-buffer.js";
 
 const SPEC: BehaviorSpec = { content: "You are the AI DM.", version: "v0.1", path: "/t/spec.md" };
 const USAGE: TokenUsage = { inputTokens: 10, outputTokens: 5 };
@@ -621,5 +623,122 @@ describe("runAlwaysListeningSession — barge-in (design doc 0028 P2)", () => {
     });
     expect(result.turnCount).toBe(1);
     expect(interrupts).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("always-listening loop under the Foundry-down lifecycle (design doc 0039)", () => {
+  function makeController() {
+    return createLifecycleController({
+      preflight: async () => ({ status: "ok", findings: [], criticalCount: 0 }),
+    });
+  }
+
+  /** VoiceIO over an async generator so the test can flip lifecycle state
+   *  between events (FakeVoiceIO's fixed list can't). */
+  function scriptedVoiceIO(gen: () => AsyncGenerator<VoiceEvent>): VoiceIO & {
+    spoken: string[];
+  } {
+    const spoken: string[] = [];
+    return {
+      name: "scripted",
+      spoken,
+      listen: () => gen(),
+      speak: async (text) => {
+        spoken.push(text);
+      },
+      requestConsent: async () => undefined,
+      close: async () => undefined,
+    };
+  }
+
+  it("buffers utterances while paused (no LLM calls) and skips the lull decider", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "Narrated.");
+    const { session } = setupSession(llm);
+    const lifecycle = makeController();
+    const pausedInputs = new PausedInputBuffer<BufferFragment>();
+
+    const voiceIO = scriptedVoiceIO(async function* () {
+      lifecycle.reportAddonGone("socket closed");
+      yield utter("discord:alice", "one", "Alice");
+      yield utter("discord:alice", "two", "Alice");
+      yield { kind: "lull" };
+    });
+
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      lifecycle,
+      pausedInputs,
+    });
+
+    expect(result.decisionCount).toBe(0);
+    expect(result.turnCount).toBe(0);
+    expect(llm.receivedRequests).toHaveLength(0);
+    expect(pausedInputs.size).toBe(2);
+  });
+
+  it("drains buffered utterances in order on resume, one turn each", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "Narrated.");
+    const { session, tenantDb } = setupSession(llm);
+    const lifecycle = makeController();
+    const pausedInputs = new PausedInputBuffer<BufferFragment>();
+    const turns: string[] = [];
+
+    const voiceIO = scriptedVoiceIO(async function* () {
+      lifecycle.reportAddonGone("socket closed");
+      yield utter("discord:alice", "one", "Alice");
+      yield utter("discord:alice", "two", "Alice");
+      yield utter("discord:alice", "three", "Alice");
+      await lifecycle.requestResume();
+    });
+
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      lifecycle,
+      pausedInputs,
+      onTurn: () => turns.push("turn"),
+    });
+
+    expect(result.turnCount).toBe(3);
+    expect(turns).toHaveLength(3);
+    expect(pausedInputs.size).toBe(0);
+    const playerLines = tenantDb.dialogue
+      .listBySession("sess-1")
+      .filter((l) => l.speaker === "discord:alice")
+      .map((l) => l.text);
+    expect(playerLines).toEqual(["one", "two", "three"]);
+    // Only narration-tier calls — no lull ever fired, so no decider calls.
+    expect(llm.receivedRequests.every((r) => r.modelTier === "narration")).toBe(true);
+    // Each drained turn carries the factual resume note so the behavior spec
+    // can frame the stale input (the framing itself lives in the spec).
+    for (const req of llm.receivedRequests) {
+      const text = req.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join("");
+      expect(text).toContain("captured while the session was paused");
+    }
+  });
+
+  it("keeps the normal decider path while the lifecycle is active", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "Narrated.");
+    const { session } = setupSession(llm);
+    const lifecycle = makeController();
+
+    const voiceIO = scriptedVoiceIO(async function* () {
+      yield utter("discord:alice", "I open the door", "Alice");
+      yield { kind: "lull" };
+    });
+
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      lifecycle,
+      pausedInputs: new PausedInputBuffer<BufferFragment>(),
+    });
+
+    expect(result.decisionCount).toBe(1);
+    expect(result.turnCount).toBe(1);
   });
 });

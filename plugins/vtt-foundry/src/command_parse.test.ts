@@ -37,3 +37,22 @@ describe("parseSkeinkeeperCommand", () => {
     expect(isSkeinkeeperCommand("/emote waves")).toBe(false);
   });
 });
+
+describe("operator dm-consent (design doc 0039 pause-notification opt-in)", () => {
+  it("parses /skeinkeeper operator dm-consent on", () => {
+    const r = parseSkeinkeeperCommand("/skeinkeeper operator dm-consent on");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.control).toEqual({ control: "operator-dm-consent", enabled: true });
+  });
+
+  it("parses /skeinkeeper operator dm-consent off", () => {
+    const r = parseSkeinkeeperCommand("/skeinkeeper operator dm-consent off");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.control).toEqual({ control: "operator-dm-consent", enabled: false });
+  });
+
+  it("rejects a missing on/off argument", () => {
+    const r = parseSkeinkeeperCommand("/skeinkeeper operator dm-consent");
+    expect(r.ok).toBe(false);
+  });
+});
