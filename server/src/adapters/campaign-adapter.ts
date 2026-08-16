@@ -18,18 +18,18 @@ export class CampaignAdapter implements DeletionAdapter {
 
   constructor(private readonly db: Db) {}
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "campaign") {
       const res = this.db
         .delete(campaigns)
         .where(and(eq(campaigns.tenantId, scope.tenantId), eq(campaigns.id, scope.campaignId)))
         .run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
     if (scope.kind === "tenant") {
       const res = this.db.delete(campaigns).where(eq(campaigns.tenantId, scope.tenantId)).run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
-    return 0;
+    return { recordsDeleted: 0 };
   }
 }

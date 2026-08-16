@@ -34,7 +34,7 @@ describe("AuditLogAdapter", () => {
       tenantId: "default",
       subjectId: "discord:1",
     });
-    expect(n).toBe(0);
+    expect(n).toEqual({ recordsDeleted: 0 });
     expect(db.select().from(auditLog).all()).toHaveLength(1);
   });
 
@@ -46,7 +46,7 @@ describe("AuditLogAdapter", () => {
       tenantId: "default",
       campaignId: "c1",
     });
-    expect(n).toBe(0);
+    expect(n).toEqual({ recordsDeleted: 0 });
     expect(db.select().from(auditLog).all()).toHaveLength(1);
   });
 
@@ -56,7 +56,7 @@ describe("AuditLogAdapter", () => {
     seedEntry(db, "default");
     seedEntry(db, "other");
     const n = await new AuditLogAdapter(db).delete({ kind: "tenant", tenantId: "default" });
-    expect(n).toBe(2);
+    expect(n).toEqual({ recordsDeleted: 2 });
     const remaining = db.select().from(auditLog).all();
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.tenantId).toBe("other");

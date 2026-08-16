@@ -16,11 +16,11 @@ export class AuditLogAdapter implements DeletionAdapter {
 
   constructor(private readonly db: Db) {}
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "tenant") {
       const res = this.db.delete(auditLog).where(eq(auditLog.tenantId, scope.tenantId)).run();
-      return res.changes;
+      return { recordsDeleted: res.changes };
     }
-    return 0;
+    return { recordsDeleted: 0 };
   }
 }

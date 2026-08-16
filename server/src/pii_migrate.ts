@@ -68,6 +68,12 @@ export function encryptPiiColumns(db: Db, crypto: PiiCrypto): PiiMigrateResult {
       .set({
         discordUserId: crypto.enc(row.discordUserId),
         discordUserIdHash: crypto.hash(row.discordUserId),
+        ...(row.foundryUserId !== null
+          ? {
+              foundryUserId: crypto.enc(row.foundryUserId),
+              foundryUserIdHash: crypto.hash(row.foundryUserId),
+            }
+          : {}),
         ...(row.displayName !== null ? { displayName: crypto.enc(row.displayName) } : {}),
       })
       .where(eq(playerCharacterMap.id, row.id))

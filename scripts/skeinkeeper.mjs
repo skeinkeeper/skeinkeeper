@@ -49,5 +49,15 @@ const memoryAdapter = new MemoryAdapter(
   piiCrypto,
 );
 
-const exit = await runCli(process.argv.slice(2), {}, { extraDeletionAdapters: [memoryAdapter] });
+// Whisper-cascade Foundry delete waits for TDD 0041 hello-ok. Until then
+// the probe is "not connected" so player:delete records addon-unavailable
+// rather than spawning the withdrawn MCP connector.
+const exit = await runCli(
+  process.argv.slice(2),
+  {},
+  {
+    extraDeletionAdapters: [memoryAdapter],
+    probeFoundryConnected: async () => false,
+  },
+);
 process.exit(exit);

@@ -5,12 +5,19 @@ import type { z } from "zod";
 import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { FoundryClient } from "./foundry/client.js";
+import type { SessionRunState } from "./session/run-state.js";
+import type { SideChannelIdentityMap } from "./side_channel/identity_map.js";
+import type { SurfaceRouter } from "./surfaces/router.js";
 import type { Mutex } from "./util/mutex.js";
 
 export interface ToolHandlerContext {
   tenantDb: TenantDb;
   sessionId: string;
   turnId: string;
+  /** Campaign this turn belongs to (TDD 0033 telemetry). */
+  campaignId?: string;
+  /** Per-session transient flags (TDD 0032). Optional for older callers. */
+  runState?: SessionRunState;
   /** Caller hint: did this dispatch originate from the LLM or the operator?
    *  Operator-gated tools refuse LLM invocation. */
   caller: "llm" | "operator";
@@ -20,9 +27,51 @@ export interface ToolHandlerContext {
    *  (scene switch, token moves, …) per ADR-0015. Present in real sessions;
    *  optional so unit tests can dispatch state-only tools without a VTT. */
   foundry?: FoundryClient;
-  /** Send a private message to the human operator (Discord DM) for setup
-   *  escalations (design doc 0023). Present in real sessions. */
+  /** Send a private message to the human operator (Foundry GM chat via
+   *  SurfaceRouter, TDD 0034) for setup escalations. Present in real sessions. */
   notifyOperator?: (message: string) => Promise<void>;
+  /** Opt-in product analytics (ADR-0009). */
+  analytics?: AnalyticsClient;
+  /** Voice/session consent check for player-audience journal share (TDD 0033). */
+  isPlayerConsented?: (playerId: string) => boolean;
+  /**
+   * TDD 0034 SurfaceRouter hook (FoundryPublicChat + DiscordVoice).
+   * Default delivery writes table-audience dialogue and notifyTable.
+   */
+  journalShare?: JournalShareDelivery;
+  /** Table-audience delivery; SessionManager wires this to SurfaceRouter. */
+  notifyTable?: (message: string) => Promise<void>;
+  /** Player-audience delivery; SessionManager wires this to SurfaceRouter. */
+  whisperPlayer?: (playerId: string, message: string) => Promise<void>;
+  /** TDD 0035: whisper / resolve_action emit through the surface router. */
+  surfaces?: SurfaceRouter;
+  /** TDD 0035 / 0036: Discord player id → Foundry user id. */
+  resolveFoundryUserId?: (playerId: string) => string | undefined;
+  /** TDD 0036: persistent 3-way map binds the ephemeral session cache. */
+  identity?: SideChannelIdentityMap;
+  /**
+   * Degraded-fallback SSE echo when notify_operator has no operator Foundry
+   * user to whisper (TDD 0036). SessionManager wires this to AppEvent.
+   */
+  onOperatorEscalation?: (event: {
+    message: string;
+    severity: "info" | "warning" | "critical";
+  }) => void;
+  /** True when an operator Foundry user is known for whisper targeting. */
+  operatorFoundryUserKnown?: () => boolean;
+}
+
+/** Typed 0034/0035 seam used by share_journal_to_audience. */
+export interface JournalSharePayload {
+  journalId: string;
+  title: string;
+  excerpt: string;
+  framedText: string;
+}
+
+export interface JournalShareDelivery {
+  shareTable(payload: JournalSharePayload): Promise<void>;
+  sharePlayer(payload: JournalSharePayload & { playerId: string }): Promise<void>;
 }
 
 export interface ToolDefinition<S extends z.ZodTypeAny, O extends z.ZodTypeAny> {

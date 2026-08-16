@@ -38,7 +38,9 @@ describe("MemoryAdapter (ADR-0014 / ADR-0017 erasure scoping)", () => {
   it("campaign scope deletes that campaign's records", async () => {
     const store = await seeded();
     const adapter = new MemoryAdapter(() => store);
-    expect(await adapter.delete({ kind: "campaign", tenantId: "t", campaignId: "c1" })).toBe(2);
+    expect(await adapter.delete({ kind: "campaign", tenantId: "t", campaignId: "c1" })).toEqual({
+      recordsDeleted: 2,
+    });
     expect(await store.query([1, 0], { campaignId: "c1", topK: 9 })).toHaveLength(0);
     expect(await store.query([1, 0], { campaignId: "c2", topK: 9 })).toHaveLength(1);
   });
@@ -46,7 +48,7 @@ describe("MemoryAdapter (ADR-0014 / ADR-0017 erasure scoping)", () => {
   it("tenant scope deletes everything in the tenant's store", async () => {
     const store = await seeded();
     const adapter = new MemoryAdapter(() => store);
-    expect(await adapter.delete({ kind: "tenant", tenantId: "t" })).toBe(3);
+    expect(await adapter.delete({ kind: "tenant", tenantId: "t" })).toEqual({ recordsDeleted: 3 });
   });
 
   it("player scope erases that player's private side-channel memory by hashed + legacy tokens (ADR-0017, TDD 0030); shared persists (ADR-0014)", async () => {
@@ -61,7 +63,11 @@ describe("MemoryAdapter (ADR-0014 / ADR-0017 erasure scoping)", () => {
     const adapter = new MemoryAdapter(() => store, crypto);
 
     // Both of Dana's private records go (hashed + legacy); shared + Eli's stay.
-    expect(await adapter.delete({ kind: "player", tenantId: "t", subjectId: "discord:1" })).toBe(2);
+    expect(await adapter.delete({ kind: "player", tenantId: "t", subjectId: "discord:1" })).toEqual(
+      {
+        recordsDeleted: 2,
+      },
+    );
     const remaining = await store.query([1, 0], { campaignId: "c1", topK: 9 });
     expect(remaining.map((r) => r.id).sort()).toEqual(["eli-secret", "shared-1", "shared-2"]);
   });

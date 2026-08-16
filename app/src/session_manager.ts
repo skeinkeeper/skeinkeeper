@@ -22,33 +22,72 @@ import {
   joinVoiceChannel,
   type VoiceConnection,
 } from "@discordjs/voice";
-import { DiscordVoiceIO, type PresenceSource } from "@skeinkeeper/voice-discord";
+import {
+  DiscordConsentSurface,
+  DiscordVoiceIO,
+  DiscordVoiceSurface,
+  type PresenceSource,
+} from "@skeinkeeper/voice-discord";
+import {
+  FoundryChatCommandSurface,
+  FoundryGmChatSurface,
+  FoundryPublicChatSurface,
+  FoundryWhisperSurface,
+} from "@skeinkeeper/vtt-foundry";
 import {
   Mutex,
   PVP_SETTING_KEY,
+  SideChannelCoordinator,
+  SideChannelIdentityMap,
+  SurfaceRouter,
   ToolDispatcher,
+  activateScene,
   archiveSession,
+  announceReadyAllowed,
+  applyIntakeResolution,
+  createSessionRunState,
   assignNpcVoice as assignNpcVoiceLLM,
   createDefaultRegistry,
+  createIntakeResolutionState,
+  executePreflightVerify,
+  formatIntakeReportForOperator,
+  identityFindingSeverity,
+  kickExtendedIntake,
+  loadIntakeConfig,
+  runIdentityPreflight,
+  startFoundryPresencePoll,
+  type FoundryPresencePoller,
+  type IdentityPreflightResult,
+  MockFoundryClient,
+  NullFoundryEventStream,
+  persistFindingResolution,
+  persistSurfacedFindings,
+  runSessionStartIntake,
+  saveIntakeConfig,
   endSession,
   findDefaultBehaviorSpec,
   loadBehaviorSpec,
   pvpEnabledFromSetting,
   runAlwaysListeningSession,
-  runTurn,
   startSession,
   VOICE_CONSENT_TEXT,
   type Eagerness,
+  type ExtendedIntakeResult,
+  type IntakeFinding,
+  type IntakeResolutionState,
+  type IntakeResolveResult,
+  type FoundryClient,
   type MemoryStore,
   type PresenceMember,
   type Session,
   type VoiceIO,
 } from "@skeinkeeper/orchestrator";
-import { playerAudience, playerConversation, type TenantDb } from "@skeinkeeper/server";
+import type { TenantDb } from "@skeinkeeper/server";
 import type { AnalyticsClient } from "@skeinkeeper/telemetry";
 import type { AppConfig } from "./config.js";
 import type { ConsentService } from "./consent.js";
 import type { FoundrySource } from "./foundry_source.js";
+import { pickDmFoundryUserId, pickOperatorFoundryUserId } from "./foundry_identity.js";
 import {
   OperatorService,
   operatorActionIsPrivileged,
@@ -81,7 +120,32 @@ export type AppEvent =
   | { kind: "eagerness"; eagerness: Eagerness }
   | { kind: "dmVoice"; voiceId: string; personaId?: string }
   /** PvP toggle changed from any surface (design doc 0026 §6). */
-  | { kind: "pvp"; enabled: boolean };
+  | { kind: "pvp"; enabled: boolean }
+  /** Intake report / resolution changed (TDD 0031). */
+  | { kind: "intake"; ready: boolean; findings: IntakeView["findings"] }
+  /** Degraded-fallback echo when no operator Foundry user is known (TDD 0036). */
+  | { kind: "operatorEscalation"; message: string; severity: "info" | "warning" | "critical" }
+  | {
+      kind: "preflight";
+      status: "ok" | "critical-gaps" | "warnings-only";
+      findingCount: number;
+      criticalCount: number;
+    };
+
+export interface IntakeViewFinding {
+  id: number;
+  code: string;
+  kind: string;
+  summary: string;
+  detail?: string;
+  dmOnly: boolean;
+  options: ReadonlyArray<{ id: string; label: string }>;
+}
+
+export interface IntakeView {
+  ready: boolean;
+  findings: ReadonlyArray<IntakeViewFinding>;
+}
 
 export interface SessionManagerDeps {
   config: AppConfig;
@@ -153,6 +217,16 @@ export class SessionManager {
     getNpcVoice: (key: string) => string | undefined;
     assignNpcVoice: (key: string) => Promise<string>;
   } | null = null;
+  /** In-memory intake findings + resolutions for the live session (TDD 0031). */
+  private intakeState: IntakeResolutionState = createIntakeResolutionState([]);
+  private intakeReadyFlag = true;
+  private extendedStarted = false;
+  private runState = createSessionRunState();
+  private surfaces: SurfaceRouter | null = null;
+  private consentSurface: DiscordConsentSurface | null = null;
+  private identity = new SideChannelIdentityMap();
+  private coordinator: SideChannelCoordinator | null = null;
+  private foundryPresence: FoundryPresencePoller | null = null;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -167,6 +241,10 @@ export class SessionManager {
       deps.tenantDb,
       deps.campaignId,
       deps.config.discord.operatorUserId,
+    );
+    this.intakeState = createIntakeResolutionState(
+      [],
+      loadIntakeConfig(deps.tenantDb, deps.campaignId),
     );
   }
 
@@ -196,6 +274,220 @@ export class SessionManager {
     });
     this.deps.onEvent?.({ kind: "pvp", enabled });
   }
+
+  getIntakeView(): IntakeView {
+    return toIntakeView(this.intakeState);
+  }
+
+  /**
+   * Single write path for intake finding resolution (TDD 0031).
+   * TDD 0040 will add the Foundry chat-command
+   * `/skeinkeeper intake resolve <session-finding-id> <option-id>` against
+   * this same method. Discord text is consent-only under the surface model.
+   */
+  async resolveIntakeFinding(findingId: number, optionId: string): Promise<IntakeResolveResult> {
+    const foundry = this.session?.config.foundry;
+    const result = await applyIntakeResolution(this.intakeState, findingId, optionId, {
+      ...(foundry !== undefined
+        ? { foundry, onSceneChoice: (sceneId) => activateScene(foundry, sceneId) }
+        : {}),
+    });
+    if (this.session !== null) this.session.config.intake = this.intakeState.intake;
+    saveIntakeConfig(this.deps.tenantDb, this.deps.campaignId, this.intakeState.intake);
+    if (result.status === "resolved") {
+      persistFindingResolution(this.deps.tenantDb, findingId, optionId);
+      const row = this.deps.tenantDb.sessionIntakeFindings.get(findingId);
+      this.deps.analytics?.track("intake.finding.resolved", {
+        campaignId: this.deps.campaignId,
+        sessionId: this.session?.config.sessionId ?? "none",
+        findingCode: result.finding?.code ?? "unknown",
+        resolutionId: optionId,
+        latencyMs: row !== undefined ? Math.max(0, Date.now() - row.createdAt) : 0,
+      });
+    }
+    const nowReady = announceReadyAllowed(this.intakeState);
+    if (!this.intakeReadyFlag && nowReady) {
+      this.intakeReadyFlag = true;
+      this.startExtendedIfNeeded();
+    }
+    this.emitIntakeEvent();
+    return result;
+  }
+
+  /**
+   * Single write path for `/skeinkeeper preflight verify` (TDD 0036).
+   * TDD 0040 owns the rest of the Foundry-chat parity table.
+   */
+  async verifyPreflight(player?: string): Promise<IdentityPreflightResult> {
+    const session = this.session;
+    if (session === null) {
+      return { status: "warnings-only", findings: [{ kind: "bridge-listusers-unavailable" }] };
+    }
+    const deps = this.intakeDeps();
+    const ctx = deps?.ctx ?? {
+      campaignId: this.deps.campaignId,
+      sessionId: session.config.sessionId,
+      sessionConfig: { intake: this.intakeState.intake },
+    };
+    const result = await executePreflightVerify({
+      ctx,
+      tenantDb: this.deps.tenantDb,
+      foundry: session.config.foundry,
+      ...(player !== undefined && player.length > 0 ? { player } : {}),
+      emit: async (text) => {
+        const operatorId = this.resolveOperatorFoundryUserId();
+        await this.surfaces?.emit({
+          audience: { kind: "gm" },
+          text,
+          meta: operatorId !== undefined ? { replyTo: operatorId } : { escalation: false },
+        });
+      },
+      onTelemetry: (name, props) => this.trackIntake(name, props),
+    });
+    this.bindIdentityFromPersistentMap();
+    this.deps.onEvent?.({
+      kind: "preflight",
+      status: result.status,
+      findingCount: result.findings.length,
+      criticalCount: result.findings.filter((f) => identityFindingSeverity(f) === "critical")
+        .length,
+    });
+    return result;
+  }
+
+  private async handleFoundryCommand(event: {
+    verb: string;
+    args: ReadonlyArray<string>;
+  }): Promise<void> {
+    if (event.verb === "preflight" && event.args[0] === "verify") {
+      await this.verifyPreflight(event.args[1]);
+    }
+  }
+
+  /** Replace the live intake findings after a minimum/extended run. */
+  installIntakeFindings(findings: ReadonlyArray<IntakeFinding>, sessionId?: string): void {
+    const prior = this.intakeState.intake;
+    const sid = sessionId ?? this.session?.config.sessionId ?? "pending";
+    const persisted = persistSurfacedFindings(
+      this.deps.tenantDb,
+      this.deps.campaignId,
+      sid,
+      findings,
+    );
+    this.intakeState = createIntakeResolutionState(persisted, prior);
+    this.emitIntakeEvent();
+  }
+
+  private emitIntakeEvent(): void {
+    const view = this.getIntakeView();
+    this.deps.onEvent?.({ kind: "intake", ready: view.ready, findings: view.findings });
+  }
+
+  private trackIntake(name: string, props?: Record<string, unknown>): void {
+    if (this.deps.analytics === undefined || props === undefined) return;
+    // Event names are registered in telemetry/src/events.ts (TDD 0031).
+    (this.deps.analytics.track as (n: string, p: Record<string, unknown>) => void)(name, props);
+  }
+
+  private intakeDeps() {
+    const session = this.session;
+    if (session === null) return null;
+    const expectedPlayers = this.intakeExpectedPlayers();
+    const dmFoundryUserId = this.resolvedDmFoundryUserId();
+    const operatorFoundryUserId = this.resolveOperatorFoundryUserId();
+    return {
+      ctx: {
+        campaignId: this.deps.campaignId,
+        sessionId: session.config.sessionId,
+        sessionConfig: { intake: this.intakeState.intake },
+        ...(expectedPlayers.length > 0 ? { expectedPlayers } : {}),
+        ...(dmFoundryUserId !== undefined ? { dmFoundryUserId } : {}),
+        ...(operatorFoundryUserId !== undefined ? { operatorFoundryUserId } : {}),
+      },
+      foundry: session.config.foundry,
+      memory: this.deps.memoryStore,
+      tenantDb: this.deps.tenantDb,
+      embed: this.deps.providers.embed,
+      worldContent: this.deps.foundry.worldContent(),
+      runState: this.runState,
+      onTelemetry: (name: string, props?: Record<string, unknown>) => this.trackIntake(name, props),
+    };
+  }
+
+  /** Seated consented roster ∪ persistent 3-way map (TDD 0036 start check). */
+  private intakeExpectedPlayers(): Array<{ discordUserId: string; displayName?: string }> {
+    const out: Array<{ discordUserId: string; displayName?: string }> = [];
+    const seen = new Set<string>();
+    for (const row of this.deps.tenantDb.playerCharacterMap.listByCampaign(this.deps.campaignId)) {
+      seen.add(row.discordUserId);
+      const player: { discordUserId: string; displayName?: string } = {
+        discordUserId: row.discordUserId,
+      };
+      if (row.displayName !== null && row.displayName.length > 0) {
+        player.displayName = row.displayName;
+      }
+      out.push(player);
+    }
+    for (const member of this.presenceSource?.current() ?? []) {
+      if (seen.has(member.id)) continue;
+      if (!this.deps.consent.isGranted(member.id)) continue;
+      seen.add(member.id);
+      const player: { discordUserId: string; displayName?: string } = { discordUserId: member.id };
+      if (member.displayName !== undefined) player.displayName = member.displayName;
+      out.push(player);
+    }
+    return out;
+  }
+
+  private async runIntakeAtStart(): Promise<void> {
+    const deps = this.intakeDeps();
+    if (deps === null) return;
+    const result = await runSessionStartIntake(deps);
+    this.intakeState = result.state;
+    this.intakeReadyFlag = result.ready;
+    this.emitIntakeEvent();
+    if (result.report.text.length > 0) {
+      try {
+        await this.emitOperatorNote(result.report.text);
+      } catch {
+        // notify_operator reports undelivered; gate still blocks
+      }
+    }
+    if (result.extended !== undefined) {
+      this.extendedStarted = true;
+      void result.extended.then((ext) => this.onExtendedDone(ext));
+    }
+  }
+
+  private startExtendedIfNeeded(): void {
+    if (this.extendedStarted) return;
+    const deps = this.intakeDeps();
+    if (deps === null) return;
+    this.extendedStarted = true;
+    void kickExtendedIntake(deps).then((ext) => this.onExtendedDone(ext));
+  }
+
+  private onExtendedDone(extended: ExtendedIntakeResult): void {
+    const session = this.session;
+    if (session === null) return;
+    const persisted = persistSurfacedFindings(
+      this.deps.tenantDb,
+      this.deps.campaignId,
+      session.config.sessionId,
+      extended.findings,
+    );
+    const merged = [...this.intakeState.findings, ...persisted.filter((f) => f.id !== undefined)];
+    this.intakeState = createIntakeResolutionState(merged, this.intakeState.intake);
+    this.intakeReadyFlag = announceReadyAllowed(this.intakeState);
+    this.emitIntakeEvent();
+    const report = formatIntakeReportForOperator(persisted, {
+      ...(extended.actions !== undefined ? { actions: extended.actions } : {}),
+    });
+    if (report.text.length > 0) {
+      void this.emitOperatorNote(report.text).catch(() => undefined);
+    }
+  }
+
   get dmVoiceId(): string {
     return this.controls.dmVoiceId;
   }
@@ -275,6 +567,12 @@ export class SessionManager {
     this.voiceChannel = null;
     this.client = null;
     this.connection = null;
+    this.foundryPresence?.stop();
+    this.foundryPresence = null;
+    this.coordinator?.stop();
+    this.coordinator = null;
+    this.surfaces = null;
+    this.consentSurface = null;
   }
 
   private async doStart(): Promise<void> {
@@ -285,7 +583,7 @@ export class SessionManager {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
-        // Inbound player DMs are the side-channel transport (design doc 0026 §7).
+        // Consent DMs + the one-time courtesy redirect (TDD 0034).
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
       ],
@@ -293,7 +591,7 @@ export class SessionManager {
       partials: [Partials.Channel, Partials.Message],
     });
     this.client = client;
-    this.registerSideChannelDms(client);
+    this.registerConsentOnlyDms(client);
     const ready = new Promise<void>((resolve) => client.once(Events.ClientReady, () => resolve()));
     await client.login(config.discord.botToken);
     await ready;
@@ -386,40 +684,18 @@ export class SessionManager {
       ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
     });
     const behaviorSpec = loadBehaviorSpec(findDefaultBehaviorSpec(import.meta.dirname));
-    const foundry = await this.deps.foundry.connect();
-    // Operator escalations reach the human via Discord DM (design docs 0023,
-    // 0024). The closure reads the operator live, so a designation set/changed
-    // mid-session (console or slash command) takes effect immediately.
-    this.session = startSession({
-      sessionId: `sess-${Date.now()}`,
-      campaignId: this.deps.campaignId,
-      behaviorSpec,
-      llm: providers.llm,
-      dispatcher,
-      foundry,
-      tenantDb: this.deps.tenantDb,
-      eagerness: this.controls.eagerness,
-      memory: { embed: providers.embed, store: this.deps.memoryStore },
-      notifyOperator: (message) => this.dmOperator(message),
-      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
-    });
-
-    // Resolve a username typed before the bot was online (design doc 0024 §1),
-    // and surface the initial operator + voice roster to the console.
-    await this.resolvePendingOperator();
-    this.emitOperatorEvent();
-    const emitRoster = (members: ReadonlyArray<PresenceMember>): void => this.emitRoster(members);
-    emitRoster(presence.current());
-    this.unsubscribeRoster = presence.subscribe(emitRoster);
-
-    this.running = true;
-    this.deps.onEvent?.({ kind: "status", status: "running" });
-
-    this.routing = {
+    let foundry;
+    try {
+      foundry = await this.deps.foundry.connect();
+    } catch {
+      // Minimum intake fails fast as FOUNDRY_NOT_CONNECTED (TDD 0031).
+      foundry = new MockFoundryClient({ system: "", connected: false });
+    }
+    const routing = {
       dmVoiceId: this.controls.dmVoiceId,
-      getNpcVoice: (key) =>
+      getNpcVoice: (key: string) =>
         this.deps.tenantDb.voiceAssignments.get(this.deps.campaignId, "npc", key)?.providerVoiceId,
-      assignNpcVoice: async (key) => {
+      assignNpcVoice: async (key: string) => {
         const voices = await providers.voiceLibrary.list();
         const a = await assignNpcVoiceLLM(providers.llm, {
           npcKey: key,
@@ -437,6 +713,65 @@ export class SessionManager {
         return a.providerVoiceId;
       },
     };
+    this.routing = routing;
+    this.bindIdentityFromPersistentMap();
+    const surfaces = this.buildSurfaceRouter(foundry, voiceIO, client, routing);
+    this.surfaces = surfaces;
+    // Operator escalations land in Foundry GM chat (TDD 0034). The router
+    // fans `gm` + escalation to GM chat and, when known, a whisper.
+    this.session = startSession({
+      sessionId: `sess-${Date.now()}`,
+      campaignId: this.deps.campaignId,
+      behaviorSpec,
+      llm: providers.llm,
+      dispatcher,
+      foundry,
+      tenantDb: this.deps.tenantDb,
+      eagerness: this.controls.eagerness,
+      memory: { embed: providers.embed, store: this.deps.memoryStore },
+      notifyOperator: (message) => this.emitOperatorNote(message),
+      intake: this.intakeState.intake,
+      runState: this.runState,
+      foundryEvents: new NullFoundryEventStream(),
+      perceptionKind: "null",
+      isPlayerConsented: (id) => this.deps.consent.isGranted(id),
+      notifyTable: async (text) => {
+        await surfaces.emit({ audience: { kind: "table" }, text });
+      },
+      whisperPlayer: async (playerId, text) => {
+        await surfaces.emit({ audience: { kind: "player", playerId }, text });
+      },
+      surfaces,
+      identity: this.identity,
+      onOperatorEscalation: (event) => {
+        if (this.resolveOperatorFoundryUserId() === undefined) {
+          this.deps.onEvent?.({ kind: "operatorEscalation", ...event });
+        }
+      },
+      operatorFoundryUserKnown: () => this.resolveOperatorFoundryUserId() !== undefined,
+      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+    });
+    this.coordinator = new SideChannelCoordinator({
+      session: this.session,
+      router: surfaces,
+      identity: this.identity,
+      onOperatorCommand: (event) => this.handleFoundryCommand(event),
+    });
+    void this.coordinator.start();
+    await this.runIntakeAtStart();
+    this.startFoundryPresenceWatch(foundry);
+
+    // Resolve a username typed before the bot was online (design doc 0024 §1),
+    // and surface the initial operator + voice roster to the console.
+    await this.resolvePendingOperator();
+    this.emitOperatorEvent();
+    const emitRoster = (members: ReadonlyArray<PresenceMember>): void => this.emitRoster(members);
+    emitRoster(presence.current());
+    this.unsubscribeRoster = presence.subscribe(emitRoster);
+
+    this.running = true;
+    this.session.releasePerception();
+    this.deps.onEvent?.({ kind: "status", status: "running" });
 
     this.loopPromise = runAlwaysListeningSession({
       voiceIO,
@@ -444,6 +779,12 @@ export class SessionManager {
       consentText: VOICE_CONSENT_TEXT,
       getEagerness: () => this.controls.eagerness,
       isConsented: (id) => this.deps.consent.isGranted(id),
+      intakeReady: () => this.intakeReadyFlag,
+      identityPreflight: {
+        verifyPlayer: (player) => this.verifyVoiceJoinIdentity(player),
+        onCriticalGap: (player) => this.onVoiceJoinIdentityGap(player),
+        onWarning: (player) => this.onVoiceJoinIdentityWarning(player),
+      },
       voiceRouting: this.routing,
       onDecision: (d, frags) =>
         this.deps.onEvent?.({
@@ -484,6 +825,15 @@ export class SessionManager {
     this.presenceSource = null;
     this.guild = null;
     this.voiceChannel = null;
+    this.foundryPresence?.stop();
+    this.foundryPresence = null;
+    this.coordinator?.stop();
+    this.coordinator = null;
+    this.surfaces = null;
+    this.consentSurface = null;
+    this.extendedStarted = false;
+    this.intakeReadyFlag = true;
+    this.runState = createSessionRunState();
     this.deps.onEvent?.({ kind: "status", status: "stopped" });
   }
 
@@ -681,89 +1031,234 @@ export class SessionManager {
     });
   }
 
-  /**
-   * DM the operator a setup note (design docs 0023, 0024). Reads the operator
-   * live so a mid-session designation works. Throws when no operator is set so
-   * the notify_operator tool reports undelivered; logs a degraded fallback.
-   */
-  private async dmOperator(message: string): Promise<void> {
-    const id = this.operator.get();
-    if (id === undefined || this.client === null) {
-      // Degraded fallback when no operator is designated (design doc 0024 §4).
-      console.warn(`[operator note — no operator set] ${message}`);
-      throw new Error("no operator designated");
-    }
-    const user = await this.client.users.fetch(id);
-    await user.send({ content: `🧵 **Skeinkeeper (operator note):** ${message}` });
+  private buildSurfaceRouter(
+    foundry: FoundryClient,
+    voiceIO: VoiceIO,
+    client: Client,
+    voiceRouting: NonNullable<SessionManager["routing"]>,
+  ): SurfaceRouter {
+    const router = new SurfaceRouter({
+      ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+      hashPlayerId: (id) => this.deps.tenantDb.piiCrypto.hash(id),
+    });
+    const consent = new DiscordConsentSurface({
+      sendDm: async (discordId, text) => {
+        const user = await client.users.fetch(discordId);
+        await user.send({ content: text });
+      },
+    });
+    this.consentSurface = consent;
+    const gm = new FoundryGmChatSurface({
+      client: foundry,
+      operatorFoundryUserId: () => this.resolveOperatorFoundryUserId(),
+    });
+    router.register(new DiscordVoiceSurface(voiceIO, voiceRouting));
+    router.register(consent);
+    router.register(new FoundryPublicChatSurface({ client: foundry }));
+    router.register(
+      new FoundryWhisperSurface({
+        client: foundry,
+        resolveFoundryUserId: (id) => this.identity.foundryUserIdForDiscord(id),
+      }),
+    );
+    router.register(gm);
+    router.register(
+      new FoundryChatCommandSurface({
+        client: foundry,
+        reply: gm,
+        ...(this.deps.analytics !== undefined ? { analytics: this.deps.analytics } : {}),
+      }),
+    );
+    return router;
   }
 
   /**
-   * Inbound side-channel transport (design doc 0026 §7): a player DMs the bot.
-   * Each DM is routed to that player's 1:1 conversation and run as a private
-   * side-channel turn (player audience + conversationId, orchestration tier),
-   * with the answer delivered back in the DM. The structural audience scoping
-   * (design doc 0026 §10) keeps other players' private content and `gm` secrets
-   * out of the turn entirely. LIVE-VALIDATION REQUIRED.
+   * Operator notes via Foundry GM chat (TDD 0034). Logs and throws when the
+   * emit has no successful surface so notify_operator reports undelivered.
    */
-  private registerSideChannelDms(client: Client): void {
-    client.on(Events.MessageCreate, (message) => {
-      void this.handleSideChannelDm(message);
+  private async emitOperatorNote(message: string): Promise<void> {
+    const router = this.surfaces;
+    if (router === null) {
+      console.warn(`[operator note — no surface router] ${message}`);
+      throw new Error("no operator surface");
+    }
+    const report = await router.emit({
+      audience: { kind: "gm" },
+      text: message,
+      meta: { escalation: true },
+    });
+    if (this.resolveOperatorFoundryUserId() === undefined) {
+      this.deps.onEvent?.({ kind: "operatorEscalation", message, severity: "info" });
+    }
+    if (report.perSurface.every((p) => p.status === "failed")) {
+      console.warn(`[operator note — emit failed] ${message}`);
+      throw new Error(report.perSurface[0]?.error ?? "surface emit failed");
+    }
+  }
+
+  /** Dedicated GM Foundry user for escalation whispers — never the player map. */
+  resolveOperatorFoundryUserId(): string | undefined {
+    const dedicated = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "operator.foundry_user_id",
+    )?.value;
+    const discordId = this.operator.get();
+    const mapped =
+      discordId !== undefined ? this.identity.foundryUserIdForDiscord(discordId) : undefined;
+    return pickOperatorFoundryUserId({
+      ...(dedicated !== undefined ? { dedicatedOperatorFoundryUserId: dedicated } : {}),
+      ...(mapped !== undefined ? { mappedOperatorFoundryUserId: mapped } : {}),
     });
   }
 
-  private async handleSideChannelDm(message: Message): Promise<void> {
-    if (message.author.bot) return;
-    if (message.guildId !== null) return; // DMs only, never a guild channel
-    const text = message.content.trim();
-    if (text.length === 0) return;
-    const session = this.session;
-    if (session === null || !this.running) return;
-
-    const authorId = message.author.id;
-    // Only actual table participants get a side-channel — a random DM to the bot
-    // shouldn't spin up a turn.
-    if (!this.isTableParticipant(authorId)) return;
-
-    try {
-      if ("sendTyping" in message.channel) {
-        await message.channel.sendTyping(); // the "thinking…" signal (0026 §10)
-      }
-    } catch {
-      // typing indicator is best-effort
+  /** Same DM identity at Start and voice-join; persist the resolved campaign setting. */
+  resolvedDmFoundryUserId(): string | undefined {
+    const campaignDm = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "campaign.dm_foundry_user_id",
+    )?.value;
+    const dedicated = this.deps.tenantDb.settings.get(
+      this.deps.campaignId,
+      "operator.foundry_user_id",
+    )?.value;
+    const picked = pickDmFoundryUserId({
+      ...(campaignDm !== undefined ? { campaignDmFoundryUserId: campaignDm } : {}),
+      ...(dedicated !== undefined ? { dedicatedOperatorFoundryUserId: dedicated } : {}),
+    });
+    if (picked !== undefined && campaignDm === undefined) {
+      this.deps.tenantDb.settings.set({
+        campaignId: this.deps.campaignId,
+        key: "campaign.dm_foundry_user_id",
+        value: picked,
+        updatedAt: Date.now(),
+      });
     }
+    return picked;
+  }
 
-    const displayName =
-      this.guild?.members.cache.get(authorId)?.displayName ?? message.author.username;
-    // Read PvP once, at initiation (0026 §6), and surface it so the model can
-    // apply the §11.3 gate for any PC-targeting action it's asked to resolve.
-    const pvpNote = this.controls.pvpEnabled
-      ? "PvP is ENABLED for this campaign."
-      : "PvP is DISABLED for this campaign — do not resolve an action against another player's character in private; refuse and redirect to the group.";
+  private async verifyVoiceJoinIdentity(player: {
+    discordUserId: string;
+    displayName?: string;
+  }): Promise<"ok" | "critical-gaps" | "warnings-only"> {
+    const session = this.session;
+    if (session === null) return "ok";
+    const dmFoundryUserId = this.resolvedDmFoundryUserId();
+    const operatorFoundryUserId = this.resolveOperatorFoundryUserId();
+    const { result } = await runIdentityPreflight({
+      ctx: {
+        campaignId: this.deps.campaignId,
+        sessionId: session.config.sessionId,
+        sessionConfig: { intake: this.intakeState.intake },
+        expectedPlayers: [player],
+        ...(dmFoundryUserId !== undefined ? { dmFoundryUserId } : {}),
+        ...(operatorFoundryUserId !== undefined ? { operatorFoundryUserId } : {}),
+      },
+      tenantDb: this.deps.tenantDb,
+      foundry: session.config.foundry,
+      trigger: "voice-join",
+      expectedPlayers: [player],
+      onTelemetry: (name, props) => this.trackIntake(name, props),
+    });
+    return result.status;
+  }
 
+  private async onVoiceJoinIdentityGap(player: {
+    discordUserId: string;
+    displayName?: string;
+  }): Promise<void> {
+    const name = player.displayName ?? player.discordUserId;
     try {
-      const turn = await runTurn(
-        session,
-        { speaker: authorId, displayName, text },
-        {
-          conversation: {
-            id: playerConversation(this.deps.tenantDb.piiCrypto, authorId),
-            audience: playerAudience(this.deps.tenantDb.piiCrypto, authorId),
-          },
-          modelTier: "orchestration",
-          systemNote: pvpNote,
-        },
-      );
-      if (turn.narration.trim().length > 0) {
-        await message.reply(turn.narration);
-      }
+      await this.consentSurface?.sendIdentityCourtesy(player.discordUserId);
     } catch {
-      try {
-        await message.reply(
-          "(Something went wrong handling that privately — try again, or raise it at the table.)",
+      // courtesy DM is best-effort
+    }
+    const mention = player.displayName ?? player.discordUserId;
+    try {
+      await this.emitOperatorNote(
+        `Player ${name} joined voice; their Foundry user / actor ownership isn't configured — please add and \`/skeinkeeper preflight verify @${mention}\`.`,
+      );
+    } catch {
+      // escalation undelivered; player still stays off the onboarding set
+    }
+  }
+
+  private async onVoiceJoinIdentityWarning(player: {
+    discordUserId: string;
+    displayName?: string;
+  }): Promise<void> {
+    const name = player.displayName ?? player.discordUserId;
+    try {
+      await this.emitOperatorNote(
+        `Identity pre-flight warning for ${name} — they can play; check Foundry user / ownership when you can.`,
+      );
+    } catch {
+      // warning undelivered; onboarding still proceeds
+    }
+  }
+
+  private startFoundryPresenceWatch(foundry: FoundryClient): void {
+    this.foundryPresence?.stop();
+    this.foundryPresence = startFoundryPresencePoll({
+      listUsers: () => foundry.listUsers(),
+      mappedFoundryUserIds: () => {
+        const ids = new Set<string>();
+        for (const row of this.deps.tenantDb.playerCharacterMap.listByCampaign(
+          this.deps.campaignId,
+        )) {
+          if (row.foundryUserId !== null && row.foundryUserId.length > 0) {
+            ids.add(row.foundryUserId);
+          }
+        }
+        return ids;
+      },
+      onTransition: (transition) => {
+        const hashed = this.deps.tenantDb.piiCrypto.hash(transition.foundryUserId);
+        this.deps.analytics?.track(
+          transition.kind === "dropped" ? "presence.foundry.dropped" : "presence.foundry.restored",
+          { foundryUserIdHashed: hashed },
         );
-      } catch {
-        // give up if even the fallback reply fails
+        if (transition.kind === "dropped") {
+          void this.emitOperatorNote(
+            `Foundry user ${transition.foundryUserId} went inactive. Voice continues; their table-text mirror will catch up when they reconnect.`,
+          ).catch(() => undefined);
+        }
+      },
+    });
+    void this.foundryPresence.tick();
+  }
+
+  /** Load TDD 0035's ephemeral map from the persistent 3-way rows. */
+  bindIdentityFromPersistentMap(): void {
+    const rows = this.deps.tenantDb.playerCharacterMap.listByCampaign(this.deps.campaignId);
+    for (const row of rows) {
+      if (row.foundryUserId !== null && row.foundryUserId.length > 0) {
+        this.identity.bind(row.discordUserId, row.foundryUserId);
       }
+    }
+  }
+
+  /**
+   * Discord DMs after the surface narrowing: consent buttons stay on the
+   * interaction path; free-text DMs get a one-time courtesy redirect.
+   * Nothing here dispatches a side-channel turn (TDD 0035).
+   */
+  private registerConsentOnlyDms(client: Client): void {
+    client.on(Events.MessageCreate, (message) => {
+      void this.handleConsentOnlyDm(message);
+    });
+  }
+
+  private async handleConsentOnlyDm(message: Message): Promise<void> {
+    if (message.author.bot) return;
+    if (message.guildId !== null) return;
+    if (message.content.trim().length === 0) return;
+    if (!this.running) return;
+    const authorId = message.author.id;
+    if (!this.isTableParticipant(authorId)) return;
+    try {
+      await this.consentSurface?.handleNonConsentDm(authorId);
+    } catch {
+      // courtesy reply is best-effort
     }
   }
 
@@ -984,4 +1479,21 @@ export class SessionManager {
         return;
     }
   }
+}
+
+function toIntakeView(state: IntakeResolutionState): IntakeView {
+  return {
+    ready: announceReadyAllowed(state),
+    findings: state.findings
+      .filter((f): f is IntakeFinding & { id: number } => f.id !== undefined)
+      .map((f) => ({
+        id: f.id,
+        code: f.code,
+        kind: f.kind,
+        summary: f.summary,
+        ...(f.detail !== undefined ? { detail: f.detail } : {}),
+        dmOnly: f.dmOnly,
+        options: f.resolution?.options ?? [],
+      })),
+  };
 }

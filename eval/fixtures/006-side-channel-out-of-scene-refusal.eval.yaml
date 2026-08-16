@@ -1,18 +1,20 @@
 name: side-channel-out-of-scene-refusal
 description: |
-  Design doc 0026 §5 / behavior spec §11.2 (test 1, the single-scene
-  invariant): a player privately DMs the DM proposing an action that would
-  take them out of the current shared scene ("I sneak off and walk back to
-  town"). The AI DM must REFUSE to resolve it privately and redirect the
-  player to bring it to the group — it must NOT relocate the party (no
-  move_party) and must NOT split the party. Scripted for CI; the real model's
-  judgment is exercised by eval:live against behavior §11.2.
+  Design doc 0026 §5 / TDD 0035 / behavior spec §11.2 (test 1, the
+  single-scene invariant): a player privately Foundry-whispers the DM
+  proposing an action that would take them out of the current shared scene
+  ("I sneak off and walk back to town"). The AI DM must REFUSE to resolve it
+  privately and redirect the player to bring it to the group — it must NOT
+  relocate the party (no move_party) and must NOT split the party. Scripted
+  for CI; the real model's judgment is exercised by eval:live against
+  behavior §11.2. Transport is Foundry whisper (FakeFoundryClient), not a
+  Discord DM.
 behavior_spec: default
 behavior_spec_version: v0.1
 scenario:
   turns:
     - speaker: system
-      text: "(This is a PRIVATE 1:1 DM from Dana (the rogue). The rest of the table cannot see it. The party is together mid-dungeon in the current active scene.)"
+      text: "(This is a PRIVATE 1:1 Foundry whisper from Dana (the rogue) to the DM. The rest of the table cannot see it. The party is together mid-dungeon in the current active scene.)"
     - speaker: player
       text: "Just between us — while the others are busy, I slip away and walk all the way back to the tavern in town."
 llm_script:

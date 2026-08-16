@@ -26,7 +26,7 @@ if (!events || typeof events !== "object") {
 
 const errors = [];
 for (const [name, def] of Object.entries(events)) {
-  if (!/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(name)) {
+  if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]+)+$/.test(name)) {
     errors.push(`Event "${name}" does not match namespace.event lowercase shape`);
   }
   if (!Number.isInteger(def?.v) || def.v < 1) {

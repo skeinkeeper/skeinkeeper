@@ -88,6 +88,7 @@ async function refresh() {
 
   renderOperator(s.operator);
   renderRoster(s.roster ?? []);
+  renderIntake(s.intake);
   applyEagerness(s.eagerness);
   applyPvp(s.pvpEnabled);
   const dmAssign = (s.voiceAssignments ?? []).find((v) => v.subjectKind === "dm");
@@ -134,6 +135,55 @@ async function setOperator(payload, note) {
   if (r.error) log(`operator: ${r.error}`);
   else if (r.pending) log("operator: username saved — will resolve when a session starts");
   else log(note || "operator updated");
+}
+
+function renderIntake(intake) {
+  const readyEl = $("intake-ready");
+  const list = $("intake-findings");
+  if (!readyEl || !list) return;
+  const ready = !intake || intake.ready !== false;
+  readyEl.textContent = ready
+    ? "Ready: yes (announce-ready unblocked)"
+    : "Ready: blocked on unresolved critical findings";
+  const findings = (intake && intake.findings) || [];
+  list.innerHTML = "";
+  if (!findings.length) {
+    list.textContent = "(no intake findings)";
+    return;
+  }
+  for (const f of findings) {
+    const wrap = document.createElement("div");
+    wrap.style.margin = "0.4rem 0";
+    const title = document.createElement("div");
+    title.textContent = `[${f.kind}] ${f.summary}` + (f.dmOnly ? "  (DM-only)" : "");
+    wrap.appendChild(title);
+    if (f.detail) {
+      const detail = document.createElement("div");
+      detail.style.color = "#555";
+      detail.textContent = f.detail;
+      wrap.appendChild(detail);
+    }
+    if (f.options && f.options.length) {
+      const row = document.createElement("div");
+      row.className = "row";
+      for (const opt of f.options) {
+        const btn = document.createElement("button");
+        btn.textContent = opt.label;
+        btn.style.fontSize = "0.75rem";
+        btn.addEventListener("click", async () => {
+          const r = await fetch("/api/intake/resolve", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ findingId: f.id, optionId: opt.id }),
+          }).then((x) => x.json());
+          log(`intake resolve ${f.id} → ${opt.id} (${r.status || "ok"})`);
+        });
+        row.appendChild(btn);
+      }
+      wrap.appendChild(row);
+    }
+    list.appendChild(wrap);
+  }
 }
 
 function renderRoster(members) {
@@ -215,6 +265,9 @@ events.onmessage = (e) => {
   } else if (ev.kind === "pvp") {
     applyPvp(ev.enabled);
     log(`PvP → ${ev.enabled ? "on" : "off"}`);
+  } else if (ev.kind === "intake") {
+    renderIntake(ev);
+    log(`intake ready=${ev.ready} findings=${(ev.findings || []).length}`);
   }
 };
 

@@ -1,6 +1,6 @@
 # TDD 0038: Per-Audience Erasure Cascade to Foundry Whispers
 
-Status: draft
+Status: implemented
 PRD refs: 5.5
 PRD-rev: 5c3a198
 ADR constraints: 0008, 0010, 0014, 0017, 0018, 0023, 0025, 0029, 0030
@@ -150,7 +150,7 @@ export interface ErasureReport {
 }
 ```
 
-`ErasureService.erase` aggregates per-adapter results, sets `partialSuccess: manualRemainders.length > 0`, and emits an additional `erasure.partial-success` telemetry event when applicable (see §Telemetry).
+`ErasureService.erase` aggregates per-adapter results, sets `partialSuccess: manualRemainders.length > 0`, and emits an additional `erasure.partial_success` telemetry event when applicable (see §Telemetry).
 
 ### 3. CLI behavior change
 
@@ -314,7 +314,7 @@ If the design-PR reviewer thinks the partial-success policy is durable enough to
 | Event                     | Payload                                                                     | Description                                                                                                  |
 | ------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `erasure.completed`       | `{ scope: "player" \| "campaign" \| "tenant", totalRecords, adapterCount }` | Existing event from TDD 0003; carries forward                                                                |
-| `erasure.partial-success` | `{ scope, remainderCount, reasons: ReadonlyArray<string> }`                 | NEW: a `partialSuccess` erasure completed; `reasons` is the deduped list of manualRemainder reasons (no IDs) |
+| `erasure.partial_success` | `{ scope, remainderCount, reasons: ReadonlyArray<string> }`                 | NEW: a `partialSuccess` erasure completed; `reasons` is the deduped list of manualRemainder reasons (no IDs) |
 | `erasure.adapter.failed`  | `{ adapter, reason }`                                                       | NEW: an adapter returned a `manualRemainder` with the given reason                                           |
 
 All PII-free per [ADR-0010](../adr/0010-privacy-as-architecture.md). The `subjectId` (Discord user ID) is hashed (existing pattern from TDD 0003); the new events do NOT include it.
@@ -340,11 +340,11 @@ All PII-free per [ADR-0010](../adr/0010-privacy-as-architecture.md). The `subjec
 
 ## Evaluation rubric
 
-| Criterion | High-quality | Acceptable | Failing |
-| --- | --- | --- | --- |
-| Requirement traceability | Every in-scope FR/NFR maps to a named interface, type, or step | One mapping is slightly coarse but still findable | An in-scope FR has no row, or the row is "handled in code" |
-| Interface concreteness | Method names, args, return types, and error cases are specified | Types are named; one edge payload is implied | "the module talks to Skeinkeeper" with no message or method shape |
-| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason | No new dep, and the section says why | New dep with empty or "none considered" analysis |
-| Verification-plan actionability | Observable surface, observation point, and PASS values are named | Observable but one scenario is console-only | Non-actionable plan (no surface, no observation point) |
-| Scope-bound adherence | Touched files ≤8, body ≤500, per-file estimates present | One justified exception marker | Silent over-bound or missing Touched files / Expected diff |
-| Naming consistency | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name |
+| Criterion                       | High-quality                                                                                       | Acceptable                                                   | Failing                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| Requirement traceability        | Every in-scope FR/NFR maps to a named interface, type, or step                                     | One mapping is slightly coarse but still findable            | An in-scope FR has no row, or the row is "handled in code"        |
+| Interface concreteness          | Method names, args, return types, and error cases are specified                                    | Types are named; one edge payload is implied                 | "the module talks to Skeinkeeper" with no message or method shape |
+| Alternatives-analysis substance | Each new dep names a rejected alternative and a one-line reason                                    | No new dep, and the section says why                         | New dep with empty or "none considered" analysis                  |
+| Verification-plan actionability | Observable surface, observation point, and PASS values are named                                   | Observable but one scenario is console-only                  | Non-actionable plan (no surface, no observation point)            |
+| Scope-bound adherence           | Touched files ≤8, body ≤500, per-file estimates present                                            | One justified exception marker                               | Silent over-bound or missing Touched files / Expected diff        |
+| Naming consistency              | FoundryClient methods, gateway messages, and add-on id match across 0041, 0042, and revised drafts | One leftover "bridge" in a revised draft, clearly historical | 0041 and 0034 disagree on a method or event name                  |

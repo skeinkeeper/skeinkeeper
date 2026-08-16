@@ -6,8 +6,8 @@ This document gives a high-level overview of how Skeinkeeper fits together. For 
 
 Skeinkeeper is a single-process application that an operator runs on one machine. It orchestrates:
 
-1. **Discord** — voice and text I/O for players
-2. **Foundry VTT** — the visual layer (maps, tokens, combat tracker)
+1. **Discord** — voice I/O and one-time consent DMs
+2. **Foundry VTT** — the visual layer (maps, tokens, combat tracker) plus table text, whispers, GM chat, and operator commands
 3. **An LLM provider** — generates narration, NPC dialogue, and tool-call decisions
 4. **Voice providers** — STT (incoming player voice → text) and TTS (outgoing AI narration → audio)
 5. **Local persistence** — campaign state, episodic memory, audit log
@@ -40,7 +40,7 @@ Skeinkeeper is a single-process application that an operator runs on one machine
       │  Local State   │
       │ (SQLite +      │   AI-DM-side state only — campaign metadata,
       │  LanceDB +     │   sessions, audit log, consents, quest flags,
-      │  audit log)    │   cold + episodic memory (LanceDB, TDD 0019)
+      │  audit log)    │   intake findings (TDD 0031), cold + episodic memory (LanceDB, TDD 0019)
       └────────────────┘
 ```
 
@@ -91,9 +91,19 @@ Three pluggable surfaces, each with a stable interface and one default implement
 | `FoundryClient` | `McpFoundryClient` (via the OSS Foundry MCP bridge of ADR-0011) | Operate the visual tabletop; authoritative for mechanical state |
 | `VoiceIO`       | `DiscordVoiceIO`                                                | Bridge to players (STT + TTS + Discord transport)               |
 
+Audience-tagged output is emitted through `SurfaceRouter` (TDD 0034 / [ADR-0025](./adr/0025-foundry-as-table-text-and-operator-surface.md)): `table` → Discord voice + Foundry public chat; `player` → Foundry whisper; `gm` → Foundry GM chat. There is no parallel Discord text-channel mirror.
+
 A `Ruleset` interface was originally planned in [ADR-0004](./adr/0004-plugin-interface-pattern.md) but dropped per [ADR-0012](./adr/0012-drop-ruleset-plugin-interface.md). Foundry's per-system data models (`actor.system`) already provide that abstraction; per-system formatting lives in `orchestrator/src/foundry/render.ts`. Per-system mutation tools are planned to be registered by the Foundry plugin at session start, but are not yet wired (see "How a turn works" below and the mutation gap in [TDD 0014](./tdd/0014-mcp-foundry-client.md)). See [TDD 0007](./tdd/0007-foundry-as-source-of-truth.md).
 
 See [ADR-0011](./adr/0011-prefer-oss-foundry-mcp-bridges.md) for the Foundry MCP bridge choice (supersedes [ADR-0001](./adr/0001-use-foundry-mcp-for-vtt.md)) and [ADR-0004](./adr/0004-plugin-interface-pattern.md) for the interface pattern.
+
+## Session intake
+
+On Start the orchestrator runs a deterministic **minimum intake** pass (TDD 0031) against `FoundryClient` + warm state: identify the Foundry system, enumerate party-actor candidates, and classify critical gaps. Unresolved criticals block the onboarding "I'm ready" announcement. **Extended intake** (modules, scenes, packs, ownership, recommendations) is kicked off in parallel with onboarding and does not block the first turn. Findings are delivered as one structured `notify_operator` message (Critical / I need a decision / For your info). The operator resolves them on the web console via `SessionManager.resolveIntakeFinding` (Foundry chat-command parity lands in TDD 0040).
+
+After extended intake, **autonomous pre-game setup** (TDD 0032) runs without blocking onboarding: activate an unambiguous starting scene, incrementally index world journals/scenes/creatures/actor-items into the cold tier (`coldIndexReady` flips when that finishes), and pre-load party-required compendium actors into the world without placing tokens. Ownership writes are operator-side (TDD 0036). Silence is success — the intake report's "I did the following" footer is the after-the-fact note.
+
+**Live perception** (TDD 0033) is a push `FoundryEventStream` subscribed at session start (events queue until the session is ready). Production v0.5 wires a no-op stream; `MockFoundryEventStream` covers tests. Triggered in-play actions (hidden tokens, journal share, loot) are typed tools over `FoundryClient` — policy for when to fire them lives in the behavior spec.
 
 ## How a turn works
 
@@ -102,10 +112,10 @@ A simplified flow:
 1. **Player speaks** in Discord voice channel.
 2. **VoiceIO** transcribes via STT, attributes to player by Discord user ID.
 3. **Orchestrator** assembles hot context: warm-state snapshot (Foundry read + Skeinkeeper SQLite read) + retrieved cold knowledge + dialogue window + behavior spec.
-4. **LLM call** with tools available. Core tools (system-agnostic), the eight registered today: `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator DM for setup escalations). System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
+4. **LLM call** with tools available. Core tools (system-agnostic): `roll`, `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `resolve_action` (private-action audience flip to the table), `fudge_roll`, `record_player_character` (session-start identity mapping), `notify_operator` (private operator notes — including the session-intake report), plus TDD 0033 triggered actions `reveal_token`, `hide_token`, `place_hidden_token`, `share_journal_to_audience`, `distribute_loot`. System-specific _mutation_ tools (apply-damage, heal, set-condition, …) are **planned, not yet registered** — the current OSS bridge can't do a direct HP-set or a server-side roll, so those routes throw today; see the "mutation gap" in [TDD 0014](./tdd/0014-mcp-foundry-client.md).
 5. **Tool calls dispatched** to deterministic code. Skeinkeeper-owned tools mutate the local SQLite; Foundry-routed tools translate to MCP calls (reads + scene activation today; broader mutation as the bridge gains it). Either way, the dispatcher writes an audit-log row and returns results to the model.
 6. **Model narrates** over the deterministic outcome.
-7. **VoiceIO** streams TTS back to Discord. Foundry's chat log reflects any actor/scene changes that routed through MCP.
+7. **SurfaceRouter** fans the table-audience narration to Discord voice (TTS) and Foundry public chat. Player-audience output is a Foundry whisper; GM-audience (including `notify_operator`) is Foundry GM chat. Discord DMs are consent-only.
 
 Every step is logged; the operator can replay any session from the audit log.
 

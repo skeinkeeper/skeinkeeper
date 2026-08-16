@@ -37,18 +37,22 @@ export class MemoryAdapter implements DeletionAdapter {
     private readonly hasher: AudienceHasher = defaultPiiCrypto(),
   ) {}
 
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     if (scope.kind === "campaign") {
-      return this.storeForTenant(scope.tenantId).deleteByCampaign(scope.campaignId);
+      return {
+        recordsDeleted: await this.storeForTenant(scope.tenantId).deleteByCampaign(
+          scope.campaignId,
+        ),
+      };
     }
     if (scope.kind === "tenant") {
-      return this.storeForTenant(scope.tenantId).deleteByTenant();
+      return { recordsDeleted: await this.storeForTenant(scope.tenantId).deleteByTenant() };
     }
     // Player scope: erase only this player's private side-channel memory
     // (ADR-0017); shared campaign episodic memory persists (ADR-0014).
     const store = this.storeForTenant(scope.tenantId);
     const hashed = await store.deleteByAudience(playerAudience(this.hasher, scope.subjectId));
     const legacy = await store.deleteByAudience(`player:${scope.subjectId}`);
-    return hashed + legacy;
+    return { recordsDeleted: hashed + legacy };
   }
 }

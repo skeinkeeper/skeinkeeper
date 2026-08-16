@@ -54,11 +54,245 @@ export const events = {
   },
   "behavior_spec.loaded": {
     v: 1,
-    description: "A Behavior Spec was loaded for a session. Reveals version + coarse size; no spec content.",
+    description:
+      "A Behavior Spec was loaded for a session. Reveals version + coarse size; no spec content.",
     props: {} as {
       version: string;
       sizeKbBucket: string;
     },
+  },
+  "intake.minimum.started": {
+    v: 1,
+    description: "Minimum session intake began.",
+    props: {} as { campaignId: string; sessionId: string },
+  },
+  "intake.minimum.completed": {
+    v: 1,
+    description: "Minimum session intake finished.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      durationMs: number;
+      criticalCount: number;
+    },
+  },
+  "intake.extended.completed": {
+    v: 1,
+    description: "Extended session intake finished.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      durationMs: number;
+      ambiguityCount: number;
+      recommendationCount: number;
+    },
+  },
+  "intake.finding.surfaced": {
+    v: 1,
+    description: "An intake finding was delivered to the operator.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      findingCode: string;
+      kind: string;
+      dmOnly: boolean;
+    },
+  },
+  "intake.finding.resolved": {
+    v: 1,
+    description: "The operator resolved an intake finding.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      findingCode: string;
+      resolutionId: string;
+      latencyMs: number;
+    },
+  },
+  "intake.gate.blocked": {
+    v: 1,
+    description: "announceReady was blocked by unresolved critical intake findings.",
+    props: {} as { campaignId: string; sessionId: string; blockingFindings: string[] },
+  },
+  "autosetup.scene.activated": {
+    v: 1,
+    description: "Initial scene activated autonomously.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      reason: "already-active" | "single-starter" | "prior-resolved";
+    },
+  },
+  "autosetup.scene.deferred": {
+    v: 1,
+    description: "Initial-scene activation deferred pending operator resolution.",
+    props: {} as { campaignId: string; sessionId: string; candidateCount: number },
+  },
+  "autosetup.preload.created": {
+    v: 1,
+    description: "Pre-load created actors or items in the world.",
+    props: {} as { campaignId: string; source: "compendium"; count: number },
+  },
+  "autosetup.preload.deferred": {
+    v: 1,
+    description: "Pre-load deferred to lazy-at-trigger.",
+    props: {} as { campaignId: string; count: number },
+  },
+  "index.run.started": {
+    v: 1,
+    description: "World-content indexing run began.",
+    props: {} as { campaignId: string; sessionId: string },
+  },
+  "index.run.completed": {
+    v: 1,
+    description: "World-content indexing run finished.",
+    props: {} as {
+      campaignId: string;
+      sessionId: string;
+      durationMs: number;
+      perSourceCounts: Record<string, { added: number; updated: number; deleted: number }>;
+    },
+  },
+  "index.run.source_failed": {
+    v: 1,
+    description: "One indexing source failed; others continued.",
+    props: {} as { campaignId: string; source: string; reason: string },
+  },
+  "action.place_hidden_token": {
+    v: 1,
+    description: "Hidden-token placement attempted.",
+    props: {} as {
+      campaignId: string;
+      sceneId: string;
+      actorRefKind: "compendium" | "actor" | "name-pack";
+      success: boolean;
+    },
+  },
+  "action.reveal_token": {
+    v: 1,
+    description: "Token revealed to the table.",
+    props: {} as { campaignId: string; success: boolean },
+  },
+  "action.hide_token": {
+    v: 1,
+    description: "Token hidden from the table.",
+    props: {} as { campaignId: string; success: boolean },
+  },
+  "action.share_journal_to_audience": {
+    v: 1,
+    description: "Journal share attempted, with the path used.",
+    props: {} as {
+      campaignId: string;
+      audienceKind: "table" | "player" | "gm";
+      path: "foundry-public-chat" | "foundry-whisper" | "gm-noop";
+      success: boolean;
+    },
+  },
+  "action.distribute_loot": {
+    v: 1,
+    description: "Loot distribution attempted.",
+    props: {} as {
+      campaignId: string;
+      recipientCount: number;
+      itemCount: number;
+      partialFailure: boolean;
+    },
+  },
+  "perception.event_stream.wired": {
+    v: 1,
+    description: "Foundry event stream wired at session start.",
+    props: {} as { campaignId: string; kind: "null" | "mock" | "real" },
+  },
+  "surface.emit": {
+    v: 1,
+    description: "An outbound surface emit succeeded.",
+    props: {} as {
+      surface: string;
+      audience: { kind: "table" | "player" | "gm"; player?: string };
+      latencyMs: number;
+    },
+  },
+  "surface.emit.failed": {
+    v: 1,
+    description: "An outbound surface emit failed or had no handling surface.",
+    props: {} as {
+      surface: string;
+      audience: { kind: "table" | "player" | "gm"; player?: string };
+      reason: string;
+    },
+  },
+  "surface.input": {
+    v: 1,
+    description: "An inbound surface event was received. Kind only; no content.",
+    props: {} as { surface: string; kind: string },
+  },
+  "surface.command.parsed": {
+    v: 1,
+    description: "A Foundry /skeinkeeper command was parsed. Verb only; no args.",
+    props: {} as { verb: string; ok: boolean },
+  },
+  "preflight.identity.ran": {
+    v: 1,
+    description: "The 3-way identity pre-flight verifier ran.",
+    props: {} as {
+      trigger: "start" | "voice-join" | "operator-command";
+      playerCount: number;
+      findingCount: number;
+      criticalCount: number;
+    },
+  },
+  "preflight.identity.finding": {
+    v: 1,
+    description: "One identity pre-flight finding. Kind and severity only; no player IDs.",
+    props: {} as { kind: string; severity: "critical" | "warning" | "info" },
+  },
+  "preflight.identity.blocked_start": {
+    v: 1,
+    description: "Start was blocked by critical identity pre-flight findings.",
+    props: {} as { criticalCount: number },
+  },
+  "presence.foundry.dropped": {
+    v: 1,
+    description: "A previously-active Foundry user went inactive.",
+    props: {} as { foundryUserIdHashed: string },
+  },
+  "presence.foundry.restored": {
+    v: 1,
+    description: "An inactive Foundry user came back online.",
+    props: {} as { foundryUserIdHashed: string },
+  },
+  "escalation.notify_operator": {
+    v: 1,
+    description: "notify_operator emitted. Severity only; no content.",
+    props: {} as { severity: "info" | "warning" | "critical" },
+  },
+  "identity.player_character.recorded": {
+    v: 1,
+    description: "record_player_character wrote a 3-way map row.",
+    props: {} as { source: "player" | "operator"; hasFoundryUser: boolean },
+  },
+  "erasure.completed": {
+    v: 1,
+    description: "An erasure run finished across registered deletion adapters.",
+    props: {} as {
+      scope: "player" | "campaign" | "tenant";
+      totalRecords: number;
+      adapterCount: number;
+    },
+  },
+  "erasure.partial_success": {
+    v: 1,
+    description: "An erasure finished with one or more manual remainders.",
+    props: {} as {
+      scope: "player" | "campaign" | "tenant";
+      remainderCount: number;
+      reasons: ReadonlyArray<string>;
+    },
+  },
+  "erasure.adapter.failed": {
+    v: 1,
+    description: "A deletion adapter returned a manual remainder.",
+    props: {} as { adapter: string; reason: string },
   },
 } as const satisfies EventRegistry;
 

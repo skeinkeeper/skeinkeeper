@@ -15,6 +15,22 @@ import type { Audience } from "@skeinkeeper/server";
  */
 export type MemoryKind = "cold" | "episodic" | "arc";
 
+/** Cold-tier provenance (TDD 0021 compendium + TDD 0032 world index). */
+export type MemorySource =
+  | "compendium"
+  | "world-journal"
+  | "world-scene"
+  | "world-creature"
+  | "world-actor-item";
+
+export interface MemoryMetadataFilter {
+  location?: string;
+  quest?: string;
+  keywords?: string[];
+  source?: MemorySource;
+  foundry_id?: string;
+}
+
 export interface MemoryRecord {
   id: string;
   kind: MemoryKind;
@@ -33,6 +49,15 @@ export interface MemoryRecord {
     audience?: Audience;
     /** Structured deltas preserved separately from prose (ADR-0002). */
     deltas?: Record<string, unknown>;
+    /** Cold-tier source. Absent on pre-0032 records; treated as `compendium`. */
+    source?: MemorySource;
+    foundry_id?: string;
+    last_modified?: string;
+    location?: string;
+    quest?: string;
+    keywords?: string[];
+    /** Soft-delete for incremental index refresh (TDD 0032). */
+    tombstoned?: boolean;
   };
 }
 
@@ -43,6 +68,14 @@ export interface MemoryQueryOptions {
    *  filter. A record with no stored audience is treated as "table". */
   audiences?: ReadonlyArray<Audience | string>;
   topK: number;
+  /** Scope a cold-tier query without falling back to vector-only search. */
+  metadata?: MemoryMetadataFilter;
+  includeTombstones?: boolean;
+}
+
+export interface ByMetadataOptions extends MemoryMetadataFilter {
+  campaignId: string;
+  includeTombstones?: boolean;
 }
 
 /** A record's effective audience — defaults to "table" when unset (legacy /
@@ -55,6 +88,8 @@ export interface MemoryStore {
   upsert(records: ReadonlyArray<MemoryRecord>): Promise<void>;
   /** Top-K most similar records for a campaign, most similar first. */
   query(vector: ReadonlyArray<number>, opts: MemoryQueryOptions): Promise<MemoryRecord[]>;
+  /** Filter cold-tier records by location / quest / keyword (TDD 0032). */
+  byMetadata(opts: ByMetadataOptions): Promise<MemoryRecord[]>;
   /** Erasure: delete a campaign's records. Returns the count removed. */
   deleteByCampaign(campaignId: string): Promise<number>;
   /** Erasure: delete this tenant's records. Returns the count removed. */
@@ -63,6 +98,31 @@ export interface MemoryStore {
    *  side-channel memory, "player:<id>", per ADR-0017). Returns the count
    *  removed. Shared "table"/"gm" records are unaffected. */
   deleteByAudience(audience: string): Promise<number>;
+}
+
+export function matchesMetadataFilter(
+  r: MemoryRecord,
+  filter: MemoryMetadataFilter | undefined,
+): boolean {
+  if (filter === undefined) return true;
+  if (filter.location !== undefined) {
+    if ((r.metadata.location ?? "").toLowerCase() !== filter.location.toLowerCase()) return false;
+  }
+  if (filter.quest !== undefined) {
+    if ((r.metadata.quest ?? "").toLowerCase() !== filter.quest.toLowerCase()) return false;
+  }
+  if (filter.source !== undefined && (r.metadata.source ?? "compendium") !== filter.source) {
+    return false;
+  }
+  if (filter.foundry_id !== undefined && r.metadata.foundry_id !== filter.foundry_id) {
+    return false;
+  }
+  if (filter.keywords !== undefined && filter.keywords.length > 0) {
+    const have = new Set((r.metadata.keywords ?? []).map((k) => k.toLowerCase()));
+    const hit = filter.keywords.some((k) => have.has(k.toLowerCase()));
+    if (!hit) return false;
+  }
+  return true;
 }
 
 export function cosineSimilarity(a: ReadonlyArray<number>, b: ReadonlyArray<number>): number {
@@ -89,17 +149,38 @@ export class InMemoryMemoryStore implements MemoryStore {
   }
 
   async query(vector: ReadonlyArray<number>, opts: MemoryQueryOptions): Promise<MemoryRecord[]> {
-    const candidates = [...this.records.values()].filter(
-      (r) =>
-        r.metadata.campaignId === opts.campaignId &&
-        (opts.kinds === undefined || opts.kinds.includes(r.kind)) &&
-        (opts.audiences === undefined || opts.audiences.includes(effectiveAudience(r))),
-    );
+    const candidates = this.filterRecords(opts);
     return candidates
       .map((r) => ({ r, score: cosineSimilarity(vector, r.vector) }))
       .sort((x, y) => y.score - x.score)
       .slice(0, opts.topK)
       .map((x) => x.r);
+  }
+
+  async byMetadata(opts: ByMetadataOptions): Promise<MemoryRecord[]> {
+    return this.filterRecords({
+      campaignId: opts.campaignId,
+      topK: Number.MAX_SAFE_INTEGER,
+      metadata: {
+        ...(opts.location !== undefined ? { location: opts.location } : {}),
+        ...(opts.quest !== undefined ? { quest: opts.quest } : {}),
+        ...(opts.keywords !== undefined ? { keywords: opts.keywords } : {}),
+        ...(opts.source !== undefined ? { source: opts.source } : {}),
+        ...(opts.foundry_id !== undefined ? { foundry_id: opts.foundry_id } : {}),
+      },
+      ...(opts.includeTombstones === true ? { includeTombstones: true } : {}),
+    });
+  }
+
+  private filterRecords(opts: MemoryQueryOptions): MemoryRecord[] {
+    return [...this.records.values()].filter(
+      (r) =>
+        r.metadata.campaignId === opts.campaignId &&
+        (opts.kinds === undefined || opts.kinds.includes(r.kind)) &&
+        (opts.audiences === undefined || opts.audiences.includes(effectiveAudience(r))) &&
+        (opts.includeTombstones === true || r.metadata.tombstoned !== true) &&
+        matchesMetadataFilter(r, opts.metadata),
+    );
   }
 
   async deleteByCampaign(campaignId: string): Promise<number> {

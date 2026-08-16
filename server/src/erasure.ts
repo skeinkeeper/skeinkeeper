@@ -10,26 +10,79 @@ export type ErasureScope =
   | { kind: "campaign"; tenantId: string; campaignId: string }
   | { kind: "tenant"; tenantId: string };
 
+export interface ManualRemainder {
+  reason: string;
+  foundryUserId?: string;
+  message: string;
+}
+
+export interface DeletionAdapterResult {
+  recordsDeleted: number;
+  manualRemainder?: ManualRemainder;
+}
+
 export interface DeletionAdapter {
   readonly name: string;
   readonly supportedScopes: ReadonlyArray<ErasureScope["kind"]>;
-  delete(scope: ErasureScope): Promise<number>;
+  /**
+   * Optional pre-delete read. ErasureService calls this on every applicable
+   * adapter before any `delete`, so lookups (identity map) see the pre-erase
+   * snapshot rather than a store another adapter already cleared.
+   */
+  snapshot?(scope: ErasureScope): Promise<void> | void;
+  delete(scope: ErasureScope): Promise<DeletionAdapterResult>;
 }
 
 export interface ErasureReport {
   scope: ErasureScope;
-  perAdapter: ReadonlyArray<{ adapter: string; recordsDeleted: number; error?: string }>;
+  perAdapter: ReadonlyArray<{
+    adapter: string;
+    recordsDeleted: number;
+    manualRemainder?: ManualRemainder;
+    error?: string;
+  }>;
   totalRecords: number;
   /** Number of adapters that threw. Erasure is best-effort per adapter (SQLite
    *  and the LanceDB vector store can't share a transaction), so a non-zero
    *  count means the operator must investigate and re-run. */
   failures: number;
+  /** True iff any adapter returned a manualRemainder. */
+  partialSuccess: boolean;
+  /** Aggregated remainders for CLI / HTML rendering. */
+  manualRemainders: ReadonlyArray<ManualRemainder>;
+}
+
+export interface ErasureAnalytics {
+  track(name: string, props: Record<string, unknown>): void;
 }
 
 export interface ErasureServiceOptions {
   db: Db;
   /** Per-installation salt for one-way hashing of subject identifiers. */
   salt: string;
+  analytics?: ErasureAnalytics;
+}
+
+/** Operator-facing deletion summary, including WARNING remainder lines. */
+export function renderErasureSummary(report: ErasureReport): string {
+  const lines: string[] = [
+    `Deleted ${report.totalRecords} record(s) across ${report.perAdapter.length} adapter(s).`,
+  ];
+  for (const r of report.perAdapter) {
+    lines.push(
+      `  ${r.adapter}: ${r.error !== undefined ? `FAILED — ${r.error}` : r.recordsDeleted}`,
+    );
+  }
+  for (const rem of report.manualRemainders) {
+    lines.push(`WARNING: ${rem.message}`);
+  }
+  if (report.failures > 0) {
+    lines.push("");
+    lines.push(
+      `${report.failures} adapter(s) failed; data may be partially erased. Re-run after investigating.`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 export class ErasureService {
@@ -43,12 +96,30 @@ export class ErasureService {
 
   async erase(scope: ErasureScope): Promise<ErasureReport> {
     const applicable = this.adapters.filter((a) => a.supportedScopes.includes(scope.kind));
-    const perAdapter: Array<{ adapter: string; recordsDeleted: number; error?: string }> = [];
+    const perAdapter: Array<{
+      adapter: string;
+      recordsDeleted: number;
+      manualRemainder?: ManualRemainder;
+      error?: string;
+    }> = [];
+
+    // Snapshot lookups before any adapter mutates stores (TDD 0038: identity
+    // map must be read before PlayerCharacterMapAdapter deletes the row).
+    for (const adapter of applicable) {
+      await adapter.snapshot?.(scope);
+    }
 
     for (const adapter of applicable) {
       try {
-        const recordsDeleted = await adapter.delete(scope);
-        perAdapter.push({ adapter: adapter.name, recordsDeleted });
+        const result = await adapter.delete(scope);
+        const row: (typeof perAdapter)[number] = {
+          adapter: adapter.name,
+          recordsDeleted: result.recordsDeleted,
+        };
+        if (result.manualRemainder !== undefined) {
+          row.manualRemainder = result.manualRemainder;
+        }
+        perAdapter.push(row);
 
         this.options.db
           .insert(deletionLog)
@@ -57,8 +128,13 @@ export class ErasureService {
             scope: scope.kind,
             subjectIdHash: this.hashSubject(scope),
             adapterName: adapter.name,
-            recordsDeleted,
+            recordsDeleted: result.recordsDeleted,
             timestamp: Date.now(),
+            partialSuccess: result.manualRemainder !== undefined ? 1 : 0,
+            manualRemainders:
+              result.manualRemainder !== undefined
+                ? JSON.stringify([{ reason: result.manualRemainder.reason }])
+                : null,
           })
           .run();
       } catch (err) {
@@ -76,7 +152,39 @@ export class ErasureService {
 
     const totalRecords = perAdapter.reduce((sum, x) => sum + x.recordsDeleted, 0);
     const failures = perAdapter.filter((x) => x.error !== undefined).length;
-    return { scope, perAdapter, totalRecords, failures };
+    const manualRemainders = perAdapter
+      .map((x) => x.manualRemainder)
+      .filter((r): r is ManualRemainder => r !== undefined);
+    const analytics = this.options.analytics;
+    analytics?.track("erasure.completed", {
+      scope: scope.kind,
+      totalRecords,
+      adapterCount: perAdapter.length,
+    });
+    if (manualRemainders.length > 0) {
+      const reasons = [...new Set(manualRemainders.map((r) => r.reason))];
+      analytics?.track("erasure.partial_success", {
+        scope: scope.kind,
+        remainderCount: manualRemainders.length,
+        reasons,
+      });
+      for (const row of perAdapter) {
+        if (row.manualRemainder !== undefined) {
+          analytics?.track("erasure.adapter.failed", {
+            adapter: row.adapter,
+            reason: row.manualRemainder.reason,
+          });
+        }
+      }
+    }
+    return {
+      scope,
+      perAdapter,
+      totalRecords,
+      failures,
+      partialSuccess: manualRemainders.length > 0,
+      manualRemainders,
+    };
   }
 
   private hashSubject(scope: ErasureScope): string {

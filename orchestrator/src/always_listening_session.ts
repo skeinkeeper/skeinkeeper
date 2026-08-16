@@ -63,6 +63,26 @@ export interface AlwaysListeningConfig {
     getNpcVoice: (npcKey: string) => string | undefined;
     assignNpcVoice: (npcKey: string) => Promise<string>;
   };
+  /**
+   * Minimum-intake gate (TDD 0031). When false, do not announce ready or
+   * begin the onboarding ritual — unresolved critical findings block Start.
+   * Defaults to ready (tests / sessions without intake).
+   */
+  intakeReady?: () => boolean;
+  /**
+   * Per-player identity pre-flight on voice-join (TDD 0036). Critical-gap
+   * players stay on voice but are not onboarded; the hook fires once per
+   * player per session for the courtesy DM + notify_operator.
+   */
+  identityPreflight?: {
+    verifyPlayer: (player: {
+      discordUserId: string;
+      displayName?: string;
+    }) => Promise<"ok" | "critical-gaps" | "warnings-only">;
+    onCriticalGap: (player: { discordUserId: string; displayName?: string }) => Promise<void>;
+    /** TDD 0036 §3c: warnings-only still onboards; escalate one operator line. */
+    onWarning?: (player: { discordUserId: string; displayName?: string }) => Promise<void>;
+  };
   /** Invoked after each respond-decision (for telemetry / operator UI). */
   onDecision?: (decision: RespondDecision, fragments: ReadonlyArray<BufferFragment>) => void;
   /** Invoked after each turn the DM actually takes. */
@@ -137,6 +157,8 @@ export async function runAlwaysListeningSession(
   const present = new Map<string, PresenceMember>();
   const greeted = new Set<string>();
   const consentPrompted = new Set<string>();
+  const identityBlocked = new Set<string>();
+  const identityCourtesySent = new Set<string>();
 
   // Send one consent prompt per member, deduped across both triggers (a speak
   // burst and a channel join) so a noisy room isn't re-prompted.
@@ -168,10 +190,50 @@ export async function runAlwaysListeningSession(
         if (isConsented(m.id)) consentPrompted.delete(m.id);
         else await promptConsentOnce(m.id);
       }
+      const identity = config.identityPreflight;
+      if (identity !== undefined) {
+        for (const m of event.members) {
+          const player =
+            m.displayName !== undefined
+              ? { discordUserId: m.id, displayName: m.displayName }
+              : { discordUserId: m.id };
+          const status = await identity.verifyPlayer(player);
+          if (status === "critical-gaps") {
+            identityBlocked.add(m.id);
+            if (!identityCourtesySent.has(m.id)) {
+              identityCourtesySent.add(m.id);
+              await identity.onCriticalGap(player);
+            }
+          } else {
+            identityBlocked.delete(m.id);
+            if (status === "warnings-only" && identity.onWarning !== undefined) {
+              if (!identityCourtesySent.has(`warn:${m.id}`)) {
+                identityCourtesySent.add(`warn:${m.id}`);
+                await identity.onWarning(player);
+              }
+            }
+          }
+        }
+      }
       continue;
     }
 
     if (event.kind === "utterance") {
+      if (identityBlocked.has(event.utterance.speaker)) {
+        // TDD 0036 §3c: record unmapped; do not dispatch to a conversation.
+        const cfg = session.config;
+        const u = event.utterance;
+        cfg.tenantDb.dialogue.append({
+          sessionId: cfg.sessionId,
+          speaker: u.speaker,
+          ...(u.displayName !== undefined ? { displayName: u.displayName } : {}),
+          text: u.text,
+          timestamp: u.timestamp,
+          audience: "player:unmapped",
+          conversationId: "player:unmapped",
+        });
+        continue;
+      }
       buffer.append(utteranceToFragment(event.utterance));
       continue;
     }
@@ -185,17 +247,23 @@ export async function runAlwaysListeningSession(
 
     // Build the table roster fresh (mappings can change as the AI records
     // characters), then decide what to do.
-    const roster = buildRoster(session, present);
+    const roster = buildRoster(session, present).filter((p) => !identityBlocked.has(p.discordId));
     const mapped = new Set(
       roster.filter((p) => p.mappedActorId !== undefined).map((p) => p.discordId),
     );
     const consented = new Set([...present.keys()].filter((id) => isConsented(id)));
     const targets = selectOnboardingTargets({
-      present: [...present.values()],
+      present: [...present.values()].filter((m) => !identityBlocked.has(m.id)),
       consented,
       mapped,
       greeted,
     });
+
+    // Minimum-intake gate: do not announce ready or start the onboarding
+    // ritual while critical findings are unresolved (TDD 0031).
+    if (config.intakeReady !== undefined && !config.intakeReady()) {
+      continue;
+    }
 
     // Onboarding is a deliberate ritual, not a judgment call — when someone
     // present still needs a character mapping, run an onboarding turn and skip
@@ -277,20 +345,25 @@ async function runTurnAndSpeak(
   roster: ReadonlyArray<PresentPlayer>,
 ): Promise<TurnOutput> {
   const routing = config.voiceRouting;
+  // When a SurfaceRouter is wired, runTurn emits table narration (voice +
+  // Foundry public chat). Don't also speak through VoiceIO — that would double.
+  const voiceViaRouter = config.session.config.surfaces !== undefined;
   // Barge-in (design doc 0028 P2): if a segment's playback is interrupted (the
   // player talks over the DM), abort the rest of the turn's generation so we
   // stop talking over them instead of finishing the monologue.
   const abort = new AbortController();
 
-  if (routing === undefined) {
+  if (routing === undefined || voiceViaRouter) {
     const turn = await runTurn(config.session, input, {
       presentPlayers: roster,
       signal: abort.signal,
     });
-    try {
-      await speakTurn(config, turn);
-    } catch (err) {
-      if (!(err instanceof InterruptedError)) throw err; // playback stopped — fine
+    if (!voiceViaRouter) {
+      try {
+        await speakTurn(config, turn);
+      } catch (err) {
+        if (!(err instanceof InterruptedError)) throw err; // playback stopped — fine
+      }
     }
     return turn;
   }

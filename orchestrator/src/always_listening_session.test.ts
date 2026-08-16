@@ -237,6 +237,24 @@ describe("runAlwaysListeningSession", () => {
     expect(voiceIO.spoken.map((s) => s.text)).toEqual(["Welcome to the table."]);
   });
 
+  it("does not announce ready / onboard while minimum intake is blocked", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome to the table.");
+    const { session } = setupSession(llm);
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:alice", displayName: "Alice" }]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      intakeReady: () => false,
+    });
+    expect(result.onboardingCount).toBe(0);
+    expect(result.turnCount).toBe(0);
+    expect(voiceIO.spoken).toHaveLength(0);
+  });
+
   it("does not re-greet a member after onboarding them", async () => {
     const llm = deciderAndNarration('{"respond": false}', "Welcome.");
     const { session } = setupSession(llm);
@@ -353,6 +371,114 @@ describe("runAlwaysListeningSession", () => {
     const lines = tenantDb.dialogue.listBySession("sess-1").map((l) => l.text);
     expect(lines.some((t) => t.includes("Mirna"))).toBe(true);
     expect(lines.some((t) => t.includes("[Onboarding]"))).toBe(true);
+  });
+
+  it("suppresses onboarding for a voice-join identity critical gap (TDD 0036)", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome, Alice.");
+    const { session } = setupSession(llm);
+    const gaps: string[] = [];
+    const voiceIO = new FakeVoiceIO([
+      presence([
+        { id: "discord:alice", displayName: "Alice" },
+        { id: "discord:bob", displayName: "Bob" },
+      ]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async (p) => (p.discordUserId === "discord:bob" ? "critical-gaps" : "ok"),
+        onCriticalGap: async (p) => {
+          gaps.push(p.displayName ?? p.discordUserId);
+        },
+      },
+    });
+    expect(result.onboardingCount).toBe(1);
+    expect(result.turnCount).toBe(1);
+    const narration = llm.receivedRequests.find((r) => r.modelTier === "narration");
+    const text = (narration?.messages ?? [])
+      .flatMap((m) => m.content)
+      .map((c) => (c.type === "text" ? c.text : ""))
+      .join("\n");
+    expect(text).toContain("Alice");
+    expect(text).not.toMatch(/Bob/);
+    expect(gaps).toEqual(["Bob"]);
+  });
+
+  it("sends the voice-join identity courtesy once per player per session", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome.");
+    const { session } = setupSession(llm);
+    const gaps: string[] = [];
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      { kind: "lull" },
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async () => "critical-gaps",
+        onCriticalGap: async (p) => {
+          gaps.push(p.displayName ?? p.discordUserId);
+        },
+      },
+    });
+    expect(result.onboardingCount).toBe(0);
+    expect(gaps).toEqual(["Bob"]);
+  });
+
+  it("records identity-blocked utterances as player:unmapped and does not take a table turn", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "I should not hear Bob.");
+    const { session, tenantDb } = setupSession(llm);
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      utter("discord:bob", "can you hear me", "Bob"),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async () => "critical-gaps",
+        onCriticalGap: async () => undefined,
+      },
+    });
+    expect(result.turnCount).toBe(0);
+    const rows = tenantDb.dialogue.listBySession("sess-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toBe("can you hear me");
+    expect(rows[0]?.audience).toBe("player:unmapped");
+    expect(rows[0]?.conversationId).toBe("player:unmapped");
+  });
+
+  it("escalates a single operator line on voice-join warnings-only", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome.");
+    const { session } = setupSession(llm);
+    const warnings: string[] = [];
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async () => "warnings-only",
+        onCriticalGap: async () => undefined,
+        onWarning: async (p) => {
+          warnings.push(p.displayName ?? p.discordUserId);
+        },
+      },
+    });
+    expect(result.onboardingCount).toBe(1);
+    expect(warnings).toEqual(["Bob"]);
   });
 
   it("requests consent for unconsented speakers", async () => {

@@ -23,6 +23,8 @@ import {
 } from "./session.js";
 import type { NarrationSegment } from "./voice/markers.js";
 import { z } from "zod";
+import { MockFoundryEventStream } from "./perception/event-stream.js";
+import { FakeOutboundSurface, SurfaceRouter } from "./surfaces/index.js";
 
 const SPEC: BehaviorSpec = {
   content: "You are the AI DM. Behavior spec content here.",
@@ -176,6 +178,24 @@ describe("telemetry emission (design doc 0009 / audit wave 3)", () => {
     const spec = events.find((e) => e.name === "behavior_spec.loaded")!;
     expect(spec.props.version).toBe("v0.1");
     expect(typeof spec.props.sizeKbBucket).toBe("string");
+  });
+
+  it("wires the Foundry event stream and queues until session ready", () => {
+    const { analytics, events } = recordingAnalytics();
+    const stream = new MockFoundryEventStream();
+    const { session } = setupSession({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fake analytics
+      analytics: analytics as any,
+      foundryEvents: stream,
+      perceptionKind: "mock",
+    });
+    stream.emit({ type: "scene-activated", sceneId: "s1" });
+    expect(session.perceptionEvents).toEqual([]);
+    session.releasePerception();
+    expect(session.perceptionEvents).toEqual([{ type: "scene-activated", sceneId: "s1" }]);
+    expect(events.map((e) => e.name)).toContain("perception.event_stream.wired");
+    const wired = events.find((e) => e.name === "perception.event_stream.wired");
+    expect(wired?.props.kind).toBe("mock");
   });
 
   it("emits llm.completed for a narration turn (bucketed, no content)", async () => {
@@ -620,6 +640,50 @@ describe("runTurn — barge-in / abort (design doc 0028 P2)", () => {
     expect(out.stopReason).toBe("aborted");
     expect(out.narration).toBe(""); // bailed before the round-trip
     expect(llm.receivedRequests).toHaveLength(0);
+  });
+});
+
+describe("runTurn — SurfaceRouter table emit (TDD 0034)", () => {
+  it("emits table-audience narration through the router", async () => {
+    const table = new FakeOutboundSurface("foundry-public", ["table"]);
+    const voice = new FakeOutboundSurface("discord-voice", ["table"]);
+    const router = new SurfaceRouter();
+    router.register(table);
+    router.register(voice);
+    const { session } = setupSession({
+      surfaces: router,
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "The door creaks." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(session, { speaker: "p", text: "I open it." });
+    expect(table.emits.map((e) => e.text)).toEqual(["The door creaks."]);
+    expect(voice.emits.map((e) => e.text)).toEqual(["The door creaks."]);
+    expect(table.emits[0]?.audience).toEqual({ kind: "table" });
+  });
+
+  it("does not emit table narration for a side-channel turn", async () => {
+    const table = new FakeOutboundSurface("foundry-public", ["table"]);
+    const player = new FakeOutboundSurface("foundry-whisper", ["player"]);
+    const router = new SurfaceRouter();
+    router.register(table);
+    router.register(player);
+    const { session } = setupSession({
+      surfaces: router,
+      llm: fakeLlmFromEvents([
+        { kind: "text_delta", text: "Psst." },
+        { kind: "done", stopReason: "end_turn", usage: DONE_USAGE },
+      ]),
+    });
+    await runTurn(
+      session,
+      { speaker: "p", text: "quietly" },
+      { conversation: { id: "player:p", audience: "player:p" } },
+    );
+    expect(table.emits).toHaveLength(0);
+    expect(player.emits).toHaveLength(1);
+    expect(player.emits[0]?.audience).toEqual({ kind: "player", playerId: "p" });
   });
 });
 

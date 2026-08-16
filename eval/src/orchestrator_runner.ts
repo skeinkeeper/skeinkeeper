@@ -8,6 +8,7 @@ import {
   findDefaultBehaviorSpec,
   loadBehaviorSpec,
   MockFoundryClient,
+  SurfaceRouter,
   ToolDispatcher,
   toolDefinitionToLlmSpec,
 } from "@skeinkeeper/orchestrator";
@@ -92,12 +93,42 @@ async function dispatchEmitted(
     }
     const tenantDb = new TenantDb(db, "default");
     const dispatcher = new ToolDispatcher({ registry: createDefaultRegistry() });
+    const foundry = new MockFoundryClient({ system: "dnd5e" });
+    const router = new SurfaceRouter();
+    router.register({
+      name: "foundry-whisper",
+      handles: ["player"],
+      async emit(output) {
+        if (output.audience.kind !== "player") return;
+        await foundry.postChatMessage({
+          content: output.text ?? "",
+          mode: "whisper",
+          whisperTo: [output.audience.playerId],
+        });
+      },
+    });
+    router.register({
+      name: "foundry-public",
+      handles: ["table"],
+      async emit(output) {
+        await foundry.postChatMessage({ content: output.text ?? "", mode: "public" });
+      },
+    });
+    router.register({
+      name: "foundry-gm",
+      handles: ["gm"],
+      async emit(output) {
+        await foundry.postChatMessage({ content: output.text ?? "", mode: "gm" });
+      },
+    });
     const ctx = {
       tenantDb,
       sessionId: "eval",
       turnId: "eval",
       caller: "llm" as const,
-      foundry: new MockFoundryClient({ system: "dnd5e" }),
+      foundry,
+      surfaces: router,
+      resolveFoundryUserId: (id: string) => id,
     };
 
     const out: ToolCallRecord[] = [];
@@ -111,9 +142,7 @@ async function dispatchEmitted(
   }
 }
 
-function campaignIdsFrom(
-  emitted: ReadonlyArray<{ input: unknown }>,
-): ReadonlySet<string> {
+function campaignIdsFrom(emitted: ReadonlyArray<{ input: unknown }>): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const tc of emitted) {
     const cid = (tc.input as { campaignId?: unknown } | null)?.campaignId;

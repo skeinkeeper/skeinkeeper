@@ -59,6 +59,8 @@ describe("schema", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]?.subjectIdHash).toHaveLength(64);
       expect(rows[0]?.recordsDeleted).toBe(3);
+      expect(rows[0]?.partialSuccess).toBe(0);
+      expect(rows[0]?.manualRemainders).toBeNull();
     } finally {
       db.close();
     }
@@ -114,6 +116,55 @@ describe("schema", () => {
         })
         .run();
       expect(db.select().from(playerCharacterMap).get()?.discordUserIdHash).toBe("c".repeat(64));
+    } finally {
+      db.close();
+    }
+  });
+
+  it("stores a nullable foundry_user_id on player_character_map (TDD 0036)", () => {
+    const db = openDb({ path: ":memory:", runMigrations: true });
+    try {
+      db.insert(tenants).values({ id: "default", name: "T", createdAt: Date.now() }).run();
+      db.insert(campaigns)
+        .values({
+          id: "c1",
+          tenantId: "default",
+          name: "C",
+          rulesetId: "dnd5e",
+          behaviorSpecVersion: "v0.1",
+          status: "active",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .run();
+      db.insert(playerCharacterMap)
+        .values({
+          tenantId: "default",
+          campaignId: "c1",
+          discordUserId: "discord:alice",
+          foundryActorId: "actor-1",
+          source: "player",
+          confirmedAt: Date.now(),
+        })
+        .run();
+      expect(db.select().from(playerCharacterMap).get()?.foundryUserId).toBeNull();
+      db.insert(playerCharacterMap)
+        .values({
+          tenantId: "default",
+          campaignId: "c1",
+          discordUserId: "discord:bob",
+          foundryUserId: "foundry-user-bob",
+          foundryActorId: "actor-2",
+          source: "player",
+          confirmedAt: Date.now(),
+        })
+        .run();
+      const bob = db
+        .select()
+        .from(playerCharacterMap)
+        .all()
+        .find((r) => r.discordUserId === "discord:bob");
+      expect(bob?.foundryUserId).toBe("foundry-user-bob");
     } finally {
       db.close();
     }

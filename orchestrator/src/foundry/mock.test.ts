@@ -76,10 +76,32 @@ describe("MockFoundryClient", () => {
     expect(await f.getActiveScene()).toBeNull();
     expect(await f.listSceneActors("missing")).toEqual([]);
   });
+
+  it("records deleteChatMessages and returns the configured count (TDD 0038)", async () => {
+    const f = new MockFoundryClient({ system: "dnd5e" });
+    f.deleteChatMessagesResultFor = (args) => ({
+      deletedCount: args.scope === "by-recipient" ? 7 : 3,
+    });
+    expect(
+      await f.deleteChatMessages({ scope: "by-recipient", recipientFoundryUserId: "u1" }),
+    ).toEqual({ deletedCount: 7 });
+    expect(await f.deleteChatMessages({ scope: "by-author", authorFoundryUserId: "u1" })).toEqual({
+      deletedCount: 3,
+    });
+    expect(f.chatDeletes).toEqual([
+      { scope: "by-recipient", recipientFoundryUserId: "u1" },
+      { scope: "by-author", authorFoundryUserId: "u1" },
+    ]);
+  });
 });
 
 describe("MockFoundryClient — scenes (ADR-0015)", () => {
-  const cragmaw: FoundryScene = { id: "scene-cragmaw", name: "Cragmaw Hideout", active: false, tokens: [] };
+  const cragmaw: FoundryScene = {
+    id: "scene-cragmaw",
+    name: "Cragmaw Hideout",
+    active: false,
+    tokens: [],
+  };
 
   it("lists scenes with the active flag and switches by id or name", async () => {
     const f = new MockFoundryClient({
@@ -105,8 +127,71 @@ describe("MockFoundryClient — scenes (ADR-0015)", () => {
   });
 
   it("ignores a switch to an unknown scene", async () => {
-    const f = new MockFoundryClient({ system: "dnd5e", scenes: [tavern], activeSceneId: "scene-tavern" });
+    const f = new MockFoundryClient({
+      system: "dnd5e",
+      scenes: [tavern],
+      activeSceneId: "scene-tavern",
+    });
     await f.setActiveScene("nonexistent");
     expect((await f.getActiveScene())?.id).toBe("scene-tavern");
+  });
+});
+
+describe("MockFoundryClient — table-text (TDD 0034)", () => {
+  it("records postChatMessage and returns a message id", async () => {
+    const f = new MockFoundryClient({ system: "dnd5e" });
+    const r = await f.postChatMessage({
+      content: "The door creaks.",
+      mode: "public",
+    });
+    expect(r.messageId).toBe("msg-1");
+    expect(f.chatPosts).toEqual([{ content: "The door creaks.", mode: "public" }]);
+  });
+
+  it("delivers subscribeChatEvents to every handler and unsubscribes", () => {
+    const f = new MockFoundryClient({ system: "dnd5e" });
+    const a: string[] = [];
+    const b: string[] = [];
+    const unsubA = f.subscribeChatEvents((e) => a.push(e.text));
+    const unsubB = f.subscribeChatEvents((e) => b.push(e.text));
+    f.emitChatEvent({
+      foundryUserId: "u1",
+      text: "hello",
+      isWhisper: false,
+      timestamp: "t0",
+    });
+    unsubA();
+    f.emitChatEvent({
+      foundryUserId: "u1",
+      text: "again",
+      isWhisper: false,
+      timestamp: "t1",
+    });
+    unsubB();
+    expect(a).toEqual(["hello"]);
+    expect(b).toEqual(["hello", "again"]);
+  });
+});
+
+describe("MockFoundryClient — token visibility (TDD 0033)", () => {
+  it("updateToken toggles hidden and getTokenDetails reflects it", async () => {
+    const f = new MockFoundryClient({
+      system: "dnd5e",
+      actors: [sildar],
+      scenes: [
+        {
+          id: "scene-tavern",
+          name: "Stonehill Inn",
+          active: true,
+          tokens: [{ id: "tok-sildar", actorId: sildar.id, name: sildar.name, hidden: true }],
+        },
+      ],
+      activeSceneId: "scene-tavern",
+    });
+    expect((await f.getTokenDetails("tok-sildar"))?.hidden).toBe(true);
+    await f.updateToken({ tokenId: "tok-sildar", hidden: false });
+    expect((await f.getTokenDetails("tok-sildar"))?.hidden).toBe(false);
+    await f.updateToken({ tokenId: "tok-sildar", hidden: true });
+    expect((await f.getTokenDetails("tok-sildar"))?.hidden).toBe(true);
   });
 });

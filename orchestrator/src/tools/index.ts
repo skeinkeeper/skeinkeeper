@@ -4,6 +4,13 @@
 import { z } from "zod";
 import { defineTool, ToolRegistry, type AnyToolDefinition } from "../registry.js";
 import { rollFormula } from "../dice.js";
+import {
+  distributeLootDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  revealTokenDef,
+  shareJournalToAudienceDef,
+} from "./triggered.js";
 
 /**
  * Core tools — system-agnostic, owned by Skeinkeeper. Per design doc
@@ -18,45 +25,98 @@ import { rollFormula } from "../dice.js";
  *    log, falling back to the local crypto roller when the bridge can't
  *    roll server-side (design doc 0014).
  *  - World state: quest flags, party movement, in-game time.
- *  - Player whisper: Discord side, not VTT side.
+ *  - Player whisper: Foundry whisper via SurfaceRouter (TDD 0035).
  *  - Fudge: meta-mechanic, not system-specific.
+ *  - Triggered play actions (TDD 0033): reveal/hide/place tokens, journal
+ *    share, loot distribution.
  */
 
 // ---- roll ----
 const rollDef = defineTool({
   name: "roll",
   description:
-    "Roll dice. The active Foundry system's roller handles formula interpretation and outcome — D&D 5e parses d20+modifier vs DC; Fate handles 4dF+skill; PbtA games handle 2d6+stat with 6-/7-9/10+ thresholds. Set secret=true for GM-only rolls.",
+    "Roll dice. The active Foundry system's roller handles formula interpretation and outcome — D&D 5e parses d20+modifier vs DC; Fate handles 4dF+skill; PbtA games handle 2d6+stat with 6-/7-9/10+ thresholds. Set secret=true for a hidden roll; pass audience { kind: player, playerId } to whisper the roll to one player, otherwise it is GM-only.",
   inputSchema: z.object({
     formula: z.string(),
     speaker: z.string().optional(),
     secret: z.boolean().optional(),
+    audience: z
+      .object({
+        kind: z.enum(["table", "gm", "player"]),
+        playerId: z.string().optional(),
+      })
+      .optional(),
   }),
   outputSchema: z.object({
     total: z.number(),
     rolls: z.array(z.number()),
     formula: z.string(),
     secret: z.boolean(),
+    source: z.enum(["foundry", "local"]),
   }),
   async handle(input, ctx) {
     const secret = input.secret ?? false;
+    let mode: "public" | "gm" | "blind" | "whisperTo" | undefined;
+    let whisperTo: ReadonlyArray<string> | undefined;
+    if (secret) {
+      if (input.audience?.kind === "player") {
+        const foundryUserId =
+          input.audience.playerId !== undefined
+            ? ctx.resolveFoundryUserId?.(input.audience.playerId)
+            : undefined;
+        if (foundryUserId === undefined) {
+          ctx.analytics?.track("error.captured", {
+            errorClass: "unresolved-foundry-user",
+            module: "orchestrator:roll",
+          });
+          const local = rollFormula(input.formula);
+          return {
+            total: local.total,
+            rolls: local.rolls,
+            formula: input.formula,
+            secret,
+            source: "local" as const,
+          };
+        }
+        mode = "whisperTo";
+        whisperTo = [foundryUserId];
+      } else {
+        mode = "gm";
+      }
+    }
     // Prefer the active VTT's roller so dice land in Foundry's chat log. The
     // OSS bridge can't roll server-side yet (design doc 0014 mutation gap) and
     // throws, so fall back to the local crypto roller. Either way the result
     // has the same {total, rolls, formula} shape.
     if (ctx.foundry !== undefined) {
       try {
-        const r = await ctx.foundry.rollDice(
-          input.formula,
-          input.speaker !== undefined ? { speaker: input.speaker } : undefined,
-        );
-        return { total: r.total, rolls: [...r.rolls], formula: r.formula, secret };
+        const r = await ctx.foundry.rollDice(input.formula, {
+          ...(input.speaker !== undefined ? { speaker: input.speaker } : {}),
+          ...(mode !== undefined ? { mode } : {}),
+          ...(whisperTo !== undefined ? { whisperTo } : {}),
+        });
+        return {
+          total: r.total,
+          rolls: [...r.rolls],
+          formula: r.formula,
+          secret,
+          source: "foundry" as const,
+        };
       } catch {
-        // fall through to the local roller
+        ctx.analytics?.track("error.captured", {
+          errorClass: "rollDice",
+          module: "orchestrator:roll",
+        });
       }
     }
     const local = rollFormula(input.formula);
-    return { total: local.total, rolls: local.rolls, formula: input.formula, secret };
+    return {
+      total: local.total,
+      rolls: local.rolls,
+      formula: input.formula,
+      secret,
+      source: "local" as const,
+    };
   },
 });
 
@@ -159,14 +219,25 @@ const advanceTimeDef = defineTool({
 const whisperDef = defineTool({
   name: "whisper",
   description:
-    "Send a private message to one player via Discord. The voice plugin picks this up from the audit log.",
+    "Send a private Foundry whisper to one player. Use the player's Discord user id; the surface router resolves their Foundry user.",
   inputSchema: z.object({
-    targetPlayerDiscordId: z.string(),
-    content: z.string().min(1),
+    playerId: z.string(),
+    text: z.string().min(1),
   }),
   outputSchema: z.object({ delivered: z.boolean() }),
-  async handle() {
-    return { delivered: true };
+  async handle(input, ctx) {
+    if (ctx.surfaces !== undefined) {
+      const report = await ctx.surfaces.emit({
+        audience: { kind: "player", playerId: input.playerId },
+        text: input.text,
+      });
+      return { delivered: report.perSurface.some((p) => p.status === "ok") };
+    }
+    if (ctx.whisperPlayer !== undefined) {
+      await ctx.whisperPlayer(input.playerId, input.text);
+      return { delivered: true };
+    }
+    return { delivered: false };
   },
 });
 
@@ -202,17 +273,54 @@ const recordPlayerCharacterDef = defineTool({
   outputSchema: z.object({
     discordUserId: z.string(),
     foundryActorId: z.string(),
+    foundryUserId: z.string().nullable(),
   }),
   async handle(input, ctx) {
+    let foundryUserId: string | null = null;
+    if (ctx.foundry !== undefined) {
+      try {
+        const users = await ctx.foundry.listUsers();
+        const owningUser = users.find((u) =>
+          (u.ownedActorIds ?? []).includes(input.foundryActorId),
+        );
+        foundryUserId = owningUser?.id ?? null;
+      } catch {
+        ctx.analytics?.track("error.captured", {
+          errorClass: "listUsers",
+          module: "orchestrator:record_player_character",
+        });
+      }
+    }
     ctx.tenantDb.playerCharacterMap.record({
       campaignId: input.campaignId,
       discordUserId: input.discordUserId,
       foundryActorId: input.foundryActorId,
+      ...(foundryUserId !== null ? { foundryUserId } : {}),
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
       source: "player",
       confirmedAt: Date.now(),
     });
-    return { discordUserId: input.discordUserId, foundryActorId: input.foundryActorId };
+    if (foundryUserId !== null) {
+      ctx.identity?.bind(input.discordUserId, foundryUserId);
+    } else if (ctx.surfaces !== undefined) {
+      await ctx.surfaces.emit({
+        audience: { kind: "gm" },
+        text:
+          `Recorded ${input.displayName ?? input.discordUserId} → ${input.foundryActorId}, ` +
+          `but no Foundry user owns that actor. Add a Foundry user + grant ownership; ` +
+          `then \`/skeinkeeper preflight verify @<player>\`.`,
+        meta: { escalation: true, severity: "warning" },
+      });
+    }
+    ctx.analytics?.track("identity.player_character.recorded", {
+      source: "player",
+      hasFoundryUser: foundryUserId !== null,
+    });
+    return {
+      discordUserId: input.discordUserId,
+      foundryActorId: input.foundryActorId,
+      foundryUserId,
+    };
   },
 });
 
@@ -220,17 +328,57 @@ const recordPlayerCharacterDef = defineTool({
 const notifyOperatorDef = defineTool({
   name: "notify_operator",
   description:
-    "Privately message the human operator over Discord DM about a setup problem you can't resolve in-fiction — e.g., a player named a character you can't find in Foundry, or Foundry seems disconnected. Players never see this. Use sparingly; never for normal play or narration.",
-  inputSchema: z.object({ message: z.string() }),
+    "Privately message the human operator over Foundry GM chat about a setup problem you can't resolve in-fiction — e.g., a player named a character you can't find in Foundry, or Foundry seems disconnected. Players never see this. Use sparingly; never for normal play or narration.",
+  inputSchema: z.object({
+    message: z.string(),
+    severity: z.enum(["info", "warning", "critical"]).optional(),
+  }),
   outputSchema: z.object({ delivered: z.boolean() }),
   async handle(input, ctx) {
+    const severity = input.severity ?? "info";
+    ctx.analytics?.track("escalation.notify_operator", { severity });
+    if (ctx.surfaces !== undefined) {
+      try {
+        const report = await ctx.surfaces.emit({
+          audience: { kind: "gm" },
+          text: input.message,
+          meta: { escalation: true, severity },
+        });
+        const delivered = report.perSurface.some((p) => p.status === "ok");
+        if (delivered && ctx.operatorFoundryUserKnown?.() !== true) {
+          ctx.onOperatorEscalation?.({ message: input.message, severity });
+        }
+        return { delivered };
+      } catch {
+        return { delivered: false };
+      }
+    }
     if (ctx.notifyOperator === undefined) return { delivered: false };
     try {
       await ctx.notifyOperator(input.message);
+      if (ctx.operatorFoundryUserKnown?.() !== true) {
+        ctx.onOperatorEscalation?.({ message: input.message, severity });
+      }
       return { delivered: true };
     } catch {
       return { delivered: false };
     }
+  },
+});
+
+const resolveActionDef = defineTool({
+  name: "resolve_action",
+  description:
+    "Commit a privately initiated in-scene action. The narration becomes table-visible (Foundry public chat and Discord voice). Call only when the action lands — never for private Q&A.",
+  inputSchema: z.object({ narration: z.string().min(1) }),
+  outputSchema: z.object({ resolved: z.boolean() }),
+  async handle(input, ctx) {
+    if (ctx.surfaces !== undefined) {
+      await ctx.surfaces.emit({ audience: { kind: "table" }, text: input.narration });
+    } else if (ctx.notifyTable !== undefined) {
+      await ctx.notifyTable(input.narration);
+    }
+    return { resolved: true };
   },
 });
 
@@ -240,9 +388,15 @@ export const BUILTIN_TOOLS: ReadonlyArray<AnyToolDefinition> = [
   movePartyDef,
   advanceTimeDef,
   whisperDef,
+  resolveActionDef,
   fudgeRollDef,
   recordPlayerCharacterDef,
   notifyOperatorDef,
+  revealTokenDef,
+  hideTokenDef,
+  placeHiddenTokenDef,
+  shareJournalToAudienceDef,
+  distributeLootDef,
 ];
 
 export function registerBuiltinTools(registry: ToolRegistry): void {

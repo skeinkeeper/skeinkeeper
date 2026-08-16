@@ -15,8 +15,10 @@ import {
   sessions,
   voiceAssignments,
   auditLog,
+  sessionIntakeFindings,
   type Action,
   type NewCampaign,
+  type NewSessionIntakeFindingRow,
   type NewDialogueRow,
   type NewPlayerCharacterMapRow,
   type NewQuestFlag,
@@ -216,9 +218,9 @@ export class TenantDb {
   };
 
   // ---- player↔character map (most recent row per player wins) ----
-  // `discordUserId`/`displayName` are PII (TDD 0030): AEAD on write, decrypt on
-  // read; lookup matches the key-free `discordUserIdHash` companion (with a
-  // plaintext fallback for legacy rows written before the companion existed).
+  // `discordUserId`/`foundryUserId`/`displayName` are PII (TDD 0030 / 0036):
+  // AEAD on write, decrypt on read; lookup matches the key-free hash companions
+  // (plaintext fallback for legacy rows written before the companion existed).
   readonly playerCharacterMap = {
     record: (data: Omit<NewPlayerCharacterMapRow, "tenantId" | "id">) =>
       this.db
@@ -228,6 +230,12 @@ export class TenantDb {
           tenantId: this.tenantId,
           discordUserId: this.piiCrypto.enc(data.discordUserId),
           discordUserIdHash: this.piiCrypto.hash(data.discordUserId),
+          ...(data.foundryUserId != null
+            ? {
+                foundryUserId: this.piiCrypto.enc(data.foundryUserId),
+                foundryUserIdHash: this.piiCrypto.hash(data.foundryUserId),
+              }
+            : {}),
           ...(data.displayName != null
             ? { displayName: this.piiCrypto.enc(data.displayName) }
             : {}),
@@ -244,6 +252,25 @@ export class TenantDb {
             or(
               eq(playerCharacterMap.discordUserIdHash, this.piiCrypto.hash(discordUserId)),
               eq(playerCharacterMap.discordUserId, discordUserId),
+            ),
+          ),
+        )
+        .orderBy(desc(playerCharacterMap.confirmedAt), desc(playerCharacterMap.id))
+        .limit(1)
+        .get();
+      return row === undefined ? undefined : decryptPcmapRow(this.piiCrypto, row);
+    },
+    currentForFoundryUser: (campaignId: string, foundryUserId: string) => {
+      const row = this.db
+        .select()
+        .from(playerCharacterMap)
+        .where(
+          and(
+            eq(playerCharacterMap.tenantId, this.tenantId),
+            eq(playerCharacterMap.campaignId, campaignId),
+            or(
+              eq(playerCharacterMap.foundryUserIdHash, this.piiCrypto.hash(foundryUserId)),
+              eq(playerCharacterMap.foundryUserId, foundryUserId),
             ),
           ),
         )
@@ -383,6 +410,62 @@ export class TenantDb {
         .where(and(eq(auditLog.tenantId, this.tenantId), eq(auditLog.sessionId, sessionId)))
         .all()
         .map((row) => ({ ...row, payloadJson: this.piiCrypto.dec(row.payloadJson) })),
+  };
+
+  // ---- session intake findings (TDD 0031; PII-free) ----
+  readonly sessionIntakeFindings = {
+    insert: (
+      data: Omit<NewSessionIntakeFindingRow, "tenantId" | "id" | "dmOnly"> & { dmOnly: boolean },
+    ) => {
+      const inserted = this.db
+        .insert(sessionIntakeFindings)
+        .values({
+          ...data,
+          tenantId: this.tenantId,
+          dmOnly: data.dmOnly ? 1 : 0,
+        })
+        .returning()
+        .get();
+      return inserted;
+    },
+    get: (id: number) =>
+      this.db
+        .select()
+        .from(sessionIntakeFindings)
+        .where(
+          and(eq(sessionIntakeFindings.tenantId, this.tenantId), eq(sessionIntakeFindings.id, id)),
+        )
+        .get(),
+    listBySession: (sessionId: string) =>
+      this.db
+        .select()
+        .from(sessionIntakeFindings)
+        .where(
+          and(
+            eq(sessionIntakeFindings.tenantId, this.tenantId),
+            eq(sessionIntakeFindings.sessionId, sessionId),
+          ),
+        )
+        .all(),
+    listByCampaign: (campaignId: string) =>
+      this.db
+        .select()
+        .from(sessionIntakeFindings)
+        .where(
+          and(
+            eq(sessionIntakeFindings.tenantId, this.tenantId),
+            eq(sessionIntakeFindings.campaignId, campaignId),
+          ),
+        )
+        .all(),
+    markResolved: (id: number, resolutionId: string, resolvedAt: number) =>
+      this.db
+        .update(sessionIntakeFindings)
+        .set({ resolutionId, resolvedAt })
+        .where(
+          and(eq(sessionIntakeFindings.tenantId, this.tenantId), eq(sessionIntakeFindings.id, id)),
+        )
+        .run(),
   };
 
   /**

@@ -6,19 +6,34 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import { and, eq, isNull } from "drizzle-orm";
 import { openDb } from "./db.js";
-import { ErasureService, type ErasureScope, type DeletionAdapter } from "./erasure.js";
+import {
+  ErasureService,
+  renderErasureSummary,
+  type ErasureScope,
+  type DeletionAdapter,
+} from "./erasure.js";
 import { ExportService } from "./export.js";
 import { ConsentsAdapter } from "./adapters/consents-adapter.js";
 import { CampaignAdapter } from "./adapters/campaign-adapter.js";
 import { AuditLogAdapter } from "./adapters/audit-log-adapter.js";
 import { DialogueAdapter } from "./adapters/dialogue-adapter.js";
 import { PlayerCharacterMapAdapter } from "./adapters/player-character-map-adapter.js";
+import { SessionIntakeFindingAdapter } from "./adapters/session-intake-finding-adapter.js";
+import {
+  DbPlayerCharacterMapStore,
+  FoundryWhisperDeletionAdapter,
+  type FoundryChatDeletionClient,
+  type PlayerCharacterMapStore,
+} from "./adapters/foundry-whisper-deletion.js";
+import { checkFoundryAddonConnected } from "./foundry_connection.js";
 import { loadOrCreateSalt } from "./salt.js";
 import { runSecretsCli } from "./secrets_cli.js";
 import { EnvKeySource } from "./secret_store.js";
 import { createPiiCrypto } from "./column_crypto.js";
 import { encryptPiiColumns } from "./pii_migrate.js";
+import { sessions } from "./schema/index.js";
 
 const USAGE = `\
 skeinkeeper — local operator CLI
@@ -55,6 +70,15 @@ export interface CliOptions {
    *  composition root (scripts/skeinkeeper.mjs) builds and injects them so
    *  campaign/tenant erasure also clears the vector store. */
   extraDeletionAdapters?: ReadonlyArray<DeletionAdapter>;
+  /** Foundry chat-delete client for the whisper cascade (TDD 0038). */
+  foundry?: FoundryChatDeletionClient;
+  identityMap?: PlayerCharacterMapStore;
+  /** Out-of-session add-on probe (hello-ok / getWorldInfo). */
+  probeFoundryConnected?: () => boolean | Promise<boolean>;
+  /** Test override; when set, skips the probe. */
+  foundryConnected?: boolean;
+  /** Default true. Tests that inject a stand-in foundry-whisper adapter flip this. */
+  registerFoundryWhisperAdapter?: boolean;
 }
 
 export async function runCli(
@@ -137,12 +161,14 @@ export async function runCli(
     const auditLogAdapter = new AuditLogAdapter(db);
     const dialogueAdapter = new DialogueAdapter(db, piiCrypto);
     const pcMapAdapter = new PlayerCharacterMapAdapter(db, piiCrypto);
+    const intakeAdapter = new SessionIntakeFindingAdapter(db);
     for (const a of [
       consentsAdapter,
       campaignAdapter,
       auditLogAdapter,
       dialogueAdapter,
       pcMapAdapter,
+      intakeAdapter,
     ]) {
       erasure.register(a);
     }
@@ -151,10 +177,21 @@ export async function runCli(
     for (const a of opts.extraDeletionAdapters ?? []) {
       erasure.register(a);
     }
+    if (opts.registerFoundryWhisperAdapter !== false) {
+      const connected = await resolveFoundryConnected(opts);
+      const identityMap = opts.identityMap ?? new DbPlayerCharacterMapStore(db, piiCrypto);
+      const foundry: FoundryChatDeletionClient = opts.foundry ?? {
+        async deleteChatMessages() {
+          throw new Error("Foundry client not configured");
+        },
+      };
+      erasure.register(new FoundryWhisperDeletionAdapter(foundry, identityMap, connected));
+    }
     // Only adapters that implement ExportAdapter are registered for export.
     exporter.register(consentsAdapter);
     exporter.register(dialogueAdapter);
     exporter.register(pcMapAdapter);
+    exporter.register(intakeAdapter);
 
     const scope = scopeFromArgs(command, values);
     if (!scope) {
@@ -195,21 +232,15 @@ export async function runCli(
           return 1;
         }
       }
+      if (hasOpenSession(db, scope.tenantId)) {
+        stdout.write(
+          "WARNING: an active session is open; restart the session so in-memory dialogue context drops the erased player.\n",
+        );
+      }
       const report = await erasure.erase(scope);
-      stdout.write(
-        `Deleted ${report.totalRecords} record(s) across ${report.perAdapter.length} adapter(s).\n`,
-      );
-      for (const r of report.perAdapter) {
-        stdout.write(
-          `  ${r.adapter}: ${r.error !== undefined ? `FAILED — ${r.error}` : r.recordsDeleted}\n`,
-        );
-      }
-      if (report.failures > 0) {
-        stdout.write(
-          `\n${report.failures} adapter(s) failed; data may be partially erased. Re-run after investigating.\n`,
-        );
-        return 1;
-      }
+      stdout.write(renderErasureSummary(report));
+      if (report.failures > 0) return 1;
+      if (report.partialSuccess) return 2;
       return 0;
     }
 
@@ -253,6 +284,29 @@ function describeScope(scope: ErasureScope): string {
 
 function sanitize(s: string): string {
   return s.replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+async function resolveFoundryConnected(opts: CliOptions): Promise<boolean> {
+  if (opts.foundryConnected !== undefined) return opts.foundryConnected;
+  const foundry = opts.foundry as
+    | (FoundryChatDeletionClient & { getWorldInfo?: () => Promise<{ connected: boolean }> })
+    | undefined;
+  const check: Parameters<typeof checkFoundryAddonConnected>[0] = {};
+  if (opts.probeFoundryConnected !== undefined) {
+    check.probe = opts.probeFoundryConnected;
+  } else if (foundry !== undefined && typeof foundry.getWorldInfo === "function") {
+    check.getWorldInfo = () => foundry.getWorldInfo!();
+  }
+  return checkFoundryAddonConnected(check);
+}
+
+function hasOpenSession(db: ReturnType<typeof openDb>, tenantId: string): boolean {
+  const row = db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.tenantId, tenantId), isNull(sessions.endedAt)))
+    .get();
+  return row !== undefined;
 }
 
 async function confirm(prompt: string): Promise<boolean> {

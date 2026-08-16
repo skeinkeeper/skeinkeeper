@@ -38,7 +38,10 @@ describe("OrchestratorRunner", () => {
       narration: "Roll initiative.",
       toolCalls: [
         { name: "roll", input: { formula: "1d20+2" } },
-        { name: "set_quest_flag", input: { campaignId: "c1", key: "combat.started", value: "true" } },
+        {
+          name: "set_quest_flag",
+          input: { campaignId: "c1", key: "combat.started", value: "true" },
+        },
       ],
     });
     const runner = new OrchestratorRunner(provider);
@@ -105,6 +108,14 @@ describe("OrchestratorRunner — real tool dispatch (non-tautology)", () => {
     // (the old echo-only runner would have passed it — the tautology).
     const result = evaluate(fx, out);
     expect(result.status).toBe("fail");
+  });
+
+  it("delivers whisper via MockFoundryClient.postChatMessage (TDD 0035)", async () => {
+    const provider = fakeLlmFromScript({
+      toolCalls: [{ name: "whisper", input: { playerId: "discord-p1", text: "psst" } }],
+    });
+    const out = await new OrchestratorRunner(provider).run({ fixture: fixture() });
+    expect(out.toolCalls?.[0]).toMatchObject({ name: "whisper", ok: true });
   });
 
   it("marks an unknown tool as failed dispatch", async () => {

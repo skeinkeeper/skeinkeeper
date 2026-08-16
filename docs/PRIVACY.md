@@ -18,11 +18,12 @@ What Skeinkeeper stores:
 
 - **Campaign metadata** — campaign name, ruleset, which Foundry world it points at
 - **Quest flags** — AI-DM-internal plot state (e.g., "cragmaw.cleared = true"), kept separate from Foundry's official world state so the operator can curate what's visible to players
-- **Player↔character map** — which Foundry character each Discord player controls, so the AI knows whose turn it is and who to address. Holds the Discord user ID, the Foundry actor ID, and an optional display name.
+- **Player↔character map (3-way identity)** — Discord user ↔ Foundry user ↔ Foundry actor, so the AI can attribute voice, route Foundry whispers, and address the right character. Holds the Discord user ID (`PII<>`), the Foundry user ID (`PII<>`), the Foundry actor ID, and an optional display name. Both identity columns are erased with the row on per-player deletion.
 - **Voice assignments** — which TTS voice the DM and each NPC use, so characters sound consistent across sessions. Campaign config, not personal data (no Discord IDs); removed when the campaign is deleted.
 - **Operator setting** — the Discord user ID of the **operator** who receives setup-note DMs, when you designate yourself in the console or via `/skeinkeeper operator claim`. It's the operator's own ID (operator config, not data collected about a player); removed when the campaign is deleted.
 - **Session transcripts** — the text of what was said, both player utterances and AI narration
 - **Audit log** — every tool call, state mutation, and AI decision, with timestamps
+- **Intake findings** — PII-free session-start classifications (stable codes + rubric summaries) in `session_intake_finding`. Cascades on campaign/tenant delete. Not personal data about players.
 - **Episodic memory** — structured summaries of past sessions, embedded for retrieval
 - **Consent records** — per-player records of voice processing consent
 - **Deletion log** — anonymous record that an erasure happened (no personally-identifying content)
@@ -36,13 +37,13 @@ What lives in **Foundry** (not in Skeinkeeper's database):
 - Combat tracker — initiative, current turn, active effects
 - Dice rolls — handled and audited on Foundry's side via its chat log
 
-If you erase a player's data from Skeinkeeper, the Skeinkeeper-side erasure does _not_ reach into Foundry. You as the operator are responsible for any matching erasure in Foundry — those are separate stores.
+If you erase a player's data from Skeinkeeper, `player:delete` also tries to delete that player's Foundry whisper history (messages they authored or received). Character sheets and other mechanical state stay in Foundry — you erase those with Foundry's own tools. Foundry-server backups are outside Skeinkeeper's reach.
 
 What Skeinkeeper does **not** store, anywhere:
 
 - **Voice audio.** Audio is streamed to your STT provider, transcribed, and the bytes are discarded immediately.
 - **Voiceprints or biometric data.** Skeinkeeper does not perform voice identification.
-- **Player personal information beyond Discord ID and consent records.**
+- **Player personal information beyond Discord ID, Foundry user ID, and consent records.**
 
 ## What Skeinkeeper sends to external providers
 
@@ -70,7 +71,7 @@ To be a present DM, Skeinkeeper transcribes the table's ongoing conversation con
 
 Skeinkeeper also reads **who is in the voice channel** (Discord user IDs + display names) so it can welcome newcomers and run the session-start introductions. This presence signal is used transiently in the moment — it is not a new stored record beyond the player↔character map and consent records already listed above.
 
-**Operator notes go to the operator over Discord DM.** When the AI hits a setup problem it can't resolve in-fiction (for example, a player names a character that isn't in the Foundry world), it sends a private Discord DM to the operator. Players never see these notes. They carry campaign-operational details (a player's display name, a character name) — nothing beyond what's already covered above. The note _messages_ aren't stored; the only thing persisted is the operator's own Discord ID (the "Operator setting" above), so Skeinkeeper knows whom to DM.
+**Operator notes go to Foundry GM chat.** When the AI hits a setup problem it can't resolve in-fiction (for example, a player names a character that isn't in the Foundry world), it posts a GM-only Foundry chat message (and whispers the operator's Foundry user when one is known). Players never see these notes. They carry campaign-operational details (a player's display name, a character name) — nothing beyond what's already covered above. The note _messages_ live in Foundry's chat log, not in Skeinkeeper. Discord DMs are used only for the one-time voice-consent prompt (and a one-time courtesy redirect if a player DMs the bot after side-channels moved to Foundry).
 
 This consent is per-player, recorded with a timestamp and the version of the consent text shown.
 
@@ -84,7 +85,7 @@ If a player wants to:
 pnpm skeinkeeper player:export --tenant <id> --subject <discord-id> [--out <dir>]
 ```
 
-Writes an archive (JSON + a readable HTML summary) of everything Skeinkeeper has stored involving that Discord user — their player↔character mappings, transcript appearances, consent records — into the output directory (`./exports` by default). `--tenant` defaults to `default`.
+Writes an archive (JSON + a readable HTML summary) of everything Skeinkeeper has stored involving that Discord user — their 3-way identity mappings (Discord ID + Foundry user ID + actor), transcript appearances, consent records — into the output directory (`./exports` by default). `--tenant` defaults to `default`.
 
 **Delete their data**
 
@@ -92,9 +93,23 @@ Writes an archive (JSON + a readable HTML summary) of everything Skeinkeeper has
 pnpm skeinkeeper player:delete --tenant <id> --subject <discord-id> [--yes]
 ```
 
-Cascades across the player's **personal** data: dialogue transcripts (their spoken/typed lines), player↔character mappings, consent records, and their **private side-channel content** — their 1:1 DMs with the DM and the DM's private replies addressed to them, plus any private memory derived from them ([ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)). (`--yes` skips the confirmation prompt.) The **audit log is not erased per-player** — it's part of the tamper-evident audit trail and is removed only on full tenant deletion. A record of the deletion itself is kept (anonymous: just the fact that deletion occurred, when) for your own audit purposes. Note that character sheets and other mechanical state live in your Foundry instance, not Skeinkeeper; erasing those is a separate action on the Foundry side.
+Cascades across the player's **personal** data:
 
-**Private side-channels: what "private" means.** A player can message the DM privately (a Discord DM) for a side question or a surprise action (TDD 0026). That content is **private from the other players** — it never enters another player's context, by construction. It is **not private from you, the operator**: side-channel transcripts are stored and reviewable like any other session content (operator sovereignty / replay-any-session). Don't promise players secrecy from the operator. Private side-channel content is **player-scoped and individually erasable** (the per-player deletion above), unlike the campaign's shared memory.
+- **Skeinkeeper-side:** dialogue transcripts (their spoken/typed lines, audience-tagged per [ADR-0017](./adr/0017-per-audience-memory-visibility-erasure.md)), private episodic memory derived from them, the 3-way identity row (Discord user ID **and** Foundry user ID **and** display name — all `PII<>`), and consent records. The **audit log is not erased per-player** — it's part of the tamper-evident audit trail and is removed only on full tenant deletion. A record of the deletion itself is kept (anonymous: just the fact that deletion occurred, when, and whether it was partial) for your own audit purposes.
+- **Foundry-side:** whisper history for the player's current Foundry user (messages they authored or received), deleted via the Foundry add-on when it is connected.
+
+(`--yes` skips the confirmation prompt.) Character sheets and other mechanical state live in your Foundry instance; those are not part of this cascade.
+
+**Partial success.** If the Foundry side cannot complete — add-on not connected, `deleteChatMessages` error, or no Foundry user mapped — Skeinkeeper still finishes its own stores and reports the remainder. The CLI prints `WARNING:` lines and exits **2** (0 = clean success, 1 = a Skeinkeeper adapter threw, 2 = remainders you still need to handle). Hand the player that summary: it lists what was deleted and what you may need to remove in Foundry's GM chat-log UI (or retry `player:delete` once Foundry is back).
+
+**Known limits.**
+
+- If you remapped a player's Foundry user mid-campaign, only the **current** binding is cascaded. Delete the prior user's whispers in Foundry yourself.
+- `campaign:delete` / `tenant:delete` do **not** remove Foundry chat history. Delete the Foundry world or use Foundry's GM tools.
+- Skeinkeeper does **not** reach Foundry-server backups (nightly dumps, hosted-Foundry vendor snapshots). Rotate those on a documented retention window if you treat erasure as a hard commitment.
+- `player:export` is Skeinkeeper-side only. Foundry-side data is not exported — use Foundry's own GM export tools. The HTML summary names this.
+
+**Private side-channels: what "private" means.** A player messages the DM privately with a **Foundry whisper** (not a Discord DM) for a side question or a surprise action ([TDD 0035](./tdd/0035-side-channels-via-foundry-whisper.md)). Two layers keep that private from other players: Skeinkeeper never puts another player's private content (or `gm` secrets) into a `player:<id>` LLM context, and Foundry delivers the whisper only to that recipient. It is **not private from you, the operator**: you see every whisper in Foundry's standard GM view, and Skeinkeeper also keeps the audience-tagged transcript for session replay, export, and erasure (the web console's escalation pane is the degraded fallback when no operator Foundry user is known). Don't promise players secrecy from the operator. Private side-channel content is **player-scoped and individually erasable** (the per-player deletion above), unlike the campaign's shared memory. The 3-way identity map is likewise operator-visible: Discord ID and Foundry user ID appear in GM chat escalations and in console replay, never in player-facing table text.
 
 **What per-player deletion does _not_ remove: the campaign's shared memory.** The AI's episodic memory — the session-by-session summaries of what happened at the table — is a _shared, jointly-authored record of the whole group's story_, not one player's personal data. One player asking to be forgotten doesn't make the rest of the table forget the campaign they played together, any more than it would in real life. Those summaries (and operator-imported lore) persist and are erased only when the **campaign or the whole tenant** is deleted:
 
@@ -134,7 +149,7 @@ A "Local mode only" badge appears in the web UI when both streams are off, as a 
 
 - Credentials (API keys, Discord bot token, etc.) can be **sealed at rest** in an AES-256-GCM config file, opened at boot with a passphrase you supply via `SKEINKEEPER_SECRET_PASSPHRASE` (run `pnpm skeinkeeper secrets:seal`, then delete the plaintext from `.env`). Without sealing, they are read from your local `.env`. An OS-keyring key source is planned (per [ADR-0010](./adr/0010-privacy-as-architecture.md)).
 - Traffic to external providers uses HTTPS/TLS; the operator console binds to localhost (`127.0.0.1`) and is plain HTTP on your own machine.
-- PII fields are type-marked in code (`PII<>`) and **encrypted at rest per column** (AES-256-GCM) when you set `SKEINKEEPER_SECRET_PASSPHRASE` — the same passphrase that seals credentials ([ADR-0022](./adr/0022-pii-encryption-node-crypto.md), superseding ADR-0019). The encrypted columns are Discord IDs, player/character display names, transcript text, audit payloads, and operator settings. Without a passphrase they are stored as plaintext (the alpha default — a key kept on disk next to the data would not be encryption-at-rest). Either way, deletion and audit work **without** the key: each identity column carries a salted hash companion, so `player:delete`/`campaign:delete` and the deletion log never need to decrypt. To encrypt an existing database after setting the passphrase, run `pnpm skeinkeeper pii:encrypt` once (idempotent). An OS-keyring key source is planned (per [ADR-0010](./adr/0010-privacy-as-architecture.md)).
+- PII fields are type-marked in code (`PII<>`) and **encrypted at rest per column** (AES-256-GCM) when you set `SKEINKEEPER_SECRET_PASSPHRASE` — the same passphrase that seals credentials ([ADR-0022](./adr/0022-pii-encryption-node-crypto.md), superseding ADR-0019). The encrypted columns are Discord IDs, Foundry user IDs, player/character display names, transcript text, audit payloads, and operator settings. Without a passphrase they are stored as plaintext (the alpha default — a key kept on disk next to the data would not be encryption-at-rest). Either way, deletion and audit work **without** the key: each identity column carries a salted hash companion, so `player:delete`/`campaign:delete` and the deletion log never need to decrypt. To encrypt an existing database after setting the passphrase, run `pnpm skeinkeeper pii:encrypt` once (idempotent). An OS-keyring key source is planned (per [ADR-0010](./adr/0010-privacy-as-architecture.md)).
 
 ## Security disclosure
 
