@@ -88,6 +88,14 @@ export {
   runIdentityPreflight,
   shouldSurfaceIdentityFindings,
 } from "./intake/preflight-run.js";
+export {
+  FOUNDRY_PRESENCE_INTERVAL_MS,
+  applyFoundryPresenceTick,
+  startFoundryPresencePoll,
+  type FoundryPresencePoller,
+  type FoundryPresenceTransition,
+  type FoundryPresenceUser,
+} from "./intake/foundry-presence.js";
 export { formatIntakeReportForOperator } from "./intake/report.js";
 export {
   applyIntakeResolution,

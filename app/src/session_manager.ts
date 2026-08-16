@@ -53,6 +53,8 @@ import {
   kickExtendedIntake,
   loadIntakeConfig,
   runIdentityPreflight,
+  startFoundryPresencePoll,
+  type FoundryPresencePoller,
   MockFoundryClient,
   NullFoundryEventStream,
   persistFindingResolution,
@@ -220,6 +222,7 @@ export class SessionManager {
   private consentSurface: DiscordConsentSurface | null = null;
   private identity = new SideChannelIdentityMap();
   private coordinator: SideChannelCoordinator | null = null;
+  private foundryPresence: FoundryPresencePoller | null = null;
 
   constructor(private readonly deps: SessionManagerDeps) {
     this.controls = {
@@ -512,6 +515,8 @@ export class SessionManager {
     this.voiceChannel = null;
     this.client = null;
     this.connection = null;
+    this.foundryPresence?.stop();
+    this.foundryPresence = null;
     this.coordinator?.stop();
     this.coordinator = null;
     this.surfaces = null;
@@ -701,6 +706,7 @@ export class SessionManager {
     });
     void this.coordinator.start();
     await this.runIntakeAtStart();
+    this.startFoundryPresenceWatch(foundry);
 
     // Resolve a username typed before the bot was online (design doc 0024 §1),
     // and surface the initial operator + voice roster to the console.
@@ -765,6 +771,8 @@ export class SessionManager {
     this.presenceSource = null;
     this.guild = null;
     this.voiceChannel = null;
+    this.foundryPresence?.stop();
+    this.foundryPresence = null;
     this.coordinator?.stop();
     this.coordinator = null;
     this.surfaces = null;
@@ -1091,6 +1099,37 @@ export class SessionManager {
     } catch {
       // escalation undelivered; player still stays off the onboarding set
     }
+  }
+
+  private startFoundryPresenceWatch(foundry: FoundryClient): void {
+    this.foundryPresence?.stop();
+    this.foundryPresence = startFoundryPresencePoll({
+      listUsers: () => foundry.listUsers(),
+      mappedFoundryUserIds: () => {
+        const ids = new Set<string>();
+        for (const row of this.deps.tenantDb.playerCharacterMap.listByCampaign(
+          this.deps.campaignId,
+        )) {
+          if (row.foundryUserId !== null && row.foundryUserId.length > 0) {
+            ids.add(row.foundryUserId);
+          }
+        }
+        return ids;
+      },
+      onTransition: (transition) => {
+        const hashed = this.deps.tenantDb.piiCrypto.hash(transition.foundryUserId);
+        this.deps.analytics?.track(
+          transition.kind === "dropped" ? "presence.foundry.dropped" : "presence.foundry.restored",
+          { foundryUserIdHashed: hashed },
+        );
+        if (transition.kind === "dropped") {
+          void this.emitOperatorNote(
+            `Foundry user ${transition.foundryUserId} went inactive. Voice continues; their table-text mirror will catch up when they reconnect.`,
+          ).catch(() => undefined);
+        }
+      },
+    });
+    void this.foundryPresence.tick();
   }
 
   /** Load TDD 0035's ephemeral map from the persistent 3-way rows. */
