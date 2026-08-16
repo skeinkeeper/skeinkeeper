@@ -433,6 +433,55 @@ describe("runAlwaysListeningSession", () => {
     expect(gaps).toEqual(["Bob"]);
   });
 
+  it("records identity-blocked utterances as player:unmapped and does not take a table turn", async () => {
+    const llm = deciderAndNarration('{"respond": true}', "I should not hear Bob.");
+    const { session, tenantDb } = setupSession(llm);
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      utter("discord:bob", "can you hear me", "Bob"),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async () => "critical-gaps",
+        onCriticalGap: async () => undefined,
+      },
+    });
+    expect(result.turnCount).toBe(0);
+    const rows = tenantDb.dialogue.listBySession("sess-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toBe("can you hear me");
+    expect(rows[0]?.audience).toBe("player:unmapped");
+    expect(rows[0]?.conversationId).toBe("player:unmapped");
+  });
+
+  it("escalates a single operator line on voice-join warnings-only", async () => {
+    const llm = deciderAndNarration('{"respond": false}', "Welcome.");
+    const { session } = setupSession(llm);
+    const warnings: string[] = [];
+    const voiceIO = new FakeVoiceIO([
+      presence([{ id: "discord:bob", displayName: "Bob" }]),
+      { kind: "lull" },
+    ]);
+    const result = await runAlwaysListeningSession({
+      voiceIO,
+      session,
+      consentText: "c",
+      identityPreflight: {
+        verifyPlayer: async () => "warnings-only",
+        onCriticalGap: async () => undefined,
+        onWarning: async (p) => {
+          warnings.push(p.displayName ?? p.discordUserId);
+        },
+      },
+    });
+    expect(result.onboardingCount).toBe(1);
+    expect(warnings).toEqual(["Bob"]);
+  });
+
   it("requests consent for unconsented speakers", async () => {
     const llm = deciderAndNarration('{"respond": false}', "x");
     const { session } = setupSession(llm);
