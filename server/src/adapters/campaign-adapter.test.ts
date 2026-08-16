@@ -39,7 +39,7 @@ describe("CampaignAdapter", () => {
       tenantId: "default",
       campaignId: "c1",
     });
-    expect(n).toBe(1);
+    expect(n).toEqual({ recordsDeleted: 1 });
     expect(t.campaigns.list().map((c) => c.id)).toEqual(["c2"]);
     // FK cascade removed the campaign's quest flags.
     expect(db.select().from(questFlags).all()).toHaveLength(0);
@@ -51,7 +51,7 @@ describe("CampaignAdapter", () => {
     seedCampaign(db, "default", "c2");
     seedCampaign(db, "other", "c3");
     const n = await new CampaignAdapter(db).delete({ kind: "tenant", tenantId: "default" });
-    expect(n).toBe(2);
+    expect(n).toEqual({ recordsDeleted: 2 });
     expect(new TenantDb(db, "default").campaigns.list()).toHaveLength(0);
     expect(new TenantDb(db, "other").campaigns.list().map((c) => c.id)).toEqual(["c3"]);
   });
@@ -64,7 +64,7 @@ describe("CampaignAdapter", () => {
       tenantId: "default",
       subjectId: "discord:1",
     });
-    expect(n).toBe(0);
+    expect(n).toEqual({ recordsDeleted: 0 });
     expect(new TenantDb(db, "default").campaigns.list()).toHaveLength(1);
   });
 });

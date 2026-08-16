@@ -152,7 +152,7 @@ describe("ConsentsAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:111",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     expect(db.select().from(consents).all()).toHaveLength(0);
   });
 
@@ -239,10 +239,10 @@ class FakeAdapter implements DeletionAdapter {
     private readonly count = 1,
     private readonly throwOn?: ErasureScope["kind"],
   ) {}
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     this.calls.push(scope.kind);
     if (this.throwOn === scope.kind) throw new Error(`${this.name} boom`);
-    return this.count;
+    return { recordsDeleted: this.count };
   }
 }
 

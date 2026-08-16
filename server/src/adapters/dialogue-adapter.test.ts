@@ -80,7 +80,7 @@ describe("DialogueAdapter — delete", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(2);
+    expect(deleted).toEqual({ recordsDeleted: 2 });
     const remaining = db.select().from(dialogue).all();
     expect(remaining.map((r) => r.speaker).sort()).toEqual(["discord:bob", "narrator"]);
   });
@@ -129,7 +129,7 @@ describe("DialogueAdapter — delete", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(2); // Alice's table line + the DM's private-to-Alice reply
+    expect(deleted).toEqual({ recordsDeleted: 2 }); // Alice's table line + the DM's private-to-Alice reply
     const remaining = db.select().from(dialogue).all();
     expect(remaining.map((r) => r.text).sort()).toEqual(["for bob only", "shared narration"]);
   });
@@ -139,7 +139,7 @@ describe("DialogueAdapter — delete", () => {
     seedDialogue(db);
     const adapter = new DialogueAdapter(db);
     const deleted = await adapter.delete({ kind: "tenant", tenantId: "default" });
-    expect(deleted).toBe(4);
+    expect(deleted).toEqual({ recordsDeleted: 4 });
     expect(db.select().from(dialogue).all()).toHaveLength(0);
   });
 
@@ -152,7 +152,7 @@ describe("DialogueAdapter — delete", () => {
       tenantId: "default",
       campaignId: "c1",
     });
-    expect(deleted).toBe(0);
+    expect(deleted).toEqual({ recordsDeleted: 0 });
   });
 
   it("deleting the campaign cascades to dialogue via FK", async () => {
@@ -198,7 +198,7 @@ describe("DialogueAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     expect(db.select().from(dialogue).all()).toHaveLength(1);
   });
 
@@ -239,7 +239,7 @@ describe("DialogueAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     const remaining = db.select().from(dialogue).all();
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.audience).toBe(playerAudience(c, "discord:bob"));

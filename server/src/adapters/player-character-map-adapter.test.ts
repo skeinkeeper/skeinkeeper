@@ -60,7 +60,7 @@ describe("PlayerCharacterMapAdapter — delete", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     const remaining = db.select().from(playerCharacterMap).all();
     expect(remaining.map((r) => r.discordUserId)).toEqual(["discord:bob"]);
   });
@@ -70,7 +70,7 @@ describe("PlayerCharacterMapAdapter — delete", () => {
     seedMappings(db);
     const adapter = new PlayerCharacterMapAdapter(db);
     const deleted = await adapter.delete({ kind: "tenant", tenantId: "default" });
-    expect(deleted).toBe(2);
+    expect(deleted).toEqual({ recordsDeleted: 2 });
     expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
   });
 
@@ -83,7 +83,7 @@ describe("PlayerCharacterMapAdapter — delete", () => {
       tenantId: "default",
       campaignId: "c1",
     });
-    expect(deleted).toBe(2);
+    expect(deleted).toEqual({ recordsDeleted: 2 });
     expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
   });
 
@@ -143,7 +143,7 @@ describe("PlayerCharacterMapAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     expect(db.select().from(playerCharacterMap).all()).toHaveLength(0);
   });
 
@@ -205,7 +205,7 @@ describe("PlayerCharacterMapAdapter — encrypted rows (TDD 0030)", () => {
       tenantId: "default",
       subjectId: "discord:alice",
     });
-    expect(deleted).toBe(1);
+    expect(deleted).toEqual({ recordsDeleted: 1 });
     const remaining = db.select().from(playerCharacterMap).all();
     expect(remaining).toHaveLength(0);
     expect(remaining.some((r) => r.discordUserId === "discord:alice")).toBe(false);

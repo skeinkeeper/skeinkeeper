@@ -65,15 +65,19 @@ describe("SessionIntakeFindingAdapter", () => {
     });
 
     const adapter = new SessionIntakeFindingAdapter(db);
-    expect(await adapter.delete({ kind: "campaign", tenantId: "default", campaignId: "c1" })).toBe(
-      1,
-    );
+    expect(
+      await adapter.delete({ kind: "campaign", tenantId: "default", campaignId: "c1" }),
+    ).toEqual({ recordsDeleted: 1 });
     expect(def.sessionIntakeFindings.listByCampaign("c1")).toHaveLength(0);
     expect(def.sessionIntakeFindings.listByCampaign("c2")).toHaveLength(1);
 
-    expect(await adapter.delete({ kind: "tenant", tenantId: "default" })).toBe(1);
+    expect(await adapter.delete({ kind: "tenant", tenantId: "default" })).toEqual({
+      recordsDeleted: 1,
+    });
     expect(def.sessionIntakeFindings.listByCampaign("c2")).toHaveLength(0);
     expect(other.sessionIntakeFindings.listByCampaign("c3")).toHaveLength(1);
-    expect(await adapter.delete({ kind: "player", tenantId: "default", subjectId: "x" })).toBe(0);
+    expect(await adapter.delete({ kind: "player", tenantId: "default", subjectId: "x" })).toEqual({
+      recordsDeleted: 0,
+    });
   });
 });

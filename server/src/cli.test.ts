@@ -24,9 +24,9 @@ class RecordingAdapter implements DeletionAdapter {
   readonly name = "recording";
   readonly supportedScopes = ["campaign", "tenant"] as const;
   readonly calls: Array<ErasureScope> = [];
-  async delete(scope: ErasureScope): Promise<number> {
+  async delete(scope: ErasureScope): Promise<{ recordsDeleted: number }> {
     this.calls.push(scope);
-    return 7;
+    return { recordsDeleted: 7 };
   }
 }
 
