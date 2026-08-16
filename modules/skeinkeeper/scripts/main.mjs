@@ -564,20 +564,45 @@ async function manageFog(params) {
   throw opError("bad-args", `unknown fog action ${params.action}`);
 }
 
+// Reconnect-with-backoff state (module scope so overlapping close/error events
+// don't stack timers, and so the once-registered chat hook can reach the live
+// socket). The add-on redials the operator gateway after any drop, so a
+// Foundry-down -> back-up cycle recovers without a manual GM reload — the
+// resume path in design doc 0039 depends on it.
+let currentSocket = null;
+let reconnectTimer = null;
+let reconnectDelayMs = 1000;
+const RECONNECT_MAX_MS = 30000;
+
+function scheduleReconnect() {
+  if (!game.user?.isGM) return;
+  if (reconnectTimer !== null) return; // one pending attempt at a time
+  const delay = reconnectDelayMs;
+  reconnectDelayMs = Math.min(reconnectDelayMs * 2, RECONNECT_MAX_MS);
+  console.info(`${MODULE_ID}: gateway disconnected; reconnecting in ${Math.round(delay / 1000)}s`);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    openGateway();
+  }, delay);
+}
+
 function openGateway() {
   if (!game.user?.isGM) return;
   const url = setting("gatewayUrl") || "ws://127.0.0.1:7733";
   const pairingSecret = setting("pairingSecret") || "";
-  let ws;
+  let socket;
   try {
-    ws = new WebSocket(url);
+    socket = new WebSocket(url);
   } catch (err) {
     console.error(`${MODULE_ID}: failed to open ${url}`, err);
+    scheduleReconnect();
     return;
   }
+  currentSocket = socket;
 
-  ws.addEventListener("open", () => {
-    ws.send(
+  socket.addEventListener("open", () => {
+    reconnectDelayMs = 1000; // a healthy connection resets the backoff
+    socket.send(
       JSON.stringify({
         type: "hello",
         moduleId: MODULE_ID,
@@ -588,7 +613,7 @@ function openGateway() {
     );
   });
 
-  ws.addEventListener("message", async (ev) => {
+  socket.addEventListener("message", async (ev) => {
     let msg;
     try {
       msg = JSON.parse(ev.data);
@@ -598,9 +623,9 @@ function openGateway() {
     if (msg.type !== "req") return;
     try {
       const result = await dispatch(msg.method, msg.params ?? {});
-      ws.send(JSON.stringify({ type: "res", id: msg.id, ok: true, result }));
+      socket.send(JSON.stringify({ type: "res", id: msg.id, ok: true, result }));
     } catch (err) {
-      ws.send(
+      socket.send(
         JSON.stringify({
           type: "res",
           id: msg.id,
@@ -611,11 +636,27 @@ function openGateway() {
     }
   });
 
+  // Redial on any drop. `error` is followed by `close` in browsers;
+  // scheduleReconnect is idempotent, so calling from both is safe.
+  socket.addEventListener("close", () => {
+    if (currentSocket === socket) currentSocket = null;
+    scheduleReconnect();
+  });
+  socket.addEventListener("error", () => {
+    scheduleReconnect();
+  });
+}
+
+// Registered ONCE, not per-connection (a per-connection registration would
+// stack duplicate hooks on every reconnect). Relays chat through whichever
+// socket is currently live.
+function registerChatRelay() {
   Hooks.on("createChatMessage", (message) => {
     if (message.getFlag?.(MODULE_ID, "echo") === true) return;
-    if (ws.readyState !== WebSocket.OPEN) return;
+    const socket = currentSocket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
     const whisper = message.whisper ?? [];
-    ws.send(
+    socket.send(
       JSON.stringify({
         type: "evt",
         event: "chat",
@@ -656,5 +697,6 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   if (!game.user?.isGM) return;
+  registerChatRelay();
   openGateway();
 });
