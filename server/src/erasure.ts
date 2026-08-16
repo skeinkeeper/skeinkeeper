@@ -52,10 +52,37 @@ export interface ErasureReport {
   manualRemainders: ReadonlyArray<ManualRemainder>;
 }
 
+export interface ErasureAnalytics {
+  track(name: string, props: Record<string, unknown>): void;
+}
+
 export interface ErasureServiceOptions {
   db: Db;
   /** Per-installation salt for one-way hashing of subject identifiers. */
   salt: string;
+  analytics?: ErasureAnalytics;
+}
+
+/** Operator-facing deletion summary, including WARNING remainder lines. */
+export function renderErasureSummary(report: ErasureReport): string {
+  const lines: string[] = [
+    `Deleted ${report.totalRecords} record(s) across ${report.perAdapter.length} adapter(s).`,
+  ];
+  for (const r of report.perAdapter) {
+    lines.push(
+      `  ${r.adapter}: ${r.error !== undefined ? `FAILED — ${r.error}` : r.recordsDeleted}`,
+    );
+  }
+  for (const rem of report.manualRemainders) {
+    lines.push(`WARNING: ${rem.message}`);
+  }
+  if (report.failures > 0) {
+    lines.push("");
+    lines.push(
+      `${report.failures} adapter(s) failed; data may be partially erased. Re-run after investigating.`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 export class ErasureService {
@@ -103,6 +130,11 @@ export class ErasureService {
             adapterName: adapter.name,
             recordsDeleted: result.recordsDeleted,
             timestamp: Date.now(),
+            partialSuccess: result.manualRemainder !== undefined ? 1 : 0,
+            manualRemainders:
+              result.manualRemainder !== undefined
+                ? JSON.stringify([result.manualRemainder])
+                : null,
           })
           .run();
       } catch (err) {
@@ -123,6 +155,28 @@ export class ErasureService {
     const manualRemainders = perAdapter
       .map((x) => x.manualRemainder)
       .filter((r): r is ManualRemainder => r !== undefined);
+    const analytics = this.options.analytics;
+    analytics?.track("erasure.completed", {
+      scope: scope.kind,
+      totalRecords,
+      adapterCount: perAdapter.length,
+    });
+    if (manualRemainders.length > 0) {
+      const reasons = [...new Set(manualRemainders.map((r) => r.reason))];
+      analytics?.track("erasure.partial-success", {
+        scope: scope.kind,
+        remainderCount: manualRemainders.length,
+        reasons,
+      });
+      for (const row of perAdapter) {
+        if (row.manualRemainder !== undefined) {
+          analytics?.track("erasure.adapter.failed", {
+            adapter: row.adapter,
+            reason: row.manualRemainder.reason,
+          });
+        }
+      }
+    }
     return {
       scope,
       perAdapter,

@@ -77,6 +77,10 @@ export class ExportService {
 <h1>Skeinkeeper export — ${escapeHtml(scopeLabel)}</h1>
 <p class="meta">Generated ${escapeHtml(generated)}. Tenant: ${escapeHtml(bundle.scope.tenantId)}.</p>
 ${summaryHtml || "<p>No data to export.</p>"}
+<section>
+<h2>Foundry-side data not exported</h2>
+<p>Skeinkeeper export covers Skeinkeeper-side stores only. Foundry-side data is not exported — use Foundry's own GM chat-log export tools if the player needs their whisper history or other Foundry records.</p>
+</section>
 <h2>Full JSON archive</h2>
 <pre>${escapeHtml(JSON.stringify(bundle.perAdapter, null, 2))}</pre>
 </body>

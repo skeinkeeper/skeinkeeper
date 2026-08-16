@@ -41,6 +41,7 @@ export {
   type FoundryClient,
   type FoundryChatEvent,
   type PostChatMessageArgs,
+  type DeleteChatMessagesArgs,
   type FoundryActor,
   type FoundryScene,
   type FoundrySceneToken,

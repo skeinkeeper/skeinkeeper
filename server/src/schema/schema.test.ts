@@ -59,6 +59,8 @@ describe("schema", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]?.subjectIdHash).toHaveLength(64);
       expect(rows[0]?.recordsDeleted).toBe(3);
+      expect(rows[0]?.partialSuccess).toBe(0);
+      expect(rows[0]?.manualRemainders).toBeNull();
     } finally {
       db.close();
     }

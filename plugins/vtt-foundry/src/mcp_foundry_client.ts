@@ -18,6 +18,7 @@ import type {
   FoundryRollResult,
   FoundryChatEvent,
   PostChatMessageArgs,
+  DeleteChatMessagesArgs,
 } from "@skeinkeeper/orchestrator";
 import type { McpToolCaller } from "./mcp_tool_caller.js";
 import { asRecord, num, str, toArray, unwrap } from "./mcp_parse.js";
@@ -308,6 +309,22 @@ export class McpFoundryClient implements FoundryClient {
     });
     const rec = asRecord(res);
     return { messageId: str(rec?.["messageId"]) ?? str(rec?.["id"]) ?? "" };
+  }
+
+  async deleteChatMessages(args: DeleteChatMessagesArgs): Promise<{ deletedCount: number }> {
+    const res = await this.caller.callTool("delete-chat-messages", {
+      scope: args.scope,
+      ...(args.authorFoundryUserId !== undefined
+        ? { authorFoundryUserId: args.authorFoundryUserId }
+        : {}),
+      ...(args.recipientFoundryUserId !== undefined
+        ? { recipientFoundryUserId: args.recipientFoundryUserId }
+        : {}),
+      ...(args.since !== undefined ? { since: args.since } : {}),
+      ...(args.until !== undefined ? { until: args.until } : {}),
+    });
+    const rec = asRecord(res);
+    return { deletedCount: num(rec?.["deletedCount"]) ?? 0 };
   }
 
   subscribeChatEvents(handler: (event: FoundryChatEvent) => void): () => void {

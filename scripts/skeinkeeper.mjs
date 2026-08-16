@@ -49,5 +49,39 @@ const memoryAdapter = new MemoryAdapter(
   piiCrypto,
 );
 
-const exit = await runCli(process.argv.slice(2), {}, { extraDeletionAdapters: [memoryAdapter] });
+/** Out-of-session Foundry add-on check for player:delete (TDD 0038). No 0041
+ *  gateway here — if FOUNDRY_MCP_COMMAND is set, try getWorldInfo; otherwise
+ *  treat as disconnected so the cascade records addon-unavailable. */
+async function probeFoundryAddon() {
+  const raw = process.env.FOUNDRY_MCP_COMMAND?.trim();
+  if (!raw) return false;
+  try {
+    const { McpFoundryClient, StdioMcpToolCaller } =
+      await import("../plugins/vtt-foundry/src/index.ts");
+    const argv = raw.split(/\s+/);
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter((e) => typeof e[1] === "string"),
+    );
+    const caller = new StdioMcpToolCaller({
+      command: argv[0],
+      args: argv.slice(1),
+      env,
+    });
+    try {
+      const client = await McpFoundryClient.connect(caller);
+      const info = await client.getWorldInfo();
+      return info.connected === true;
+    } finally {
+      await caller.close().catch(() => undefined);
+    }
+  } catch {
+    return false;
+  }
+}
+
+const exit = await runCli(
+  process.argv.slice(2),
+  {},
+  { extraDeletionAdapters: [memoryAdapter], probeFoundryConnected: probeFoundryAddon },
+);
 process.exit(exit);

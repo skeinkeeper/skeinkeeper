@@ -143,6 +143,15 @@ export interface PostChatMessageArgs {
   speaker?: { actor?: string; alias?: string };
 }
 
+/** TDD 0038 / 0041: filtered chat-log delete for per-player whisper cascade. */
+export interface DeleteChatMessagesArgs {
+  scope: "by-author" | "by-recipient" | "by-time-range";
+  authorFoundryUserId?: string;
+  recipientFoundryUserId?: string;
+  since?: string;
+  until?: string;
+}
+
 export interface FoundryClient {
   /** Identifier of the active Foundry system for the connected world,
    *  e.g., "dnd5e", "fate-core", "dungeon-world". */
@@ -220,6 +229,11 @@ export interface FoundryClient {
 
   /** Table-text write (TDD 0034 / 0041). Public, GM-only, or whisper. */
   postChatMessage(args: PostChatMessageArgs): Promise<{ messageId: string }>;
+  /**
+   * Delete Foundry chat messages (TDD 0038 cascade / TDD 0041 add-on).
+   * `by-recipient` / `by-author` cover a player's whisper history.
+   */
+  deleteChatMessages(args: DeleteChatMessagesArgs): Promise<{ deletedCount: number }>;
   /**
    * All public-chat and whisper events. Not only `/`-prefixed commands.
    * Returns an unsubscribe. No WebSocket gateway here — TDD 0041 owns that.

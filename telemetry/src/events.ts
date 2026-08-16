@@ -271,6 +271,29 @@ export const events = {
     description: "record_player_character wrote a 3-way map row.",
     props: {} as { source: "player" | "operator"; hasFoundryUser: boolean },
   },
+  "erasure.completed": {
+    v: 1,
+    description: "An erasure run finished across registered deletion adapters.",
+    props: {} as {
+      scope: "player" | "campaign" | "tenant";
+      totalRecords: number;
+      adapterCount: number;
+    },
+  },
+  "erasure.partial-success": {
+    v: 1,
+    description: "An erasure finished with one or more manual remainders.",
+    props: {} as {
+      scope: "player" | "campaign" | "tenant";
+      remainderCount: number;
+      reasons: ReadonlyArray<string>;
+    },
+  },
+  "erasure.adapter.failed": {
+    v: 1,
+    description: "A deletion adapter returned a manual remainder.",
+    props: {} as { adapter: string; reason: string },
+  },
 } as const satisfies EventRegistry;
 
 export type Events = typeof events;

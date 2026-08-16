@@ -25,6 +25,10 @@ export const deletionLog = sqliteTable(
     recordsDeleted: integer("records_deleted").notNull(),
     timestamp: integer("timestamp").notNull(),
     reason: text("reason"),
+    /** 1 when this adapter returned a manual remainder (TDD 0038). */
+    partialSuccess: integer("partial_success").notNull().default(0),
+    /** JSON array of ManualRemainder objects; operator audit, not PII. */
+    manualRemainders: text("manual_remainders"),
   },
   (t) => ({
     byTime: index("deletion_log_tenant_time").on(t.tenantId, t.timestamp),

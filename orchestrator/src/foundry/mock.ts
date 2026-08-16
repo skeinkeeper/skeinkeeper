@@ -17,6 +17,7 @@ import type {
   FoundryJournal,
   FoundryChatEvent,
   PostChatMessageArgs,
+  DeleteChatMessagesArgs,
   RollResult,
 } from "./client.js";
 import { parseCompendiumRef } from "./client.js";
@@ -498,6 +499,17 @@ export class MockFoundryClient implements FoundryClient {
     this.chatPosts.push(args);
     this.chatSeq += 1;
     return { messageId: `msg-${this.chatSeq}` };
+  }
+
+  readonly chatDeletes: DeleteChatMessagesArgs[] = [];
+  /** Override for tests; default is a no-op delete of 0. */
+  deleteChatMessagesResultFor: (args: DeleteChatMessagesArgs) => { deletedCount: number } = () => ({
+    deletedCount: 0,
+  });
+
+  async deleteChatMessages(args: DeleteChatMessagesArgs): Promise<{ deletedCount: number }> {
+    this.chatDeletes.push(args);
+    return this.deleteChatMessagesResultFor(args);
   }
 
   subscribeChatEvents(handler: (event: FoundryChatEvent) => void): () => void {
