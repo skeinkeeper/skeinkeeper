@@ -114,6 +114,20 @@ async function main(): Promise<void> {
     }
   });
 
+  // Start the Foundry gateway now — not at first Start — so the pairing secret
+  // is printed on boot and the operator can pair the add-on BEFORE starting a
+  // session (otherwise the documented first Start times out with nothing paired).
+  // Best-effort: a failure here (e.g. the port is in use) is logged and the
+  // console still comes up; Start re-surfaces it.
+  try {
+    await app.foundry.startGateway?.();
+  } catch (err) {
+    console.error(
+      `Foundry gateway failed to start: ${err instanceof Error ? err.message : String(err)}. ` +
+        `The console is up; resolve this before you Start a session.`,
+    );
+  }
+
   const shutdown = async (): Promise<void> => {
     console.log("\nStopping…");
     await app.manager.stop();

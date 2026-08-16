@@ -31,6 +31,9 @@ export interface App {
   providers: AppProviders;
   consent: ConsentService;
   manager: SessionManager;
+  /** The Foundry source, so the entrypoint can start the gateway at boot
+   *  (revealing the pairing secret before the first Start). */
+  foundry: FoundrySource;
 }
 
 export function createApp(
@@ -89,5 +92,5 @@ export function createApp(
     ...(opts.analytics !== undefined ? { analytics: opts.analytics } : {}),
   });
 
-  return { config, tenantDb, providers, consent, manager };
+  return { config, tenantDb, providers, consent, manager, foundry };
 }

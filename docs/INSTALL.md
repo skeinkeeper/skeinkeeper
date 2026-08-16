@@ -155,12 +155,15 @@ so you can diagnose):
 
 > **Foundry.** Copy `modules/skeinkeeper` into your Foundry Data `modules/`
 > folder (or symlink it), enable **Skeinkeeper** in the world, and leave the
-> gateway URL at `ws://127.0.0.1:7733` for a same-machine setup. Start
-> Skeinkeeper first, then paste the **pairing secret** it prints into the
-> add-on's settings — the secret is required on every connection, including
-> loopback (a local web page can otherwise reach the gateway). The add-on
-> dials out when the GM session is ready. Start refuses if the add-on does
-> not connect within 5 seconds — there is no mock Foundry in the operator app.
+> gateway URL at `ws://127.0.0.1:7733` for a same-machine setup. Launch
+> Skeinkeeper first: it prints the **pairing secret** on boot (not at Start),
+> so paste that into the add-on's settings before you Start a session. The
+> secret is required on every connection, including loopback (a local web page
+> can otherwise reach the gateway); when you don't set one it's generated once
+> and persisted, so you pair only once. The add-on dials out when the GM
+> session is ready and re-dials automatically if the connection drops. Start
+> refuses if the add-on does not connect within 5 seconds — there is no mock
+> Foundry in the operator app.
 
 ## Running with Docker
 
@@ -184,7 +187,7 @@ network namespace). Data persists in the `./data` volume.
 | `FOUNDRY_URL`                                                 | Informational (your Foundry web URL). The app does not open this URL; the add-on dials the gateway.                                                                                                                                                                                                                                     |
 | `FOUNDRY_GATEWAY_BIND`                                        | `loopback` (default, `127.0.0.1`) or `lan` (`0.0.0.0`). `lan` requires a pairing secret **and** TLS cert/key.                                                                                                                                                                                                                           |
 | `FOUNDRY_GATEWAY_PORT`                                        | Gateway listen port. Default `7733`.                                                                                                                                                                                                                                                                                                    |
-| `FOUNDRY_PAIRING_SECRET`                                      | Shared secret the add-on sends on `hello`, checked on **every** connection — loopback included, because a WebSocket is not bound by the browser same-origin policy and a local web page could otherwise impersonate the add-on. Generated and printed on the console if unset; paste it into the add-on's settings. Required for `lan`. |
+| `FOUNDRY_PAIRING_SECRET`                                      | Shared secret the add-on sends on `hello`, checked on **every** connection — loopback included, because a WebSocket is not bound by the browser same-origin policy and a local web page could otherwise impersonate the add-on. When unset (loopback), generated once, persisted to the data dir, and printed on the console at boot; paste it into the add-on's settings. Required for `lan`. |
 | `FOUNDRY_GATEWAY_TLS_CERT` / `FOUNDRY_GATEWAY_TLS_KEY`        | PEM cert + key. Required when `FOUNDRY_GATEWAY_BIND=lan`. Add-on URL must be `wss://`.                                                                                                                                                                                                                                                  |
 | `ANTHROPIC_API_KEY`                                           | Your Anthropic API key (Claude).                                                                                                                                                                                                                                                                                                        |
 | `ELEVENLABS_API_KEY`                                          | Your ElevenLabs API key (TTS).                                                                                                                                                                                                                                                                                                          |
@@ -236,9 +239,9 @@ It walks every PII table, encrypts the values, and backfills the salted-hash loo
 You need Foundry VTT v13 or v14 running as a GM session (the add-on attaches in that window). Do not install a third-party Foundry connector.
 
 1. Copy or symlink `modules/skeinkeeper` from this repo into your Foundry Data `modules/` directory.
-2. In the world, enable **Skeinkeeper**. Open its settings: gateway URL `ws://127.0.0.1:7733` (same machine; `wss://<host>:7733` for LAN) and the **pairing secret** printed on the Skeinkeeper console. The secret is required on every connection, loopback included.
-3. Start Skeinkeeper. The console prints the listen address and pairing secret. Then reload the Foundry GM session so the add-on sends `hello`.
-4. Start a session from the web console. If the add-on does not connect within 5 seconds, Start refuses and the Discord bot does not join voice.
+2. Launch Skeinkeeper (`pnpm app:start` or `docker compose up`). It starts the gateway and prints its listen address and the **pairing secret** on boot — before you Start any session. (When `FOUNDRY_PAIRING_SECRET` is unset, the secret is generated once and persisted to the data dir, so it stays the same across restarts.)
+3. In the Foundry world, enable **Skeinkeeper** and open its settings: gateway URL `ws://127.0.0.1:7733` (same machine; `wss://<host>:7733` for LAN) and the **pairing secret** from step 2. The secret is required on every connection, loopback included. Reload the GM session so the add-on sends `hello` and connects.
+4. Start a session from the web console. If the add-on does not connect within 5 seconds, Start refuses and the Discord bot does not join voice. If Foundry drops mid-session, the add-on reconnects on its own when it comes back — no manual reload.
 
 A second GM window that also enables the add-on is rejected (`duplicate`); keep one GM session.
 
