@@ -62,9 +62,10 @@ During play you only need to watch **Foundry + Discord voice** — operator note
 come to you as Foundry GM chat (see "Operator notes" below), so the console's
 live feed is optional observability, not something you have to babysit.
 
-**Same controls from Discord.** Every operator control above is also a slash
-command, and the two surfaces stay in sync live — change the DM voice in Discord
-and the console reflects it without a refresh, and vice versa ([TDD 0040](./tdd/0040-operator-control-parity-foundry-chat-commands.md)):
+**Same controls from Foundry chat.** Every operator control above is also a
+`/skeinkeeper` command you type in Foundry chat, and the two surfaces stay in
+sync live — change the DM voice from Foundry chat and the console reflects it
+without a refresh, and vice versa ([TDD 0040](./tdd/0040-operator-control-parity-foundry-chat-commands.md)). Discord is voice + one-time consent only; it is not an operator-control surface ([ADR-0025](./adr/0025-foundry-as-table-text-and-operator-surface.md), [ADR-0028](./adr/0028-operator-control-parity-foundry-chat.md)):
 
 - `/skeinkeeper session action:stop` — end the session.
 - `/skeinkeeper eagerness level:reserved|balanced|eager`.
@@ -72,8 +73,8 @@ and the console reflects it without a refresh, and vice versa ([TDD 0040](./tdd/
 - `/skeinkeeper operator action:claim|clear|show` (see "Operator notes").
 - `/skeinkeeper pvp action:on|off|show` — toggle player-vs-player (operator only; needs Manage Channel on the voice channel).
 
-(Cold-_starting_ a session is console-only for now — the bot has to be online to
-receive a slash command, and starting is what brings it online.)
+(Cold-_starting_ a session is console-only for now — you start from the console;
+the other controls work from Foundry chat once a session is running.)
 
 **Before you click Start (pre-flight).** You ready the _world_; Skeinkeeper
 onboards the _people_ live ([TDD 0036](./tdd/0036-onboarding-and-foundry-user-preflight.md)).
@@ -115,9 +116,9 @@ world — it posts a GM-only Foundry chat message. Players never see these notes
 Designate yourself the operator any of three ways
 ([TDD 0024](./tdd/0024-operator-self-designation.md)):
 
-- **In Discord:** type `/skeinkeeper operator claim` — you become the operator;
+- **In Foundry chat:** type `/skeinkeeper operator claim` — you become the operator;
   no IDs or usernames needed. (`clear` / `show` manage it.) `claim`/`clear`
-  require the **Manage Channel** permission on the Skeinkeeper voice channel, so
+  require the **Manage Channel** permission on the Skeinkeeper Discord voice channel, so
   a random guild member can't hijack the setup DMs — grant it via the voice
   channel's permission settings (server admins already have it).
 - **In the console (Operator panel):** while a session is running, pick yourself
@@ -125,7 +126,7 @@ Designate yourself the operator any of three ways
   **@username** (findable in Settings → My Account — no Developer Mode). The list
   updates live as people join/leave.
 - **In `.env` (fallback):** `DISCORD_OPERATOR_USER_ID=<your numeric user ID>`
-  seeds a default for headless setups. A designation set via Discord or the
+  seeds a default for headless setups. A designation set via Foundry chat or the
   console is persisted and takes precedence; if nothing is set anywhere, notes
   fall back to the server log (degraded).
 

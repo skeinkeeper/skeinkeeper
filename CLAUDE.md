@@ -10,7 +10,7 @@ This file gives AI coding assistants (Claude Code, similar tools) project-specif
 
 Skeinkeeper is a self-hosted, open-source AI Dungeon Master. A friend group runs it on one operator's machine; the AI joins their Discord voice channel and runs tabletop RPG campaigns over Foundry VTT. The operator brings their own Discord bot token, their own Foundry instance, and their own LLM/voice provider API keys.
 
-Current milestone: pre-MVP alpha. The reference deployment is the founder's hybrid table running Lost Mine of Phandelver.
+Current milestone: pre-MVP alpha. The reference deployment is the founder's fully-remote table (every player on their own Discord voice connection and their own Foundry view, per [ADR-0026](./docs/adr/0026-fully-remote-all-individual-configuration.md)) running Lost Mine of Phandelver.
 
 ## Canonical documents
 
