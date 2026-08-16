@@ -65,14 +65,14 @@ Before opening the PR, run through the docs that name the concepts you touched (
 
 The doc work can land as a second commit in the same PR if it's substantial. What it cannot do is land in a later PR. Reviewers reject doc-drift PRs the same way they reject test-less feature PRs — both are forms of "this change wasn't finished."
 
-If you find yourself thinking *"I'll fix the docs in a follow-up"*: stop. That follow-up nearly always becomes a sanity-sweep weeks later, and in the meantime contributors and operators are reading wrong information. Catching it now is much cheaper.
+If you find yourself thinking _"I'll fix the docs in a follow-up"_: stop. That follow-up nearly always becomes a sanity-sweep weeks later, and in the meantime contributors and operators are reading wrong information. Catching it now is much cheaper.
 
 ### Never edit an accepted ADR in place — supersede it
 
 The ADR README is explicit: ADRs are append-only and immutable once accepted. When a decision changes, the procedure is:
 
 1. **Write a new ADR with the next sequential number** that captures the new context, decision, and consequences. Include a `Supersedes: ADR-NNNN` line at the top.
-2. **On the old ADR, change only its `Status:` line** to `Superseded by ADR-MMMM (date)`. Do not rewrite the body, do not update the recommendation, do not "modernize" the consequences. The original text is the historical record of *what we decided and why, given what we knew at the time*. Rewriting it destroys the signal future readers need.
+2. **On the old ADR, change only its `Status:` line** to `Superseded by ADR-MMMM (date)`. Do not rewrite the body, do not update the recommendation, do not "modernize" the consequences. The original text is the historical record of _what we decided and why, given what we knew at the time_. Rewriting it destroys the signal future readers need.
 3. **Update the [ADR index](./docs/adr/) to reflect the new state on both rows**, and update any TDDs that referenced the old ADR's substance to point at the superseding one.
 
 Light editorial touch-ups are fine (typos, broken links, flipping `Proposed` → `Accepted`, recording a supersession). Anything that changes the substance of the decision is a superseding ADR, not an edit.
@@ -143,6 +143,7 @@ Or set up a global alias to make `git commit` always sign off.
 - `camelCase` for variables and functions, `PascalCase` for types and classes, `SCREAMING_SNAKE_CASE` for constants
 - One exported concept per file; co-locate tests as `*.test.ts`
 - Path aliases via `tsconfig` — no `../../../` chains
+- **3-way identity is canonical** ([TDD 0036](./docs/tdd/0036-onboarding-and-foundry-user-preflight.md)): Discord user ↔ Foundry user ↔ Foundry actor. Features that scope per-player use the Discord user ID as the primary key (continuity with TDD 0016) and read `foundryUserId` from `player_character_map` when they need the Foundry login. Don't invent a parallel player index.
 
 ## Working with AI coding tools
 
