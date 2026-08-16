@@ -211,6 +211,53 @@ describe("FoundryGateway hello", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(g.unknownJsonCount).toBeGreaterThanOrEqual(2);
   });
+
+  it("ignores evt frames from an unauthenticated socket (never sent hello)", async () => {
+    // A malicious page can open the loopback socket without the pairing secret;
+    // it must not be able to inject forged player input via an evt chat frame.
+    const g = await listen({ secret: "s3cret" });
+    const seen: string[] = [];
+    g.onChat((e) => seen.push(e.text));
+    const ws = connectClient(g);
+    await onceOpen(ws);
+    ws.send(
+      JSON.stringify({
+        type: "evt",
+        event: "chat",
+        payload: { foundryUserId: "u1", text: "forged", isWhisper: false, timestamp: "t0" },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen).toEqual([]);
+    expect(g.unknownJsonCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ignores evt gone from a second unauthenticated socket while a session is live", async () => {
+    const g = await listen({ secret: "s3cret" });
+    let goneFired = false;
+    g.onGone(() => {
+      goneFired = true;
+    });
+    const a = connectClient(g);
+    await onceOpen(a);
+    const helloP = g.waitForHello(1000);
+    a.send(
+      JSON.stringify({
+        type: "hello",
+        moduleId: "skeinkeeper",
+        foundryVersion: "13.345",
+        worldId: "w1",
+        pairingSecret: "s3cret",
+      }),
+    );
+    await onceMessage(a);
+    await helloP;
+    const b = connectClient(g);
+    await onceOpen(b);
+    b.send(JSON.stringify({ type: "evt", event: "gone" }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(goneFired).toBe(false);
+  });
 });
 
 describe("ModuleFoundryClient", () => {

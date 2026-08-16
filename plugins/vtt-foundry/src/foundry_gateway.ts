@@ -3,7 +3,7 @@
 
 import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { FoundryChatEvent } from "@skeinkeeper/orchestrator";
 
@@ -104,7 +104,9 @@ export class FoundryGateway {
     const tls = this.opts.tls;
     this.http =
       tls !== undefined ? createHttpsServer({ cert: tls.cert, key: tls.key }) : createHttpServer();
-    this.wss = new WebSocketServer({ server: this.http });
+    // Control frames are tiny JSON; cap the payload so a pre-auth peer can't
+    // push huge frames as a memory DoS (frames are parsed before any auth check).
+    this.wss = new WebSocketServer({ server: this.http, maxPayload: 64 * 1024 });
     this.wss.on("connection", (ws, req) => this.onConnection(ws, req.socket.remoteAddress ?? ""));
 
     await new Promise<void>((resolve, reject) => {
@@ -229,12 +231,20 @@ export class FoundryGateway {
       this.handleHello(ws, msg, remote);
       return;
     }
-    if (type === "res") {
-      this.handleRes(msg);
-      return;
-    }
-    if (type === "evt") {
-      this.handleEvt(msg);
+    // `res` and `evt` are only meaningful from the ONE authenticated add-on
+    // session. The pairing secret is checked in handleHello and `this.socket` is
+    // assigned only after it passes — so requiring `ws === this.socket` here means
+    // an unauthenticated peer (e.g. a malicious web page that opened the loopback
+    // socket and skipped `hello`) cannot inject `evt chat` (forged player input /
+    // operator commands) or `evt gone` (session-teardown DoS), nor spoof a `res`.
+    if (type === "res" || type === "evt") {
+      if (ws !== this.socket) {
+        this.unknownJsonCount += 1;
+        this.opts.log?.(`ignored ${type} frame from an unauthenticated socket`);
+        return;
+      }
+      if (type === "res") this.handleRes(msg);
+      else this.handleEvt(msg);
       return;
     }
     this.unknownJsonCount += 1;
@@ -268,7 +278,7 @@ export class FoundryGateway {
     const secret = typeof msg["pairingSecret"] === "string" ? msg["pairingSecret"] : "";
     const secretConfigured = this.pairingSecret.trim().length > 0;
     const peerIsLoopback = isLoopback(remote);
-    const authorized = secretConfigured ? secret === this.pairingSecret : peerIsLoopback;
+    const authorized = secretConfigured ? safeEqual(secret, this.pairingSecret) : peerIsLoopback;
     if (!authorized) {
       ws.send(
         JSON.stringify({
@@ -363,4 +373,13 @@ function isLoopback(remote: string): boolean {
   // An empty/unknown remote address is treated as NON-loopback (fail closed):
   // it must not bypass the pairing check on a secret-less dev gateway.
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
+/** Constant-time string compare for the pairing secret (the sole gateway
+ *  credential), mirroring auth.ts's token check. Length mismatch → false. */
+function safeEqual(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
 }
