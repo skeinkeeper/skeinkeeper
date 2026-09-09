@@ -81,4 +81,39 @@ describe("loadConfig", () => {
   it("refuses lan bind without TLS and a pairing secret", () => {
     expect(() => loadConfig({ ...FULL, FOUNDRY_GATEWAY_BIND: "lan" })).toThrow(ConfigError);
   });
+
+  it("accepts container bind with no pairing secret and no TLS (TDD 0043)", () => {
+    // The secret is generated and persisted at boot (loadOrCreatePairingSecret),
+    // so requiring it in the env would put a setup step in front of
+    // `docker compose up`. TLS is not required: the bind is inside the
+    // container's network namespace, published to host loopback only.
+    const cfg = loadConfig({ ...FULL, FOUNDRY_GATEWAY_BIND: "container" });
+    expect(cfg.foundry.gateway.bind).toBe("container");
+    expect(cfg.foundry.gateway.pairingSecret).toBe("");
+    expect(cfg.foundry.gateway.tls).toBeUndefined();
+  });
+
+  it("keeps an operator-set secret and TLS in container mode", () => {
+    const cfg = loadConfig({
+      ...FULL,
+      FOUNDRY_GATEWAY_BIND: "container",
+      FOUNDRY_PAIRING_SECRET: "  fake-secret  ",
+      FOUNDRY_GATEWAY_TLS_CERT: "fake-cert",
+      FOUNDRY_GATEWAY_TLS_KEY: "fake-key",
+    });
+    expect(cfg.foundry.gateway.pairingSecret).toBe("fake-secret");
+    expect(cfg.foundry.gateway.tls).toEqual({ cert: "fake-cert", key: "fake-key" });
+  });
+
+  it("falls back to loopback on an unrecognised bind value", () => {
+    // Matches the rest of the parser: unknown input degrades to the safe
+    // default rather than binding something wide by accident.
+    expect(loadConfig({ ...FULL, FOUNDRY_GATEWAY_BIND: "nonsense" }).foundry.gateway.bind).toBe(
+      "loopback",
+    );
+    expect(loadConfig({ ...FULL, FOUNDRY_GATEWAY_BIND: "" }).foundry.gateway.bind).toBe("loopback");
+    expect(
+      loadConfig({ ...FULL, FOUNDRY_GATEWAY_BIND: "  container  " }).foundry.gateway.bind,
+    ).toBe("container");
+  });
 });
