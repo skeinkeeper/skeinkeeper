@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { VERSION } from "@skeinkeeper/core";
 import { createAnalytics, createCrash } from "@skeinkeeper/telemetry";
 import { loadConfig } from "./config.js";
+import { CONSOLE_PASSWORD_FILE, loadOrCreateConsolePassword } from "./auth.js";
 import { createApp } from "./bootstrap.js";
 import { EnvKeySource, loadEffectiveEnv } from "@skeinkeeper/server";
 import { loadDotenv } from "./dotenv.js";
@@ -78,10 +79,24 @@ async function main(): Promise<void> {
   // Optional local auth: set SKEINKEEPER_OPERATOR_PASSWORD_HASH (from
   // `hashPassword`) to require login; otherwise the localhost console is open.
   const passwordHash = env["SKEINKEEPER_OPERATOR_PASSWORD_HASH"];
+  const operatorHash =
+    passwordHash !== undefined && passwordHash.length > 0 ? passwordHash : undefined;
+  // A container deployment binds the console to 0.0.0.0 inside its namespace
+  // and publishes it to the host, so it must never be unauthenticated — but the
+  // password hash is documented as optional and the quick start never sets one.
+  // Provision one the way the pairing secret already is (TDD 0043): generate,
+  // persist 0600 under the data dir the compose volume carries, and reveal it
+  // once. This SATISFIES the fail-closed guard below rather than relaxing it —
+  // `auth` is always defined in this mode, so the guard never has to fire.
+  const consoleCredential =
+    operatorHash === undefined && config.foundry.gateway.bind === "container"
+      ? loadOrCreateConsolePassword(config.dataDir)
+      : undefined;
+  const effectiveHash = operatorHash ?? consoleCredential?.hash;
   const auth =
-    passwordHash !== undefined && passwordHash.length > 0
+    effectiveHash !== undefined
       ? {
-          passwordHash,
+          passwordHash: effectiveHash,
           tokenSecret: env["SKEINKEEPER_SESSION_SECRET"] ?? randomBytes(32).toString("hex"),
         }
       : undefined;
@@ -104,6 +119,17 @@ async function main(): Promise<void> {
   const web = createWebServer(app, bus, auth);
   web.listen(config.webPort, host, () => {
     console.log(`Skeinkeeper operator console: http://${host}:${config.webPort}`);
+    if (consoleCredential !== undefined) {
+      const path = join(config.dataDir, CONSOLE_PASSWORD_FILE);
+      if (consoleCredential.created) {
+        // Only on the boot that generated it. This credential controls the live
+        // session, and `docker logs` output gets pasted into support threads.
+        console.log(`  Console password (generated — copy it now): ${consoleCredential.password}`);
+        console.log(`  Stored in ${path}; it will not be printed again.`);
+      } else {
+        console.log(`  Console password: unchanged, read it from ${path} (never reprinted).`);
+      }
+    }
     if (auth === undefined)
       console.log(
         "  (no operator password set — console is unauthenticated; loopback-only. " +
