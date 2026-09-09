@@ -7,7 +7,18 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { FoundryChatEvent } from "@skeinkeeper/orchestrator";
 
-export type GatewayBind = "loopback" | "lan";
+/**
+ * Where the gateway listens, and what threat model that implies (TDD 0043 —
+ * narrowly superseding TDD 0041's two-mode bind table).
+ *
+ * - `loopback` — `127.0.0.1`; native same-machine default.
+ * - `container` — `0.0.0.0` inside the container's own network namespace,
+ *   reached from the host only through the shipped compose file's
+ *   loopback-scoped publish mapping. Not network-facing, so no TLS — but the
+ *   namespace edge is not a credential, so the pairing secret is mandatory.
+ * - `lan` — `0.0.0.0` on a real network; requires TLS and a pairing secret.
+ */
+export type GatewayBind = "loopback" | "container" | "lan";
 
 export interface FoundryGatewayTls {
   cert: string;
@@ -66,7 +77,7 @@ export class FoundryGateway {
   }
 
   get bindHost(): string {
-    return this.opts.bind === "lan" ? "0.0.0.0" : "127.0.0.1";
+    return this.opts.bind === "loopback" ? "127.0.0.1" : "0.0.0.0";
   }
 
   get port(): number {
@@ -75,6 +86,13 @@ export class FoundryGateway {
     return this.opts.port;
   }
 
+  /**
+   * The URL advertised to the operator for the add-on's `gatewayUrl` setting —
+   * what the GM's browser dials, which is not always what we bind (TDD 0043).
+   * `container` binds `0.0.0.0` but is reached through the compose file's
+   * `127.0.0.1:<port>` publish mapping, so it must advertise loopback: an
+   * add-on pointed at `ws://0.0.0.0:<port>` would never connect.
+   */
   get listenUrl(): string {
     const scheme = this.opts.tls !== undefined ? "wss" : "ws";
     const host = this.opts.bind === "lan" ? "0.0.0.0" : "127.0.0.1";
@@ -86,6 +104,17 @@ export class FoundryGateway {
   }
 
   async listen(): Promise<void> {
+    if (this.opts.bind === "container" && this.pairingSecret.trim().length === 0) {
+      // A blank secret falls back to "authorize any loopback peer" (see
+      // handleHello). Inside a container every sibling service on the Compose
+      // project network can reach this port directly without traversing the
+      // host publish mapping the safety argument rests on, so the secret — not
+      // the namespace edge — is what has to hold. Never optional here.
+      throw new FoundryGatewayError(
+        "pairing-secret-required",
+        "FOUNDRY_GATEWAY_BIND=container requires a non-empty pairing secret.",
+      );
+    }
     if (this.opts.bind === "lan") {
       if (this.pairingSecret.trim().length === 0) {
         throw new FoundryGatewayError(
@@ -113,7 +142,9 @@ export class FoundryGateway {
       this.http!.once("error", reject);
       this.http!.listen(this.opts.port, this.bindHost, () => resolve());
     });
-    this.opts.log?.(`Foundry gateway listening on ${this.listenUrl}`);
+    this.opts.log?.(
+      `Foundry gateway listening on ${this.bindHost}:${this.port}; add-on URL ${this.listenUrl}`,
+    );
   }
 
   async close(): Promise<void> {
