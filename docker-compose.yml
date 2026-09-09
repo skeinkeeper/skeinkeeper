@@ -2,18 +2,37 @@
 # Copyright 2026 Skeinkeeper Contributors
 #
 # `docker compose up` runs the operator app (console on localhost:3000).
-# Foundry runs outside this compose, on the operator's own machine/network. There
-# is no third-party connector: enable the first-party Skeinkeeper add-on in your
-# Foundry world and point it at this app's gateway (default ws://127.0.0.1:7733).
-# Same-machine (loopback) is the default; a Foundry that must reach the gateway
-# across the network needs FOUNDRY_GATEWAY_BIND=lan + a pairing secret + TLS
-# (see docs/INSTALL.md). The add-on always presents the pairing secret.
+# Foundry runs outside this compose, on the operator's own machine. There is no
+# third-party connector: enable the first-party Skeinkeeper add-on in your
+# Foundry world and point it at ws://127.0.0.1:7733 (ADR-0029, TDD 0044).
+#
+# The add-on runs in the GM's *browser*, so both the console and the gateway
+# have to be reachable from the host. Inside the container the app therefore
+# binds 0.0.0.0 — of the container's own network namespace — and both ports are
+# published to the HOST'S LOOPBACK ONLY. That publish scoping is the security
+# boundary: do not widen a mapping to 0.0.0.0. A Foundry on another machine is
+# FOUNDRY_GATEWAY_BIND=lan + a pairing secret + TLS instead (docs/INSTALL.md).
+# The add-on presents the pairing secret on every connection, and the console
+# requires a password (generated on first boot and printed once).
 services:
   app:
     build: .
     env_file: .env
+    # Set here, not in .env: the deployment's shape is a property of the shipped
+    # artifact, not something an operator can forget or half-configure.
+    # `environment:` wins over `env_file:` for the same key, deliberately.
+    environment:
+      FOUNDRY_GATEWAY_BIND: "container"
+      SKEINKEEPER_WEB_HOST: "0.0.0.0"
+    # Both sides of each mapping template off the SAME variable: the app reads
+    # these vars to pick its listen port *inside* the container (app/src/config.ts),
+    # so hardcoding the container side leaves nothing listening whenever an
+    # operator customises the port.
     ports:
-      - "${SKEINKEEPER_WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${SKEINKEEPER_WEB_PORT:-3000}:${SKEINKEEPER_WEB_PORT:-3000}"
+      - "127.0.0.1:${FOUNDRY_GATEWAY_PORT:-7733}:${FOUNDRY_GATEWAY_PORT:-7733}"
     volumes:
+      # Carries the pairing secret and the console password across container
+      # replacement, so you pair and log in once.
       - ./data:/data
     restart: unless-stopped
