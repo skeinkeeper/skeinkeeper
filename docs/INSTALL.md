@@ -167,44 +167,111 @@ so you can diagnose):
 
 ## Running with Docker
 
+This is the supported operator install path.
+
 ```bash
 cp .env.example .env   # fill in tokens/keys
 docker compose up
 ```
 
-The `app` service builds the image, installs ffmpeg + the native deps, and serves
-the console on `localhost:3000`. Foundry runs on the host; the Skeinkeeper add-on
-dials `ws://127.0.0.1:7733` (publish that port if the add-on is not on the same
-network namespace). Data persists in the `./data` volume.
+The `app` service builds the image, installs ffmpeg + the native deps, and runs
+the Discord gateway, the voice loop, the operator console, and the Foundry
+gateway. Foundry itself runs outside the container, on your own machine.
+
+**What compose sets for you.** The Skeinkeeper add-on runs in the GM's _browser_,
+on the host — not inside the Foundry server process — so both the console and the
+gateway have to be reachable from the host. The compose file therefore sets
+`FOUNDRY_GATEWAY_BIND=container` and `SKEINKEEPER_WEB_HOST=0.0.0.0` in its own
+`environment:` block (it overrides `.env`, deliberately: the deployment's shape is
+a property of the shipped file, not a knob you can half-configure). Inside the
+container the app then binds `0.0.0.0` — of the _container's own network
+namespace_ — and compose publishes both ports to **your host's loopback only**:
+
+| Published        | What                                                      |
+| ---------------- | --------------------------------------------------------- |
+| `127.0.0.1:3000` | Operator console (`SKEINKEEPER_WEB_PORT`)                 |
+| `127.0.0.1:7733` | Foundry gateway the add-on dials (`FOUNDRY_GATEWAY_PORT`) |
+
+Nothing is on your LAN. That loopback scoping is the security boundary — see
+**Do not do these two things** below.
+
+**First boot, in order:**
+
+1. `docker compose up`. Watch the logs for two values printed once:
+   - the **console password** — generated because a network-facing console must
+     never be unauthenticated, and saved to `./data/.console-password` (mode
+     `0600`). It is printed **only on the boot that creates it**; later boots log
+     the file path instead, because the console controls the live session and
+     `docker logs` output tends to get pasted into support threads. Copy it now,
+     or read it from that file later.
+   - the **pairing secret** — same as the native path, persisted to
+     `./data/.foundry-pairing-secret`.
+2. Open `http://localhost:3000` and log in with that password.
+3. In your Foundry world, enable **Skeinkeeper** and set its gateway URL to
+   `ws://127.0.0.1:7733` and the pairing secret from step 1. (The URL is the same
+   as the native path: the container publishes 7733 to your host's loopback.)
+   Reload the GM session; the console logs the pairing accept.
+4. Seed your campaign (see below). Inside the container the data dir is `/data`,
+   so run it as
+   `docker compose exec app env SKEINKEEPER_SEED_PATH=/data/seed.yaml pnpm tsx server/src/seed-cli.ts`
+   after putting `seed.yaml` in the host's `./data`.
+5. **Start** a session from the console.
+
+`./data` is mounted at `/data`, so the pairing secret, the console password, and
+the database all survive `docker compose down && docker compose up` — you pair
+once and log in once.
+
+**Custom ports.** `SKEINKEEPER_WEB_PORT` and `FOUNDRY_GATEWAY_PORT` in `.env`
+move both sides of the mapping together, because the app binds that same port
+inside the container. If you change `FOUNDRY_GATEWAY_PORT`, paste the new port
+into the add-on's gateway URL too.
+
+**Do not do these two things:**
+
+- **Do not widen a publish mapping** to `0.0.0.0:3000:3000` or
+  `0.0.0.0:7733:7733`. That genuinely puts both surfaces on your network — the
+  gateway without TLS, the console with only a password — and Skeinkeeper cannot
+  detect it, because a connection arriving through the publish mapping looks
+  identical to a LAN peer. If you need Foundry on another machine, use
+  `FOUNDRY_GATEWAY_BIND=lan` with TLS (below), which is the supported way.
+- **Do not add a second service to this Compose project** without reading this
+  first. Docker's project network lets any sibling container reach these ports
+  _directly_, never traversing the host publish mapping the paragraph above rests
+  on. The mandatory pairing secret and the always-present console password are
+  what keep that from being an open door — so never blank either one out.
+
+**Images built before this repo had a `.dockerignore`** contain your `.env` and
+your `data/` directory, because `COPY . .` copied them in. Rebuild such an image,
+and do not publish one you built earlier.
 
 ## Configuration
 
 `.env.example` documents every variable Skeinkeeper reads. The required-for-alpha ones:
 
-| Variable                                                      | Purpose                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DISCORD_BOT_TOKEN`                                           | Your bot's token from the Discord developer portal.                                                                                                                                                                                                                                                                                     |
-| `FOUNDRY_URL`                                                 | Informational (your Foundry web URL). The app does not open this URL; the add-on dials the gateway.                                                                                                                                                                                                                                     |
-| `FOUNDRY_GATEWAY_BIND`                                        | `loopback` (default, `127.0.0.1`) or `lan` (`0.0.0.0`). `lan` requires a pairing secret **and** TLS cert/key.                                                                                                                                                                                                                           |
-| `FOUNDRY_GATEWAY_PORT`                                        | Gateway listen port. Default `7733`.                                                                                                                                                                                                                                                                                                    |
+| Variable                                                      | Purpose                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_BOT_TOKEN`                                           | Your bot's token from the Discord developer portal.                                                                                                                                                                                                                                                                                                                                            |
+| `FOUNDRY_URL`                                                 | Informational (your Foundry web URL). The app does not open this URL; the add-on dials the gateway.                                                                                                                                                                                                                                                                                            |
+| `FOUNDRY_GATEWAY_BIND`                                        | `loopback` (default, `127.0.0.1`), `container` (`0.0.0.0` inside a container's network namespace — set for you by `docker-compose.yml`, not something to enable on a native run), or `lan` (`0.0.0.0`). `lan` requires a pairing secret **and** TLS cert/key.                                                                                                                                  |
+| `FOUNDRY_GATEWAY_PORT`                                        | Gateway listen port. Default `7733`.                                                                                                                                                                                                                                                                                                                                                           |
 | `FOUNDRY_PAIRING_SECRET`                                      | Shared secret the add-on sends on `hello`, checked on **every** connection — loopback included, because a WebSocket is not bound by the browser same-origin policy and a local web page could otherwise impersonate the add-on. When unset (loopback), generated once, persisted to the data dir, and printed on the console at boot; paste it into the add-on's settings. Required for `lan`. |
-| `FOUNDRY_GATEWAY_TLS_CERT` / `FOUNDRY_GATEWAY_TLS_KEY`        | PEM cert + key. Required when `FOUNDRY_GATEWAY_BIND=lan`. Add-on URL must be `wss://`.                                                                                                                                                                                                                                                  |
-| `ANTHROPIC_API_KEY`                                           | Your Anthropic API key (Claude).                                                                                                                                                                                                                                                                                                        |
-| `ELEVENLABS_API_KEY`                                          | Your ElevenLabs API key (TTS).                                                                                                                                                                                                                                                                                                          |
-| `DEEPGRAM_API_KEY`                                            | Your Deepgram API key (STT). Skip if using local Whisper.                                                                                                                                                                                                                                                                               |
-| `DISCORD_GUILD_ID`                                            | The Discord server (guild) ID the bot operates in.                                                                                                                                                                                                                                                                                      |
-| `DISCORD_VOICE_CHANNEL_ID`                                    | The voice channel the bot joins.                                                                                                                                                                                                                                                                                                        |
-| `DISCORD_OPERATOR_USER_ID`                                    | Optional **fallback** for the operator who gets setup DMs. Prefer `/skeinkeeper operator claim` or the console Operator panel — a designation set there is persisted and overrides this. Unset everywhere = notes fall back to the server log.                                                                                          |
-| `SKEINKEEPER_DATA_DIR`                                        | Where Skeinkeeper stores its SQLite + LanceDB data. Defaults to `./data`.                                                                                                                                                                                                                                                               |
-| `SKEINKEEPER_WEB_PORT`                                        | Operator console port. Defaults to `3000`.                                                                                                                                                                                                                                                                                              |
-| `SKEINKEEPER_WEB_HOST`                                        | Operator console bind address. Defaults to `127.0.0.1` (localhost). Set `0.0.0.0` to expose it on your network — only if you understand the risk.                                                                                                                                                                                       |
-| `ANTHROPIC_MODEL_NARRATION` / `ANTHROPIC_MODEL_ORCHESTRATION` | Optional model overrides; the provider's per-tier defaults apply when unset.                                                                                                                                                                                                                                                            |
-| `SKEINKEEPER_CAMPAIGN_ID`                                     | Campaign identifier. Defaults to `default`.                                                                                                                                                                                                                                                                                             |
-| `SKEINKEEPER_EAGERNESS`                                       | Default DM eagerness: `reserved` \| `balanced` \| `eager`. Defaults to `balanced`; tunable at runtime in the console.                                                                                                                                                                                                                   |
-| `ELEVENLABS_DM_VOICE_ID`                                      | Optional override for the DM voice (otherwise set via the console's persona picker).                                                                                                                                                                                                                                                    |
-| `SKEINKEEPER_OPERATOR_PASSWORD_HASH`                          | Optional. Set (via `hashPassword`) to require login to the console. Unset = open on localhost.                                                                                                                                                                                                                                          |
-| `SKEINKEEPER_SESSION_SECRET`                                  | Optional HMAC secret for session cookies; a random one is used if unset (sessions reset on restart).                                                                                                                                                                                                                                    |
-| `SKEINKEEPER_SECRET_PASSPHRASE`                               | Optional. Passphrase that opens the sealed credential store (`secrets:seal`) **and** turns on per-column PII encryption at rest (`pii:encrypt`). Supply via your shell/host secret, **not** `.env`. Unset = secrets read from `.env` and PII stored as plaintext.                                                                       |
+| `FOUNDRY_GATEWAY_TLS_CERT` / `FOUNDRY_GATEWAY_TLS_KEY`        | PEM cert + key. Required when `FOUNDRY_GATEWAY_BIND=lan`. Add-on URL must be `wss://`.                                                                                                                                                                                                                                                                                                         |
+| `ANTHROPIC_API_KEY`                                           | Your Anthropic API key (Claude).                                                                                                                                                                                                                                                                                                                                                               |
+| `ELEVENLABS_API_KEY`                                          | Your ElevenLabs API key (TTS).                                                                                                                                                                                                                                                                                                                                                                 |
+| `DEEPGRAM_API_KEY`                                            | Your Deepgram API key (STT). Skip if using local Whisper.                                                                                                                                                                                                                                                                                                                                      |
+| `DISCORD_GUILD_ID`                                            | The Discord server (guild) ID the bot operates in.                                                                                                                                                                                                                                                                                                                                             |
+| `DISCORD_VOICE_CHANNEL_ID`                                    | The voice channel the bot joins.                                                                                                                                                                                                                                                                                                                                                               |
+| `DISCORD_OPERATOR_USER_ID`                                    | Optional **fallback** for the operator who gets setup DMs. Prefer `/skeinkeeper operator claim` or the console Operator panel — a designation set there is persisted and overrides this. Unset everywhere = notes fall back to the server log.                                                                                                                                                 |
+| `SKEINKEEPER_DATA_DIR`                                        | Where Skeinkeeper stores its SQLite + LanceDB data. Defaults to `./data`.                                                                                                                                                                                                                                                                                                                      |
+| `SKEINKEEPER_WEB_PORT`                                        | Operator console port. Defaults to `3000`.                                                                                                                                                                                                                                                                                                                                                     |
+| `SKEINKEEPER_WEB_HOST`                                        | Operator console bind address. Defaults to `127.0.0.1` (localhost). Set `0.0.0.0` to expose it on your network — only if you understand the risk.                                                                                                                                                                                                                                              |
+| `ANTHROPIC_MODEL_NARRATION` / `ANTHROPIC_MODEL_ORCHESTRATION` | Optional model overrides; the provider's per-tier defaults apply when unset.                                                                                                                                                                                                                                                                                                                   |
+| `SKEINKEEPER_CAMPAIGN_ID`                                     | Campaign identifier. Defaults to `default`.                                                                                                                                                                                                                                                                                                                                                    |
+| `SKEINKEEPER_EAGERNESS`                                       | Default DM eagerness: `reserved` \| `balanced` \| `eager`. Defaults to `balanced`; tunable at runtime in the console.                                                                                                                                                                                                                                                                          |
+| `ELEVENLABS_DM_VOICE_ID`                                      | Optional override for the DM voice (otherwise set via the console's persona picker).                                                                                                                                                                                                                                                                                                           |
+| `SKEINKEEPER_OPERATOR_PASSWORD_HASH`                          | Optional. Set (via `hashPassword`) to require login to the console. Unset = open on localhost — except under `FOUNDRY_GATEWAY_BIND=container`, where a password is generated, saved to `<data dir>/.console-password` (`0600`), and printed once on the boot that creates it.                                                                                                                  |
+| `SKEINKEEPER_SESSION_SECRET`                                  | Optional HMAC secret for session cookies; a random one is used if unset (sessions reset on restart).                                                                                                                                                                                                                                                                                           |
+| `SKEINKEEPER_SECRET_PASSPHRASE`                               | Optional. Passphrase that opens the sealed credential store (`secrets:seal`) **and** turns on per-column PII encryption at rest (`pii:encrypt`). Supply via your shell/host secret, **not** `.env`. Unset = secrets read from `.env` and PII stored as plaintext.                                                                                                                              |
 
 ### Sealing your secrets at rest (optional)
 
@@ -240,7 +307,7 @@ You need Foundry VTT v13 or v14 running as a GM session (the add-on attaches in 
 
 1. Copy or symlink `modules/skeinkeeper` from this repo into your Foundry Data `modules/` directory.
 2. Launch Skeinkeeper (`pnpm app:start` or `docker compose up`). It starts the gateway and prints its listen address and the **pairing secret** on boot — before you Start any session. (When `FOUNDRY_PAIRING_SECRET` is unset, the secret is generated once and persisted to the data dir, so it stays the same across restarts.)
-3. In the Foundry world, enable **Skeinkeeper** and open its settings: gateway URL `ws://127.0.0.1:7733` (same machine; `wss://<host>:7733` for LAN) and the **pairing secret** from step 2. The secret is required on every connection, loopback included. Reload the GM session so the add-on sends `hello` and connects.
+3. In the Foundry world, enable **Skeinkeeper** and open its settings: gateway URL `ws://127.0.0.1:7733` (same machine — including `docker compose up`, which publishes 7733 to your host's loopback; `wss://<host>:7733` for LAN) and the **pairing secret** from step 2. The secret is required on every connection, loopback included. Reload the GM session so the add-on sends `hello` and connects.
 4. Start a session from the web console. If the add-on does not connect within 5 seconds, Start refuses and the Discord bot does not join voice. If Foundry drops mid-session, the add-on reconnects on its own when it comes back — no manual reload.
 
 A second GM window that also enables the add-on is rejected (`duplicate`); keep one GM session.
