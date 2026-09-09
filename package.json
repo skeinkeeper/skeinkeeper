@@ -66,7 +66,7 @@
       "ws@<8.21.0": "^8.21.0"
     },
     "auditConfig": {
-      "_comment": "GHSAs the `pnpm audit` CI gate ignores. All are `tar` advisories reachable only through fastembed (the local embedding model download), whose patched range (tar >=7.5.19) is a major bump over the v6 fastembed pins — forcing it breaks fastembed's default import (see the overrides note). They are blocked on a fastembed release, not on us. Remove entries here as fastembed updates. Re-check with `pnpm audit --prod`.",
+      "_comment": "GHSAs the `pnpm audit` CI gate ignores. All are `tar` advisories reachable only through fastembed (the local embedding model download), whose patched ranges (tar >=7.5.19, >=7.5.21 for the newest) are a major bump over the v6 fastembed pins — forcing it breaks fastembed's default import (see the overrides note). They are blocked on a fastembed release, not on us: as of 2026-09-09 fastembed@2.1.0 is still the latest published version and still depends on tar ^6.2.0, so there is no upgrade path yet. Impact is denial of service (crash), not code execution, and reaching it means controlling the model tarball fastembed downloads — a compromised or MITM'd model host, not operator-supplied input. Re-check with `npm view fastembed dependencies` before adding another entry, and remove entries here as fastembed updates. Re-check the gate with `pnpm audit --prod --audit-level high`.",
       "ignoreGhsas": [
         "GHSA-23hp-3jrh-7fpw",
         "GHSA-34x7-hfp2-rc4v",
@@ -75,7 +75,8 @@
         "GHSA-qffp-2rhf-9h96",
         "GHSA-9ppj-qmqm-q256",
         "GHSA-r6q2-hw4h-h46w",
-        "GHSA-8x88-c5mf-7j5w"
+        "GHSA-8x88-c5mf-7j5w",
+        "GHSA-r292-9mhp-454m"
       ]
     }
   }
