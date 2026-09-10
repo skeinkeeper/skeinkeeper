@@ -18,6 +18,13 @@ services:
   app:
     build: .
     env_file: .env
+    # Run as the operator, not root. Everything the container writes into the
+    # ./data volume — SQLite, the LanceDB store, the pairing secret and console
+    # password — must stay readable and deletable by the person who owns it:
+    # `pnpm skeinkeeper <erase args>` runs natively as that user, and ADR-0010
+    # promises every store a working deletion path. Defaults suit a single-user
+    # host; override in .env if your uid/gid differ (`id -u`, `id -g`).
+    user: "${SKEINKEEPER_UID:-1000}:${SKEINKEEPER_GID:-1000}"
     # Set here, not in .env: the deployment's shape is a property of the shipped
     # artifact, not something an operator can forget or half-configure.
     # `environment:` wins over `env_file:` for the same key, deliberately.
