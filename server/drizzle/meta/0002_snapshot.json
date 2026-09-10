@@ -98,9 +98,7 @@
       "indexes": {
         "campaigns_tenant": {
           "name": "campaigns_tenant",
-          "columns": [
-            "tenant_id"
-          ],
+          "columns": ["tenant_id"],
           "isUnique": false
         }
       },
@@ -109,12 +107,8 @@
           "name": "campaigns_tenant_id_tenants_id_fk",
           "tableFrom": "campaigns",
           "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -179,10 +173,7 @@
       "indexes": {
         "sessions_campaign": {
           "name": "sessions_campaign",
-          "columns": [
-            "tenant_id",
-            "campaign_id"
-          ],
+          "columns": ["tenant_id", "campaign_id"],
           "isUnique": false
         }
       },
@@ -191,12 +182,8 @@
           "name": "sessions_campaign_id_campaigns_id_fk",
           "tableFrom": "sessions",
           "tableTo": "campaigns",
-          "columnsFrom": [
-            "campaign_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["campaign_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -277,37 +264,22 @@
       "indexes": {
         "dialogue_session": {
           "name": "dialogue_session",
-          "columns": [
-            "tenant_id",
-            "session_id",
-            "timestamp"
-          ],
+          "columns": ["tenant_id", "session_id", "timestamp"],
           "isUnique": false
         },
         "dialogue_speaker": {
           "name": "dialogue_speaker",
-          "columns": [
-            "tenant_id",
-            "speaker"
-          ],
+          "columns": ["tenant_id", "speaker"],
           "isUnique": false
         },
         "dialogue_conversation": {
           "name": "dialogue_conversation",
-          "columns": [
-            "tenant_id",
-            "session_id",
-            "conversation_id",
-            "timestamp"
-          ],
+          "columns": ["tenant_id", "session_id", "conversation_id", "timestamp"],
           "isUnique": false
         },
         "dialogue_audience": {
           "name": "dialogue_audience",
-          "columns": [
-            "tenant_id",
-            "audience"
-          ],
+          "columns": ["tenant_id", "audience"],
           "isUnique": false
         }
       },
@@ -316,12 +288,8 @@
           "name": "dialogue_session_id_sessions_id_fk",
           "tableFrom": "dialogue",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -393,19 +361,12 @@
       "indexes": {
         "pcmap_tenant_campaign_player": {
           "name": "pcmap_tenant_campaign_player",
-          "columns": [
-            "tenant_id",
-            "campaign_id",
-            "discord_user_id"
-          ],
+          "columns": ["tenant_id", "campaign_id", "discord_user_id"],
           "isUnique": false
         },
         "pcmap_tenant_player": {
           "name": "pcmap_tenant_player",
-          "columns": [
-            "tenant_id",
-            "discord_user_id"
-          ],
+          "columns": ["tenant_id", "discord_user_id"],
           "isUnique": false
         }
       },
@@ -414,12 +375,8 @@
           "name": "player_character_map_campaign_id_campaigns_id_fk",
           "tableFrom": "player_character_map",
           "tableTo": "campaigns",
-          "columnsFrom": [
-            "campaign_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["campaign_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -498,12 +455,7 @@
       "indexes": {
         "voice_assignment_subject": {
           "name": "voice_assignment_subject",
-          "columns": [
-            "tenant_id",
-            "campaign_id",
-            "subject_kind",
-            "subject_key"
-          ],
+          "columns": ["tenant_id", "campaign_id", "subject_kind", "subject_key"],
           "isUnique": true
         }
       },
@@ -512,12 +464,8 @@
           "name": "voice_assignment_campaign_id_campaigns_id_fk",
           "tableFrom": "voice_assignment",
           "tableTo": "campaigns",
-          "columnsFrom": [
-            "campaign_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["campaign_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -590,18 +538,12 @@
       "indexes": {
         "audit_log_tenant_time": {
           "name": "audit_log_tenant_time",
-          "columns": [
-            "tenant_id",
-            "timestamp"
-          ],
+          "columns": ["tenant_id", "timestamp"],
           "isUnique": false
         },
         "audit_log_session": {
           "name": "audit_log_session",
-          "columns": [
-            "tenant_id",
-            "session_id"
-          ],
+          "columns": ["tenant_id", "session_id"],
           "isUnique": false
         }
       },
@@ -673,10 +615,7 @@
       "indexes": {
         "consents_tenant_subject": {
           "name": "consents_tenant_subject",
-          "columns": [
-            "tenant_id",
-            "subject_id"
-          ],
+          "columns": ["tenant_id", "subject_id"],
           "isUnique": false
         }
       },
@@ -748,10 +687,7 @@
       "indexes": {
         "deletion_log_tenant_time": {
           "name": "deletion_log_tenant_time",
-          "columns": [
-            "tenant_id",
-            "timestamp"
-          ],
+          "columns": ["tenant_id", "timestamp"],
           "isUnique": false
         }
       },
@@ -809,11 +745,7 @@
       "indexes": {
         "quest_flags_campaign_key": {
           "name": "quest_flags_campaign_key",
-          "columns": [
-            "tenant_id",
-            "campaign_id",
-            "key"
-          ],
+          "columns": ["tenant_id", "campaign_id", "key"],
           "isUnique": true
         }
       },
@@ -822,12 +754,8 @@
           "name": "quest_flags_campaign_id_campaigns_id_fk",
           "tableFrom": "quest_flags",
           "tableTo": "campaigns",
-          "columnsFrom": [
-            "campaign_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["campaign_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -885,11 +813,7 @@
       "indexes": {
         "settings_campaign_key": {
           "name": "settings_campaign_key",
-          "columns": [
-            "tenant_id",
-            "campaign_id",
-            "key"
-          ],
+          "columns": ["tenant_id", "campaign_id", "key"],
           "isUnique": true
         }
       },
@@ -898,12 +822,8 @@
           "name": "settings_campaign_id_campaigns_id_fk",
           "tableFrom": "settings",
           "tableTo": "campaigns",
-          "columnsFrom": [
-            "campaign_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["campaign_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

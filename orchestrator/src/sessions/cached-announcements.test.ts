@@ -58,9 +58,7 @@ describe("prepareLifecycleAnnouncements", () => {
   });
 
   it("falls back to the default phrasings when the LLM fails", async () => {
-    const llm = fakeLlmFromEvents([
-      { kind: "error", error: { kind: "network", message: "down" } },
-    ]);
+    const llm = fakeLlmFromEvents([{ kind: "error", error: { kind: "network", message: "down" } }]);
     const tts = new FakeTts();
     const result = await prepareLifecycleAnnouncements({ llm, tts, config: announcementConfig() });
     expect(result.pauseFoundryDown.text).toBe(DEFAULT_PAUSE_ANNOUNCEMENT);

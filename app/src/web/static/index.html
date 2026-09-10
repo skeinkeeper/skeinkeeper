@@ -7,15 +7,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Skeinkeeper — Operator</title>
     <style>
-      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-      h1 { font-size: 1.4rem; }
-      section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
-      button { font: inherit; padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #888; cursor: pointer; }
-      #log { font-family: ui-monospace, monospace; font-size: 0.8rem; background: #111; color: #ddd; padding: 0.75rem; border-radius: 6px; height: 16rem; overflow-y: auto; white-space: pre-wrap; }
-      .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
-      .pill { padding: 0.1rem 0.5rem; border-radius: 999px; background: #eee; font-size: 0.8rem; }
-      .running { background: #cdebd0; }
-      .paused { background: #f7d6a0; }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 760px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        color: #1a1a1a;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+      section {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+      button {
+        font: inherit;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        border: 1px solid #888;
+        cursor: pointer;
+      }
+      #log {
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+        background: #111;
+        color: #ddd;
+        padding: 0.75rem;
+        border-radius: 6px;
+        height: 16rem;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .pill {
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        background: #eee;
+        font-size: 0.8rem;
+      }
+      .running {
+        background: #cdebd0;
+      }
+      .paused {
+        background: #f7d6a0;
+      }
     </style>
   </head>
   <body>
@@ -29,7 +72,11 @@
         <button id="stop">Stop</button>
         <button id="resume" hidden>Resume</button>
       </div>
-      <p id="lifecycle-note" hidden style="color:#8a5a00;font-size:0.85rem;margin:0.4rem 0 0;"></p>
+      <p
+        id="lifecycle-note"
+        hidden
+        style="color: #8a5a00; font-size: 0.85rem; margin: 0.4rem 0 0"
+      ></p>
     </section>
 
     <section>
@@ -38,7 +85,7 @@
         <select id="persona"></select>
         <button id="apply-voice">Apply</button>
       </div>
-      <p id="persona-desc" style="color:#555;font-size:0.85rem;"></p>
+      <p id="persona-desc" style="color: #555; font-size: 0.85rem"></p>
     </section>
 
     <section>
@@ -51,32 +98,52 @@
       <div class="row">
         <label><input type="checkbox" id="pvp" /> Enable PvP (off by default)</label>
       </div>
-      <p style="color:#555;font-size:0.8rem;margin:0.3rem 0 0;">When off, the DM won't resolve a private action against another player's character — it refuses and redirects to the group.</p>
+      <p style="color: #555; font-size: 0.8rem; margin: 0.3rem 0 0">
+        When off, the DM won't resolve a private action against another player's character — it
+        refuses and redirects to the group.
+      </p>
     </section>
 
     <section>
       <strong>Operator</strong> — who Skeinkeeper DMs about setup problems
-      <p style="color:#555;font-size:0.85rem;margin:0.3rem 0;">
+      <p style="color: #555; font-size: 0.85rem; margin: 0.3rem 0">
         Current: <span id="operator-current">…</span>
-        <button id="operator-clear" style="font-size:0.75rem;padding:0.1rem 0.5rem;">Clear</button>
+        <button id="operator-clear" style="font-size: 0.75rem; padding: 0.1rem 0.5rem">
+          Clear
+        </button>
       </p>
       <div class="row">
-        <input id="operator-username" placeholder="your Discord @username" style="font:inherit;padding:0.3rem 0.5rem;" />
+        <input
+          id="operator-username"
+          placeholder="your Discord @username"
+          style="font: inherit; padding: 0.3rem 0.5rem"
+        />
         <button id="operator-save">Set by username</button>
       </div>
-      <p style="color:#555;font-size:0.8rem;margin:0.4rem 0 0.2rem;">…or, while a session is running, pick yourself from the voice channel:</p>
-      <div id="operator-roster" style="font-size:0.85rem;"></div>
-      <p style="color:#777;font-size:0.78rem;margin-top:0.4rem;">Tip: in Discord you can also type <code>/skeinkeeper operator claim</code>.</p>
-      <div class="row" style="margin-top:0.5rem;">
-        <label><input type="checkbox" id="operator-dm-consent" /> DM me on Discord if the session pauses (Foundry disconnect)</label>
+      <p style="color: #555; font-size: 0.8rem; margin: 0.4rem 0 0.2rem">
+        …or, while a session is running, pick yourself from the voice channel:
+      </p>
+      <div id="operator-roster" style="font-size: 0.85rem"></div>
+      <p style="color: #777; font-size: 0.78rem; margin-top: 0.4rem">
+        Tip: in Discord you can also type <code>/skeinkeeper operator claim</code>.
+      </p>
+      <div class="row" style="margin-top: 0.5rem">
+        <label
+          ><input type="checkbox" id="operator-dm-consent" /> DM me on Discord if the session pauses
+          (Foundry disconnect)</label
+        >
       </div>
-      <p style="color:#555;font-size:0.8rem;margin:0.3rem 0 0;">Operator-only, one DM per pause. Off by default; when Foundry drops, its chat can't reach you — this is the out-of-band signal.</p>
+      <p style="color: #555; font-size: 0.8rem; margin: 0.3rem 0 0">
+        Operator-only, one DM per pause. Off by default; when Foundry drops, its chat can't reach
+        you — this is the out-of-band signal.
+      </p>
     </section>
 
     <section>
-      <strong>Intake findings</strong> — resolve criticals and ambiguities here (Foundry chat command lands in a later TDD)
-      <p id="intake-ready" style="color:#555;font-size:0.85rem;margin:0.3rem 0;">Ready: …</p>
-      <div id="intake-findings" style="font-size:0.85rem;"></div>
+      <strong>Intake findings</strong> — resolve criticals and ambiguities here (Foundry chat
+      command lands in a later TDD)
+      <p id="intake-ready" style="color: #555; font-size: 0.85rem; margin: 0.3rem 0">Ready: …</p>
+      <div id="intake-findings" style="font-size: 0.85rem"></div>
     </section>
 
     <section>

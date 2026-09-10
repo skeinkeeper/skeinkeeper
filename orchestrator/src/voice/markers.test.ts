@@ -11,9 +11,7 @@ describe("parseNarrationSegments", () => {
   });
 
   it("splits DM narration from an NPC line", () => {
-    const segs = parseNarrationSegments(
-      'Sildar steps forward. [NPC:sildar] "We have to flee."',
-    );
+    const segs = parseNarrationSegments('Sildar steps forward. [NPC:sildar] "We have to flee."');
     expect(segs).toEqual([
       { kind: "dm", text: "Sildar steps forward." },
       { kind: "npc", npcKey: "sildar", text: '"We have to flee."' },
@@ -21,9 +19,7 @@ describe("parseNarrationSegments", () => {
   });
 
   it("handles multiple NPCs in sequence", () => {
-    const segs = parseNarrationSegments(
-      '[NPC:Gundren] "Help me!" [NPC:Klarg] "Crush them!"',
-    );
+    const segs = parseNarrationSegments('[NPC:Gundren] "Help me!" [NPC:Klarg] "Crush them!"');
     expect(segs).toEqual([
       { kind: "npc", npcKey: "gundren", text: '"Help me!"' },
       { kind: "npc", npcKey: "klarg", text: '"Crush them!"' },

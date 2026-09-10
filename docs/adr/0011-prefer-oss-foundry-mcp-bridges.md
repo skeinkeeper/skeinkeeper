@@ -1,6 +1,7 @@
 # ADR-0011: Prefer Fully-OSS Foundry MCP Bridges
 
 ## Status
+
 superseded by [0029](./0029-first-party-foundry-addon.md) (2026-08-15). **Supersedes [ADR-0001](./0001-use-foundry-mcp-for-vtt.md)** insofar as ADR-0001 endorsed the Patreon-gated `alexivenkov` bridge. The "use a Foundry MCP bridge rather than build our own" portion of ADR-0001 is retained in this historical record only.
 
 ## Context
@@ -13,11 +14,11 @@ Two follow-up observations forced a revisit:
 
 2. **Fully-OSS alternatives exist.** A wider survey identified two MIT-licensed, fully-self-hostable Foundry MCP bridges that were not on the radar when ADR-0001 was written:
 
-| Project | License | Hosting | API key? | Feature surface |
-|---|---|---|---|---|
-| [adambdooley/foundry-vtt-mcp](https://github.com/adambdooley/foundry-vtt-mcp) | MIT | Self-hosted (Foundry module + Node MCP server + optional ComfyUI) | None | Actor management, scenes, tokens, compendium search, content creation, campaign tracking |
-| [laurigates/foundryvtt-mcp](https://github.com/laurigates/foundryvtt-mcp) | MIT | Self-hosted (single Node server via `bunx`) | None | Actor/NPC queries, dice, scene/combat, journal/notes, items, chat history |
-| [alexivenkov/foundry-api-bridge-module](https://github.com/alexivenkov/foundry-api-bridge-module) | MIT (client only); server Patreon-gated | Maintainer-hosted at `foundry-mcp.com` | **Yes — Patreon subscription** | ~71 commands |
+| Project                                                                                           | License                                 | Hosting                                                           | API key?                       | Feature surface                                                                          |
+| ------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------- |
+| [adambdooley/foundry-vtt-mcp](https://github.com/adambdooley/foundry-vtt-mcp)                     | MIT                                     | Self-hosted (Foundry module + Node MCP server + optional ComfyUI) | None                           | Actor management, scenes, tokens, compendium search, content creation, campaign tracking |
+| [laurigates/foundryvtt-mcp](https://github.com/laurigates/foundryvtt-mcp)                         | MIT                                     | Self-hosted (single Node server via `bunx`)                       | None                           | Actor/NPC queries, dice, scene/combat, journal/notes, items, chat history                |
+| [alexivenkov/foundry-api-bridge-module](https://github.com/alexivenkov/foundry-api-bridge-module) | MIT (client only); server Patreon-gated | Maintainer-hosted at `foundry-mcp.com`                            | **Yes — Patreon subscription** | ~71 commands                                                                             |
 
 Both OSS alternatives cover the surface area Skeinkeeper actually needs, and both are actively maintained.
 
@@ -40,18 +41,22 @@ This ADR also formalizes a project-wide stance that comes out of the [global har
 ## Consequences
 
 **Positive**
+
 - The full dependency chain is OSS. Operators can stand up Skeinkeeper end-to-end without any paid third-party service.
 - Two bridges instead of one reduces single-maintainer risk; if one stalls, we have a documented migration path.
 - Documenting the OSS-first stance as a project-wide rule (CLAUDE.md hard rule #10) prevents the same mistake from recurring with future dependencies.
 
 **Negative**
+
 - We support two bridge implementations behind the same interface — the adapter package now has more surface to test.
 - The original ADR-0001 survey was incomplete; we built on a default that had to be reversed. Process implication captured in CONTRIBUTING.md: evaluate fully-OSS alternatives at the ADR stage, not after.
 
 **Neutral**
+
 - The `FoundryClient` interface from TDD 0007 was the abstraction that made this swap cheap. Without it, swapping bridges would have rippled into the orchestrator. Confirms the value of that interface.
 
 ## Revisit when
+
 - A clearly superior fully-OSS bridge emerges.
 - Foundry itself ships an official MCP surface (at which point we evaluate switching).
 - One of the recommended bridges' support cadence falls below 30 days for security or compatibility issues — that's the trigger for the fork or for promoting the alternative to default.

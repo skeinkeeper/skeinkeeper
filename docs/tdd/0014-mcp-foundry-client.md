@@ -1,4 +1,5 @@
 # TDD 0014: McpFoundryClient (Phase 3)
+
 Status: superseded by [0041](./0041-first-party-foundry-addon.md)
 PRD refs: 4.2
 PRD-rev: 10391ba
@@ -11,11 +12,12 @@ Related TDDs: [0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-tr
 
 Design doc 0007 made Foundry authoritative for mechanical state, accessed through the `FoundryClient` interface, with `MockFoundryClient` for tests and a real MCP-backed client deferred to Phase 3. ADR-0011 chose the `adambdooley/foundry-vtt-mcp` bridge. This phase builds the real `McpFoundryClient`.
 
-Doc 0007 left an explicit open question: *"Will the chosen MCP bridge cover everything we need? ... If gaps exist, we contribute upstream or fork."* Phase 3 answers it by inventorying the bridge's actual 44-tool surface (read from its source, `packages/mcp-server/src/`).
+Doc 0007 left an explicit open question: _"Will the chosen MCP bridge cover everything we need? ... If gaps exist, we contribute upstream or fork."_ Phase 3 answers it by inventorying the bridge's actual 44-tool surface (read from its source, `packages/mcp-server/src/`).
 
 ## The bridge's tool surface
 
 **Reads (map cleanly to FoundryClient):**
+
 - `list-characters` → `listPartyActors()`
 - `get-character` / `get-character-entity` → `getActor()`
 - `get-current-scene` → `getActiveScene()`
@@ -23,6 +25,7 @@ Doc 0007 left an explicit open question: *"Will the chosen MCP bridge cover ever
 - `list-scenes`, `get-world-info`, `get-available-conditions` → supporting reads
 
 **Mutations (partial):**
+
 - `toggle-token-condition` → conditions (frightened, prone, etc.)
 - `move-token` / `update-token` → token position
 - `add-actor-items`, `use-item` → inventory + item activation
@@ -34,13 +37,14 @@ Doc 0007 left an explicit open question: *"Will the chosen MCP bridge cover ever
 
 ## The mutation gap (the doc-0007 finding)
 
-The bridge has **no generic actor-update tool and no direct HP/damage-set tool, and no server-side dice roll.** This is a deliberate bridge design: it favors *driving Foundry's own mechanics* (cast a spell via `use-item`, which makes Foundry apply the damage) over *poking raw values* (set `hp.value = 5`). Two consequences for Skeinkeeper:
+The bridge has **no generic actor-update tool and no direct HP/damage-set tool, and no server-side dice roll.** This is a deliberate bridge design: it favors _driving Foundry's own mechanics_ (cast a spell via `use-item`, which makes Foundry apply the damage) over _poking raw values_ (set `hp.value = 5`). Two consequences for Skeinkeeper:
 
-1. **`FoundryClient.applyActorUpdate` can't generically set HP.** The `McpFoundryClient` maps the updates the bridge *does* support (conditions → `toggle-token-condition`, position → `update-token`) and throws an explicit, actionable error for unsupported updates (notably direct HP). The D&D-5e-routed `apply_damage` tool (from doc 0007 §"Tool-call dispatch") therefore can't be a single bridge call — it must either drive `use-item`, or be applied operator-side, or the bridge must be forked to add an `update-actor` tool.
+1. **`FoundryClient.applyActorUpdate` can't generically set HP.** The `McpFoundryClient` maps the updates the bridge _does_ support (conditions → `toggle-token-condition`, position → `update-token`) and throws an explicit, actionable error for unsupported updates (notably direct HP). The D&D-5e-routed `apply_damage` tool (from doc 0007 §"Tool-call dispatch") therefore can't be a single bridge call — it must either drive `use-item`, or be applied operator-side, or the bridge must be forked to add an `update-actor` tool.
 
 2. **`FoundryClient.rollDice` has no server-side counterpart.** The bridge's only roll tool is interactive (`request-player-rolls`). `McpFoundryClient.rollDice` throws; the orchestrator's `roll` tool keeps using its local `crypto.randomInt` roller (already the Phase-1 behavior) rather than routing through Foundry. Rolls don't land in Foundry's chat log this way — a UX trade-off, not a correctness one.
 
 **This is a decision point for the operator/maintainer**, surfaced not silently worked around:
+
 - **(a)** Accept the gap for alpha: conditions/tokens/scenes via the bridge; damage via `use-item` or operator; rolls local. Lowest effort; some Foundry-native niceties lost.
 - **(b)** Fork the bridge to `skeinkeeper/foundry-mcp-bridge` and add `update-actor` + `roll-dice` tools. The fork-as-Plan-B clause in ADR-0011 covers this; bounded effort.
 - **(c)** Evaluate whether `laurigates/foundryvtt-mcp` (the alternative bridge from ADR-0011) has a server-side roll + actor-update surface; if so, switch.
@@ -87,11 +91,11 @@ Covered under Approach and Components & interfaces. Phase 3-live (real `McpToolC
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.2 | Scene activation, token management, combat tracker, dice, compendium access, chat | `McpFoundryClient` maps bridge's 44-tool surface to `FoundryClient`; reads and condition/token/scene mutations covered; gaps (direct HP, server-side roll) explicitly surfaced with actionable errors |
-| 4.2 | Foundry integration via self-hosted OSS MCP bridge (ADR-0011) | `McpFoundryClient` consumes `adambdooley/foundry-vtt-mcp` bridge via `McpToolCaller` interface; real transport deferred to Phase 3-live |
-| 4.2 | Skeinkeeper connects to operator's own Foundry instance | `McpFoundryClient.connect(caller)` receives the caller from outside; no Foundry URL baked in; operator configures the bridge path |
+| PRD ref | Requirement                                                                       | Satisfied by                                                                                                                                                                                          |
+| ------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.2     | Scene activation, token management, combat tracker, dice, compendium access, chat | `McpFoundryClient` maps bridge's 44-tool surface to `FoundryClient`; reads and condition/token/scene mutations covered; gaps (direct HP, server-side roll) explicitly surfaced with actionable errors |
+| 4.2     | Foundry integration via self-hosted OSS MCP bridge (ADR-0011)                     | `McpFoundryClient` consumes `adambdooley/foundry-vtt-mcp` bridge via `McpToolCaller` interface; real transport deferred to Phase 3-live                                                               |
+| 4.2     | Skeinkeeper connects to operator's own Foundry instance                           | `McpFoundryClient.connect(caller)` receives the caller from outside; no Foundry URL baked in; operator configures the bridge path                                                                     |
 
 ## Dependencies considered
 

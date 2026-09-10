@@ -9,7 +9,9 @@ import { translateStreamEvents } from "./translate_event.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ev = (e: any): BetaRawMessageStreamEvent => e as BetaRawMessageStreamEvent;
 
-async function* iter(...events: BetaRawMessageStreamEvent[]): AsyncIterable<BetaRawMessageStreamEvent> {
+async function* iter(
+  ...events: BetaRawMessageStreamEvent[]
+): AsyncIterable<BetaRawMessageStreamEvent> {
   for (const e of events) yield e;
 }
 
@@ -54,11 +56,7 @@ describe("translateStreamEvents", () => {
       ),
     );
 
-    expect(got.map((e) => e.kind)).toEqual([
-      "text_delta",
-      "text_delta",
-      "done",
-    ]);
+    expect(got.map((e) => e.kind)).toEqual(["text_delta", "text_delta", "done"]);
     const done = got.find((e) => e.kind === "done");
     if (done?.kind === "done") {
       expect(done.stopReason).toBe("end_turn");

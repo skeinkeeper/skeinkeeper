@@ -1,4 +1,5 @@
 # TDD 0012: Voice IO — Interface, Consent, Session Loop (Phase 2b)
+
 Status: implemented
 PRD refs: 4.1, 5.5
 PRD-rev: 10391ba
@@ -20,9 +21,9 @@ This doc covers #1 (Phase 2b, this commit). #2 is tracked as Phase 2b-live and v
 
 ### The consent boundary is in the adapter, not the loop
 
-This is the central privacy decision. Per [ADR-0010](../adr/0010-privacy-as-architecture.md) and `docs/PRIVACY.md`: *"Audio is not processed until consent is granted."* If the orchestrator loop did the consent check, the audio would already have been transcribed (sent to the STT provider) before the check — a violation.
+This is the central privacy decision. Per [ADR-0010](../adr/0010-privacy-as-architecture.md) and `docs/PRIVACY.md`: _"Audio is not processed until consent is granted."_ If the orchestrator loop did the consent check, the audio would already have been transcribed (sent to the STT provider) before the check — a violation.
 
-So: **the `VoiceIO` adapter checks consent before running STT.** When an unconsented speaker talks, the adapter discards the audio without transcribing it and yields a `{ kind: "consent_needed", speaker }` event. When a consented speaker talks, the adapter transcribes and yields `{ kind: "utterance", ... }`. The orchestrator loop never sees unconsented audio — only the *fact* that someone unconsented spoke.
+So: **the `VoiceIO` adapter checks consent before running STT.** When an unconsented speaker talks, the adapter discards the audio without transcribing it and yields a `{ kind: "consent_needed", speaker }` event. When a consented speaker talks, the adapter transcribes and yields `{ kind: "utterance", ... }`. The orchestrator loop never sees unconsented audio — only the _fact_ that someone unconsented spoke.
 
 The adapter gets its consent state from a `TenantDb.consents.isGranted(speaker, "voice_processing")` check (the accessor added in this phase).
 
@@ -32,12 +33,12 @@ The adapter gets its consent state from a `TenantDb.consents.isGranted(speaker, 
 
 ```ts
 export interface Utterance {
-  speaker: string;          // Discord user ID (PII)
+  speaker: string; // Discord user ID (PII)
   displayName?: string;
-  text: string;             // STT transcript
+  text: string; // STT transcript
   confidence?: number;
   timestamp: number;
-  audio?: { mediaType: AudioMediaType; data: string };  // for audio-native LLMs (doc 0010)
+  audio?: { mediaType: AudioMediaType; data: string }; // for audio-native LLMs (doc 0010)
 }
 
 export type VoiceEvent =
@@ -52,8 +53,12 @@ export interface VoiceIO {
   close(): Promise<void>;
 }
 
-export interface STTProvider { /* transcribe(audioStream, opts) → AsyncIterable<Utterance> */ }
-export interface TTSProvider { /* synthesize(text, opts) → Promise<Uint8Array> */ }
+export interface STTProvider {
+  /* transcribe(audioStream, opts) → AsyncIterable<Utterance> */
+}
+export interface TTSProvider {
+  /* synthesize(text, opts) → Promise<Uint8Array> */
+}
 ```
 
 `STTProvider` and `TTSProvider` are sub-interfaces a `VoiceIO` adapter composes; the orchestrator itself only ever touches `VoiceIO`.
@@ -63,7 +68,7 @@ export interface TTSProvider { /* synthesize(text, opts) → Promise<Uint8Array>
 ```ts
 for await (const event of voiceIO.listen()) {
   if (event.kind === "consent_needed") {
-    await voiceIO.requestConsent(event.speaker, consentText);  // adapter sends a DM
+    await voiceIO.requestConsent(event.speaker, consentText); // adapter sends a DM
     continue;
   }
   const turn = await runTurn(session, { speaker, displayName, text });
@@ -117,12 +122,12 @@ These are I/O plumbing whose correctness can only be confirmed against live serv
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.1 | Bot joins Discord voice; real-time STT per speaker with diarization; TTS streamed back | `VoiceIO` interface defines `listen()` / `speak()`; `STTProvider` / `TTSProvider` sub-interfaces; `DiscordVoiceIO` (Phase 2b-live) implements these |
-| 4.1 | IC/OOC disambiguation; wake-word; configurable activation mode | `VoiceEvent` union extends naturally; `listen()` is an `AsyncIterable` the adapter filters; specific modes are adapter configuration in Phase 2b-live |
-| 5.5 | Privacy — audio not processed until consent granted; audio is ephemeral | consent gate is in the adapter (before STT); `Utterance.audio` held only for turn duration; never persisted; consent accessor is versioned and append-only |
-| 5.5 | Voice consent is per-player, versioned, withdrawable | `TenantDb.consents` accessor; `consentTextVersion` recorded with each grant; withdrawal is a newer `withdrawn` row |
+| PRD ref | Requirement                                                                            | Satisfied by                                                                                                                                               |
+| ------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1     | Bot joins Discord voice; real-time STT per speaker with diarization; TTS streamed back | `VoiceIO` interface defines `listen()` / `speak()`; `STTProvider` / `TTSProvider` sub-interfaces; `DiscordVoiceIO` (Phase 2b-live) implements these        |
+| 4.1     | IC/OOC disambiguation; wake-word; configurable activation mode                         | `VoiceEvent` union extends naturally; `listen()` is an `AsyncIterable` the adapter filters; specific modes are adapter configuration in Phase 2b-live      |
+| 5.5     | Privacy — audio not processed until consent granted; audio is ephemeral                | consent gate is in the adapter (before STT); `Utterance.audio` held only for turn duration; never persisted; consent accessor is versioned and append-only |
+| 5.5     | Voice consent is per-player, versioned, withdrawable                                   | `TenantDb.consents` accessor; `consentTextVersion` recorded with each grant; withdrawal is a newer `withdrawn` row                                         |
 
 ## Dependencies considered
 
@@ -139,7 +144,7 @@ None — the consent-gate-in-adapter pattern is an implementation detail flowing
 ## Alternatives considered
 
 - **Consent check in the orchestrator loop.** Rejected — violates the "no STT before consent" privacy rule, since the loop only sees already-transcribed text.
-- **Block (await) for consent inline before continuing.** Rejected — a player who hasn't consented shouldn't freeze the whole table's session. The `consent_needed` event is fire-and-continue; that player can grant out-of-band and their *next* utterance is processed.
+- **Block (await) for consent inline before continuing.** Rejected — a player who hasn't consented shouldn't freeze the whole table's session. The `consent_needed` event is fire-and-continue; that player can grant out-of-band and their _next_ utterance is processed.
 - **Bake STT/TTS directly into `VoiceIO` with no sub-interfaces.** Rejected — operators want to swap Deepgram for Scribe, or ElevenLabs for another TTS, independently of the Discord transport. The sub-interfaces keep those swappable.
 - **Stream narration to TTS sentence-by-sentence as the LLM produces it** (lower latency). Real win for table feel, but requires a streaming `runTurn` variant (flagged as deferred in doc 0011). Phase 2b-live revisits once the non-streaming path works.
 

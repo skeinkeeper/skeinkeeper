@@ -278,9 +278,7 @@ describe("Foundry-side surfaces short-circuit while paused (design doc 0039)", (
     const client = new MockFoundryClient({ system: "dnd5e" });
     const { gate, skips } = makeGate(PAUSED);
     const surface = new FoundryPublicChatSurface({ client, lifecycle: gate });
-    await expect(
-      surface.emit({ audience: { kind: "table" }, text: "x" }),
-    ).resolves.toBeUndefined();
+    await expect(surface.emit({ audience: { kind: "table" }, text: "x" })).resolves.toBeUndefined();
     expect(client.chatPosts).toEqual([]);
     expect(skips).toEqual([{ surface: "foundry-public", audienceKind: "table" }]);
   });

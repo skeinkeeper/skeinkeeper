@@ -14,8 +14,16 @@ describe("ingestColdEntries", () => {
     const n = await ingestColdEntries(embed, store, {
       campaignId: "c1",
       entries: [
-        { id: "goblin", text: "Goblin: small evil humanoid, nimble and cowardly", deltas: { type: "npc" } },
-        { id: "fireball", text: "Fireball: a bright streak that blossoms into flame", deltas: { type: "spell" } },
+        {
+          id: "goblin",
+          text: "Goblin: small evil humanoid, nimble and cowardly",
+          deltas: { type: "npc" },
+        },
+        {
+          id: "fireball",
+          text: "Fireball: a bright streak that blossoms into flame",
+          deltas: { type: "spell" },
+        },
       ],
     });
     expect(n).toBe(2);
@@ -37,8 +45,14 @@ describe("ingestColdEntries", () => {
 
   it("re-ingest updates in place (no duplicates)", async () => {
     const store = new InMemoryMemoryStore();
-    await ingestColdEntries(embed, store, { campaignId: "c1", entries: [{ id: "x", text: "first" }] });
-    await ingestColdEntries(embed, store, { campaignId: "c1", entries: [{ id: "x", text: "second version" }] });
+    await ingestColdEntries(embed, store, {
+      campaignId: "c1",
+      entries: [{ id: "x", text: "first" }],
+    });
+    await ingestColdEntries(embed, store, {
+      campaignId: "c1",
+      entries: [{ id: "x", text: "second version" }],
+    });
     const [q] = await embed.embed(["second"]);
     const out = await store.query(q!, { campaignId: "c1", topK: 9, kinds: ["cold"] });
     expect(out).toHaveLength(1);

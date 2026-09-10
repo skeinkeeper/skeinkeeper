@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import { DM_VOICE_PERSONAS, DEFAULT_DM_PERSONA_ID, type DmPersona } from "@skeinkeeper/orchestrator";
+import {
+  DM_VOICE_PERSONAS,
+  DEFAULT_DM_PERSONA_ID,
+  type DmPersona,
+} from "@skeinkeeper/orchestrator";
 
 /**
  * Operator-facing DM personas (design doc 0017) mapped to concrete ElevenLabs

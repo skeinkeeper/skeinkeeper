@@ -19,7 +19,7 @@ tenant:
 campaigns:
   - id: phandelver
     name: "Lost Mine of Phandelver"
-    rulesetId: dnd5e               # informational; the active Foundry system overrides
+    rulesetId: dnd5e # informational; the active Foundry system overrides
     behaviorSpecVersion: v0.1
-    foundryWorldName: phandelver   # operator-side reference; Skeinkeeper connects via the FoundryClient
+    foundryWorldName: phandelver # operator-side reference; Skeinkeeper connects via the FoundryClient
     status: active

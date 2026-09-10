@@ -52,9 +52,7 @@ const nameOf = (m: PresenceMember): string => m.displayName ?? m.id;
  * said (so the AI can welcome *and* immediately confirm a character if they
  * already introduced one).
  */
-export function buildOnboardingDirective(
-  targets: ReadonlyArray<PresenceMember>,
-): string {
+export function buildOnboardingDirective(targets: ReadonlyArray<PresenceMember>): string {
   const names = targets.map(nameOf).join(", ");
   if (targets.length === 1) {
     return (

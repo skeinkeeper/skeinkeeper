@@ -1,4 +1,5 @@
 # TDD 0010: Audio-Extensible LLMProvider Interface
+
 Status: implemented
 PRD refs: 4.1, 5.2
 PRD-rev: 10391ba
@@ -9,12 +10,12 @@ Related TDDs: [0008 (LLM provider interface)](./0008-llm-provider-interface.md)
 
 ## Approach
 
-Phase 1.5b shipped the [`LLMProvider`](../../orchestrator/src/interfaces/llm.ts) interface with `LLMContent` as a discriminated union of text / tool_use / tool_result / compaction. That shape works for Claude — which is text-in, text-out — but the Phase 2 plan calls for Discord voice IO, which means STT-fronted *audio* on the input path. Two observations about this:
+Phase 1.5b shipped the [`LLMProvider`](../../orchestrator/src/interfaces/llm.ts) interface with `LLMContent` as a discriminated union of text / tool*use / tool_result / compaction. That shape works for Claude — which is text-in, text-out — but the Phase 2 plan calls for Discord voice IO, which means STT-fronted \_audio* on the input path. Two observations about this:
 
 1. **Claude does not currently accept audio input.** Verified against `platform.claude.com/docs/en/api/messages` (2026-05-19): the supported content blocks are text, image, document, search_result, thinking + redacted_thinking, tool_use + tool_result variants, container_upload — no audio. So STT remains necessary on the input edge for any Claude-backed deployment.
 2. **Other LLM providers do accept audio.** GPT-4o-realtime and Gemini Live take audio natively. An operator who prioritized end-to-end audio latency over Claude's narrative quality might prefer to swap providers — and the orchestrator should not force them to keep a now-unnecessary STT step in the pipeline when they do.
 
-Today the `LLMMessage.content` union doesn't model audio at all. Forcing audio through `text` works for the STT-fronted Claude case but loses the *option* of passing audio bytes through when an audio-native provider is configured. Phase 1.7 fixes that without changing the Claude path.
+Today the `LLMMessage.content` union doesn't model audio at all. Forcing audio through `text` works for the STT-fronted Claude case but loses the _option_ of passing audio bytes through when an audio-native provider is configured. Phase 1.7 fixes that without changing the Claude path.
 
 ## Components & interfaces
 
@@ -57,7 +58,7 @@ export type LLMContent =
   | LLMToolUseContent
   | LLMToolResultContent
   | LLMCompactionContent
-  | LLMAudioContent;        // ← new
+  | LLMAudioContent; // ← new
 ```
 
 ### Provider behavior
@@ -92,11 +93,11 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.1 | Pluggable STT/TTS providers; orchestrator should not force unnecessary STT when an audio-native provider is configured | `LLMAudioContent` variant in `LLMContent` union; audio-native providers can receive raw audio bytes; STT-fronted providers fall back to `transcript` field |
-| 4.1 | Voice-first interaction over Discord with distinct NPC voices | interface extension creates the seam for audio-input path; `speakerName` carries diarization attribution through to the LLM |
-| 5.2 | Plugin architecture — `LLMProvider` is one of three plugin interfaces; modular boundary is real | `LLMAudioContent` is defined in `orchestrator/src/interfaces/llm.ts` (the provider interface); orchestrator never branches on provider identity |
+| PRD ref | Requirement                                                                                                            | Satisfied by                                                                                                                                               |
+| ------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1     | Pluggable STT/TTS providers; orchestrator should not force unnecessary STT when an audio-native provider is configured | `LLMAudioContent` variant in `LLMContent` union; audio-native providers can receive raw audio bytes; STT-fronted providers fall back to `transcript` field |
+| 4.1     | Voice-first interaction over Discord with distinct NPC voices                                                          | interface extension creates the seam for audio-input path; `speakerName` carries diarization attribution through to the LLM                                |
+| 5.2     | Plugin architecture — `LLMProvider` is one of three plugin interfaces; modular boundary is real                        | `LLMAudioContent` is defined in `orchestrator/src/interfaces/llm.ts` (the provider interface); orchestrator never branches on provider identity            |
 
 ## Dependencies considered
 
@@ -113,7 +114,7 @@ None — the plugin interface pattern is already captured in ADR-0004. The audio
 ## Alternatives considered
 
 - **Wait until an audio-native provider is implemented to add the type.** Tempting but means a breaking change to `LLMContent` later, which ripples through every adapter and test. Adding the type now, with Anthropic-side rejection, is cheap and forward-compatible.
-- **Make audio a wholly separate `LLMAudioRequest` type, parallel to `LLMRequest`.** Rejected — audio is *one input modality among others* in a multimodal turn. Tabletop sessions will have text (operator overrides), image (map snapshots one day), and audio (player voice) in the same turn. A separate request type makes that combination awkward.
+- **Make audio a wholly separate `LLMAudioRequest` type, parallel to `LLMRequest`.** Rejected — audio is _one input modality among others_ in a multimodal turn. Tabletop sessions will have text (operator overrides), image (map snapshots one day), and audio (player voice) in the same turn. A separate request type makes that combination awkward.
 - **Use `LLMTextContent` with a `mediaUrl` field carrying the audio.** Rejected — overloads `text` semantically, makes audio-native providers do string parsing to find the audio reference.
 - **Have STT produce a richer "multimodal transcript" object that includes prosody/sentiment as structured metadata, and ship that as a custom content type.** Interesting and worth exploring in Phase 2.5 — but orthogonal to "interface allows audio at all," which is what this doc decides.
 
@@ -131,8 +132,8 @@ For Phase 1.7 (this commit): no behavioral change. AnthropicProvider continues t
 
 Eval fixtures can now carry audio content for future audio-native provider tests, but FakeLLMProvider continues to be the default and exercises only text paths. A test in `translate_request.test.ts` confirms AnthropicProvider:
 
-- Accepts an audio block *with* `transcript` and folds it into the prompt as text.
-- Rejects an audio block *without* `transcript` with an `invalid_request` error and a helpful message.
+- Accepts an audio block _with_ `transcript` and folds it into the prompt as text.
+- Rejects an audio block _without_ `transcript` with an `invalid_request` error and a helpful message.
 
 ## Open questions
 

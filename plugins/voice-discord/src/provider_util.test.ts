@@ -14,9 +14,9 @@ describe("assertOk", () => {
     expect(() => assertOk(new Response("x", { status: 200 }), "X request")).not.toThrow();
   });
   it("throws a labeled error on a non-ok response", () => {
-    expect(() => assertOk(new Response("nope", { status: 401 }), "Deepgram listen request")).toThrow(
-      /Deepgram listen request failed: 401/,
-    );
+    expect(() =>
+      assertOk(new Response("nope", { status: 401 }), "Deepgram listen request"),
+    ).toThrow(/Deepgram listen request failed: 401/);
   });
 });
 

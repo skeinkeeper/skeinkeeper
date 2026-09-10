@@ -7,11 +7,11 @@ See [`docs/tdd/0004-eval-harness.md`](../../docs/tdd/0004-eval-harness.md) for t
 ## What these fixtures do (and don't) cover
 
 The model is **faked**: `llm_script` scripts the narration + tool calls the fake
-LLM emits, so these are **deterministic, CI-safe** tests. They are *not* a test
+LLM emits, so these are **deterministic, CI-safe** tests. They are _not_ a test
 of the model's judgment or the behavior spec — a scripted `tool_called` only
-proves the model *was told* to call it.
+proves the model _was told_ to call it.
 
-What they *do* verify, beyond the script echoing back:
+What they _do_ verify, beyond the script echoing back:
 
 - The harness wiring + expectation engine (`contains`, `tool_called`, …).
 - **Real tool dispatch.** The emitted tool calls run through the actual
@@ -24,7 +24,7 @@ What validates **model + behavior-spec quality** is live playtest plus
 `pnpm eval:live`, which runs these same fixtures against the **real** Anthropic
 model with the **real** behavior spec + tools (`ANTHROPIC_API_KEY=… pnpm
 eval:live`; out of CI, nondeterministic, skips cleanly without a key). Don't read
-a green *scripted* run as "the DM behaves correctly" — only as "the
+a green _scripted_ run as "the DM behaves correctly" — only as "the
 orchestration contract still holds"; use `eval:live` for behavior.
 
 ## Adding a fixture

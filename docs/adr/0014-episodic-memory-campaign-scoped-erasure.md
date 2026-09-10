@@ -1,13 +1,14 @@
 # ADR-0014: Episodic Memory Is Campaign-Scoped Shared Content
 
 ## Status
+
 Accepted (2026-05-19). Refined by [ADR-0017](./0017-per-audience-memory-visibility-erasure.md) (2026-05-20), which adds the per-audience dimension for private side-channels; this decision (shared memory is campaign-scoped, not per-player erasable) is unchanged.
 
 ## Context
 
 Phase 4 adds the episodic memory tier (ADR-0002, [TDD 0019](../tdd/0019-cold-episodic-memory.md)): per-session structured summaries, embedded for retrieval, so the AI DM can reference Session 2 in Session 9.
 
-ADR-0010 (privacy as architecture) requires every persistent store to have a documented deletion path, and per-player erasure across the data model. That raises a question for episodic summaries: when a player invokes erasure, must the campaign's session summaries that *mention* them also be deleted or regenerated?
+ADR-0010 (privacy as architecture) requires every persistent store to have a documented deletion path, and per-player erasure across the data model. That raises a question for episodic summaries: when a player invokes erasure, must the campaign's session summaries that _mention_ them also be deleted or regenerated?
 
 Episodic summaries are session-level, jointly-authored records ("the party spared Yeemik"; "Aragorn opened the vault"). They are not keyed to a single player and generally describe the whole table's collective play.
 
@@ -25,17 +26,21 @@ This is a deliberate, permanent scope decision, not a deferral.
 ## Consequences
 
 **Positive**
+
 - Clear, documented deletion path satisfying ADR-0010: campaign/tenant deletion erases episodic memory; the memory store needs no per-subject tagging or summary-regeneration machinery.
 - The shared campaign record stays coherent — erasing one player can't silently corrupt the group's continuity.
 - Simpler implementation: no per-record subject tags, no post-erasure re-summarization.
 
 **Negative / accepted trade-off**
+
 - A player's actions may remain referenced in episodic summaries after their personal erasure. This is an intentional limitation, defensible because the summaries are shared content rather than personal data.
 - It must be **disclosed up front**: `docs/PRIVACY.md` and the **voice-consent text** state that the campaign's shared memory is not individually erasable, so players understand this at consent time rather than discovering it after an erasure request.
 
 **Neutral**
+
 - Cold-tier content (operator-imported lore, SRD) is likewise campaign/tenant-scoped.
-- Raw transcripts and identity mappings remain fully per-player erasable; this ADR narrows only the episodic *summaries*.
+- Raw transcripts and identity mappings remain fully per-player erasable; this ADR narrows only the episodic _summaries_.
 
 ## Revisit when
+
 - A jurisdiction the operator runs in is determined to require individual erasure of shared-record derivatives (operators are the data controllers per ADR-0010; this would be their compliance call, and could motivate an optional per-subject-tag mode).

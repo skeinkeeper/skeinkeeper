@@ -1,6 +1,7 @@
 # ADR-0004: Plugin Interfaces for LLM / Ruleset / VTT / Voice
 
 ## Status
+
 Accepted (2026-05-17). **`Ruleset` portion superseded by [ADR-0012](./0012-drop-ruleset-plugin-interface.md) (2026-05-19). `VTTDriver` portion superseded by [ADR-0030](./0030-drop-vttdriver-plugin-interface.md) (2026-08-15).** The `LLMProvider` and `VoiceIO` interfaces from this ADR remain current.
 
 ## Context
@@ -38,22 +39,26 @@ Plugins are loaded at startup based on operator configuration. No conditional lo
 ## Consequences
 
 **Positive**
+
 - Adding a new LLM provider, ruleset, or VTT becomes a contained PR: one new module that implements the interface, plus tests against a standard conformance suite.
 - The OSS contribution surface is well-defined and discoverable. "Want to add Pathfinder 2e? Implement the `Ruleset` interface and submit."
 - We can run multi-implementation evals (does Phandelver play better under Claude or GPT?) without forking code paths.
 - Single implementations in v1 means we don't pay full abstraction tax until we have a second implementation to validate against.
 
 **Negative**
+
 - The "rule of three" risk: we're designing interfaces with only one implementation in mind. The first time a second implementation needs something the interface doesn't expose, the interface has to change.
 - Discipline cost: every new feature gets asked "where does this go — orchestrator, interface, or implementation?" That's a tax even when the answer is obvious.
 - We will get this wrong somewhere. Interfaces will need breaking changes before v1.0 — that's why plugin API stability is promised only from v1.0 forward.
 
 **Neutral**
+
 - Interfaces live in `/orchestrator/interfaces/{name}.ts`. Implementations live in `/plugins/{kind}-{name}/`.
 - Each plugin ships its own tests. CI runs the conformance suite against each.
 - A reference "fake" implementation per interface (`FakeLLMProvider`, etc.) supports orchestrator-only testing without external dependencies.
 
 ## What this ADR does NOT decide
+
 - The exact method signatures of each interface (those live in the code; this ADR is the architectural commitment).
 - Which second implementation to build first (deferred to v2 planning).
 - Whether plugins can be loaded dynamically vs. compiled in (start with compile-time; revisit if it becomes a contributor pain point).

@@ -9,9 +9,7 @@ import type { FoundryActor, FoundryScene } from "./foundry/client.js";
 
 function setup() {
   const db = openDb({ path: ":memory:", runMigrations: true });
-  db.insert(schema.tenants)
-    .values({ id: "default", name: "Test", createdAt: Date.now() })
-    .run();
+  db.insert(schema.tenants).values({ id: "default", name: "Test", createdAt: Date.now() }).run();
   db.insert(schema.campaigns)
     .values({
       id: "c1",

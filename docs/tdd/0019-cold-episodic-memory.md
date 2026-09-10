@@ -1,4 +1,5 @@
 # TDD 0019: Cold & Episodic Memory (Phase 4)
+
 Status: implemented
 PRD refs: 5.1
 PRD-rev: 10391ba
@@ -19,7 +20,7 @@ TenantDb) are built. This doc designs the two unbuilt tiers:
   embedded for retrieval, periodically consolidated into "arc summaries" when
   they exceed a token budget (ADR-0002).
 
-ADR-0002 commits to **LanceDB** as the v1 vector store and leaves the *embedder*
+ADR-0002 commits to **LanceDB** as the v1 vector store and leaves the _embedder_
 unspecified. The embedder is the open decision; everything else implements
 ADR-0002.
 
@@ -71,7 +72,7 @@ request:
 2. `embed` it; `query` the MemoryStore for top-k `cold` + `episodic`/`arc`
    records for the campaign.
 3. Inject a token-bounded **"Relevant memory"** section into hot context. Cold
-   content is *never* dumped en masse — only retrieved chunks (ADR-0002).
+   content is _never_ dumped en masse — only retrieved chunks (ADR-0002).
 
 Retrieval is bounded (small top-k, token cap) and runs per responding turn (not
 per decider call — the cheap Haiku decider stays lean).
@@ -89,7 +90,7 @@ the campaign's cold tier). Commercial module text stays operator-supplied
   tenant's LanceDB directory / the campaign's records — the documented deletion
   path required by hard rule #8.
 - **Episodic erasure is permanently campaign/tenant-scoped, never player-scoped**
-  (settled decision). A campaign's episodic memory is the *shared* record of what
+  (settled decision). A campaign's episodic memory is the _shared_ record of what
   happened at the table — jointly authored by everyone present, not any one
   player's personal data. A single player withdrawing cannot make the whole group
   forget what was collectively said and done; that isn't how a shared story (or
@@ -98,14 +99,14 @@ the campaign's cold tier). Commercial module text stays operator-supplied
   mapping, but the campaign's episodic summaries persist and are erased only on
   **campaign or tenant deletion**. This is deliberate and not revisited.
   `docs/PRIVACY.md` and the **consent text** must disclose it clearly, so players
-  understand *at consent time* that the campaign's shared memory is not
+  understand _at consent time_ that the campaign's shared memory is not
   individually erasable. (This is a privacy-posture decision; capture it as an
   ADR alongside the implementation.)
 - **Local embeddings keep content on-box** (the default) — the privacy-preferred
   path. Hosted embedding sends content to a third party; opt-in + disclosed.
 - `docs/PRIVACY.md` "what Skeinkeeper stores" already lists episodic memory as
   Phase 4; this doc's implementation updates it (storage list + erasure cascade
-  + the hosted-embedding disclosure) per hard rule #15.
+  - the hosted-embedding disclosure) per hard rule #15.
 
 ## Components & interfaces
 
@@ -141,7 +142,10 @@ export interface MemoryRecord {
 }
 export interface MemoryStore {
   upsert(records: ReadonlyArray<MemoryRecord>): Promise<void>;
-  query(vector: number[], opts: { campaignId: string; kinds?: string[]; topK: number }): Promise<MemoryRecord[]>;
+  query(
+    vector: number[],
+    opts: { campaignId: string; kinds?: string[]; topK: number },
+  ): Promise<MemoryRecord[]>;
   deleteByCampaign(campaignId: string): Promise<number>;
   deleteByTenant(): Promise<number>;
 }
@@ -170,12 +174,12 @@ Phases map to the numbered sections in Approach: (1) `EmbeddingProvider` interfa
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.1 | Cold tier — durable, relevance-retrieved knowledge (campaign/lore content, SRD rules, NPC/location facts) | `MemoryStore` + LanceDB cold records; retrieved per-turn via `assembleHotContext`; never dumped en masse |
-| 5.1 | Episodic tier — per-session summaries, key beats, NPC deltas, party choices; generated post-session; consolidated periodically | `endSession` hook generates structured summary + deltas; `episodic` records upserted; arc consolidation when token budget exceeded |
-| 5.1 | Tenant scoping in the data model | one LanceDB directory per tenant; `campaignId` on every record; `deleteByTenant` / `deleteByCampaign` on `MemoryStore` |
-| 5.1 | Every persistent data store has a documented deletion path | `MemoryAdapter` DeletionAdapter; tenant erasure = delete the LanceDB directory; campaign erasure = `deleteByCampaign` |
+| PRD ref | Requirement                                                                                                                    | Satisfied by                                                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1     | Cold tier — durable, relevance-retrieved knowledge (campaign/lore content, SRD rules, NPC/location facts)                      | `MemoryStore` + LanceDB cold records; retrieved per-turn via `assembleHotContext`; never dumped en masse                           |
+| 5.1     | Episodic tier — per-session summaries, key beats, NPC deltas, party choices; generated post-session; consolidated periodically | `endSession` hook generates structured summary + deltas; `episodic` records upserted; arc consolidation when token budget exceeded |
+| 5.1     | Tenant scoping in the data model                                                                                               | one LanceDB directory per tenant; `campaignId` on every record; `deleteByTenant` / `deleteByCampaign` on `MemoryStore`             |
+| 5.1     | Every persistent data store has a documented deletion path                                                                     | `MemoryAdapter` DeletionAdapter; tenant erasure = delete the LanceDB directory; campaign erasure = `deleteByCampaign`              |
 
 ## Dependencies considered
 
@@ -187,7 +191,7 @@ Phases map to the numbered sections in Approach: (1) `EmbeddingProvider` interfa
   unify storage in the existing SQLite DB, simpler ops + reuse of tenant-scoping
   and SQL erasure) vs **pgvector** (needs Postgres, not our stack). ADR-0002
   accepts LanceDB for v1 and frames it as "a choice, not a constraint"; we
-  follow it. *sqlite-vec is noted as a credible future simplification* — if
+  follow it. _sqlite-vec is noted as a credible future simplification_ — if
   running two stores proves operationally heavy in alpha, it's the first thing
   to revisit (would be a superseding ADR).
 - **No cold tier, bigger context window** — rejected by ADR-0002 (cost, and the
@@ -211,7 +215,7 @@ None — the episodic-erasure scoping decision (campaign/tenant-scoped, never pl
   unify storage in the existing SQLite DB, simpler ops + reuse of tenant-scoping
   and SQL erasure) vs **pgvector** (needs Postgres, not our stack). ADR-0002
   accepts LanceDB for v1 and frames it as "a choice, not a constraint"; we
-  follow it. *sqlite-vec is noted as a credible future simplification* — if
+  follow it. _sqlite-vec is noted as a credible future simplification_ — if
   running two stores proves operationally heavy in alpha, it's the first thing
   to revisit (would be a superseding ADR).
 - **No cold tier, bigger context window** — rejected by ADR-0002 (cost, and the
@@ -229,7 +233,7 @@ content, per ADR-0009.
   vectors) + the in-memory `MemoryStore` → assert top-k ordering and the
   hot-context injection.
 - **Summary generation** is testable with `FakeLLMProvider` scripting a summary
-  + deltas; assert the `episodic` record shape and that deltas are preserved.
+  - deltas; assert the `episodic` record shape and that deltas are preserved.
 - **Behavior fixture**: given a stored memory ("in session 2 the party spared
   the goblin Yeemik"), the DM recalls it when relevant in a later turn.
 

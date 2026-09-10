@@ -1,4 +1,5 @@
 # TDD 0024: Operator Self-Designation (Console + Slash Command)
+
 Status: implemented
 PRD refs: 4.4, 4.6
 PRD-rev: 10391ba
@@ -19,12 +20,12 @@ and Discord).
 
 This doc makes operator designation **friendly and runtime-settable**, from both
 the operator console and Discord, while keeping the env var as a headless
-fallback. It does not change *what* the operator designation is used for (private
-DMs for setup escalations, per 0023) — only *how* it's set.
+fallback. It does not change _what_ the operator designation is used for (private
+DMs for setup escalations, per 0023) — only _how_ it's set.
 
 A hard constraint shapes the design: **Discord bots cannot look up a user by
 display name, and the API removed username→account lookup.** Any human-friendly
-identifier must be *resolved to a snowflake* through a path that carries or finds
+identifier must be _resolved to a snowflake_ through a path that carries or finds
 the account. Three paths do this; all converge on a stored snowflake.
 
 ### 1. Three ways to designate the operator (all resolve to a snowflake)
@@ -32,7 +33,7 @@ the account. Three paths do this; all converge on a stored snowflake.
 1. **Discord slash command** — `/skeinkeeper operator claim` makes the invoking
    user the operator (the interaction carries `interaction.user.id`, so no ID or
    username is typed). `/skeinkeeper operator clear` unsets; `/skeinkeeper
-   operator show` reports who's set. This is the cleanest path and needs nothing
+operator show` reports who's set. This is the cleanest path and needs nothing
    but running the command.
 2. **Console picker** — while a session is running, the console shows a **live**
    list of who's in the voice channel; the operator clicks "This is me." The
@@ -41,7 +42,7 @@ the account. Three paths do this; all converge on a stored snowflake.
 3. **Console username field** — the operator types their Discord **@username**
    (unique, findable in Settings → My Account, no Developer Mode). Skeinkeeper
    resolves it to a snowflake via a targeted guild member search. If a session
-   isn't running yet (no gateway client), the username is stored *pending* and
+   isn't running yet (no gateway client), the username is stored _pending_ and
    resolved at the next session start. Resolution is best-effort: a query that
    doesn't uniquely match reports back and points the operator at the picker or
    the slash command. (Reliable username search may require the bot's privileged
@@ -54,7 +55,7 @@ fall back to the console log, degraded).
 
 ### 5. Authorizing the slash command (security)
 
-`/skeinkeeper operator claim`/`clear` *mutate* who receives setup DMs, so they
+`/skeinkeeper operator claim`/`clear` _mutate_ who receives setup DMs, so they
 must be authorized — otherwise any guild member could redirect the operator
 notes to themselves (info disclosure) or silently clear them (denial), and the
 designation would become a privilege-escalation path if operator-by-DM control
@@ -70,7 +71,7 @@ secret typed into chat (a slash-command password argument would itself leak the
 key into Discord's servers/logs and client UIs). Server Administrators and the
 owner pass via Discord's admin override, as expected.
 
-The **console** path (`POST /api/operator`, the picker + @username field) is *not*
+The **console** path (`POST /api/operator`, the picker + @username field) is _not_
 subject to this voice-channel check: the console is the admin plane, already
 gated by the operator password (or localhost-only), so an authenticated console
 operator may designate anyone. The asymmetry is intentional — the two planes are
@@ -100,7 +101,7 @@ in-process event bus. Two new `AppEvent`s ride it:
 A new tenant+campaign-scoped key/value table, `settings` (mirroring the
 `quest_flags` pattern), holds the resolved operator under
 `operator.discord_user_id` (and, transiently, `operator.pending_username`). It
-survives restarts, so designation is a one-time setup. The env var is *not*
+survives restarts, so designation is a one-time setup. The env var is _not_
 auto-persisted — it stays a pure fallback, so clearing the persisted value falls
 back to env cleanly.
 
@@ -115,7 +116,7 @@ PRIVACY.md and erased the same way `quest_flags` is: by **FK cascade** when the
 campaign row is deleted. The existing `CampaignAdapter` deletes the campaign on
 both **campaign** and **tenant** erasure, so `settings` rows cascade away with no
 new deletion adapter (matching the established convention). It is intentionally
-*not* removed by **player-scope** erasure: a player asking to be forgotten
+_not_ removed by **player-scope** erasure: a player asking to be forgotten
 doesn't unset the table's operator. Consent still gates all audio; presence
 remains transient (0023). No new product telemetry.
 
@@ -129,10 +130,10 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.4 | Operator designation is friendly and runtime-settable, not a raw snowflake in `.env` | Three designation paths (slash command, console picker, @username field) all resolving to a stored snowflake; env var kept as headless fallback |
-| 4.6 | Operator designation persists across restarts and is consistent across surfaces | Generic `settings` k/v table with FK-cascade erasure; SSE `operator` + `roster` events keep all three surfaces live-synced |
+| PRD ref | Requirement                                                                          | Satisfied by                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.4     | Operator designation is friendly and runtime-settable, not a raw snowflake in `.env` | Three designation paths (slash command, console picker, @username field) all resolving to a stored snowflake; env var kept as headless fallback |
+| 4.6     | Operator designation persists across restarts and is consistent across surfaces      | Generic `settings` k/v table with FK-cascade erasure; SSE `operator` + `roster` events keep all three surfaces live-synced                      |
 
 ## Dependencies considered
 
@@ -140,7 +141,7 @@ None — no new third-party dependency introduced by this design.
 
 ## PRD conflicts surfaced (and resolution)
 
-None — this design supersedes 0023 §4 for the *how* of operator designation; no PRD requirement proved infeasible or contradictory.
+None — this design supersedes 0023 §4 for the _how_ of operator designation; no PRD requirement proved infeasible or contradictory.
 
 ## Decisions to promote (ADR candidates)
 

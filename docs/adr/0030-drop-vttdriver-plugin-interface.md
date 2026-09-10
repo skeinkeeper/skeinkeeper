@@ -10,7 +10,7 @@ Supersedes: the `VTTDriver` portion of [0004](./0004-plugin-interface-pattern.md
 [ADR-0004](./0004-plugin-interface-pattern.md) defined four plugin interfaces,
 including `VTTDriver`, so a second VTT (Owlbear, Roll20) could be a contained
 PR. [ADR-0012](./0012-drop-ruleset-plugin-interface.md) already dropped
-`Ruleset` because Foundry's system modules *are* the ruleset. [ADR-0018](./0018-foundry-source-of-truth.md)
+`Ruleset` because Foundry's system modules _are_ the ruleset. [ADR-0018](./0018-foundry-source-of-truth.md)
 then made Foundry authoritative for mechanical state, and [ADR-0025](./0025-foundry-as-table-text-and-operator-surface.md)
 made Foundry the table-text surface. PRD-rev `5c3a198` (FR-F1) states Foundry
 is the only VTT at every roadmap phase. A second VTT would reintroduce a

@@ -1,4 +1,5 @@
 # TDD 0029: Sealed Credential Store
+
 Status: implemented
 PRD refs: 4.5, 5.5
 PRD-rev: 66c079f
@@ -31,15 +32,19 @@ The `.env`-only path keeps working unchanged: with no sealed file, boot reads
 
 ## Components & interfaces
 
-- **`app/src/secrets.ts`** *(existing, unchanged)* — pure crypto: `seal(passphrase,
-  plaintext): string`, `open(passphrase, sealed): string`, `SecretOpenError`.
-- **`app/src/secret_store.ts`** *(new)* — file I/O + orchestration around the crypto:
+- **`app/src/secrets.ts`** _(existing, unchanged)_ — pure crypto: `seal(passphrase,
+plaintext): string`, `open(passphrase, sealed): string`, `SecretOpenError`.
+- **`app/src/secret_store.ts`** _(new)_ — file I/O + orchestration around the crypto:
 
   ```ts
   /** Where the boot passphrase comes from. The seam for a future keyring source. */
-  export interface KeySource { getPassphrase(): string | undefined; }
+  export interface KeySource {
+    getPassphrase(): string | undefined;
+  }
   /** Default source: reads SKEINKEEPER_SECRET_PASSPHRASE from the environment. */
-  export class EnvKeySource implements KeySource { /* ... */ }
+  export class EnvKeySource implements KeySource {
+    /* ... */
+  }
 
   /** Keys eligible for sealing (required + optional-if-present). */
   export const SEALABLE_KEYS: readonly string[];
@@ -47,10 +52,17 @@ The `.env`-only path keeps working unchanged: with no sealed file, boot reads
   /** Open the sealed file and return the secret map; {} if the file is absent.
    *  Throws SecretStoreError (fail closed) if the file EXISTS but the passphrase
    *  is missing or wrong. */
-  export function loadSealedSecrets(opts: { path: string; keySource: KeySource }): Record<string, string>;
+  export function loadSealedSecrets(opts: {
+    path: string;
+    keySource: KeySource;
+  }): Record<string, string>;
 
   /** Seal `secrets` under `passphrase` and write the file atomically (mode 0600). */
-  export function sealSecrets(opts: { path: string; passphrase: string; secrets: Record<string, string> }): void;
+  export function sealSecrets(opts: {
+    path: string;
+    passphrase: string;
+    secrets: Record<string, string>;
+  }): void;
 
   /** Names of keys currently sealed in the file (never values); [] if absent. */
   export function sealedKeyNames(opts: { path: string; keySource: KeySource }): string[];
@@ -117,12 +129,12 @@ The `.env`-only path keeps working unchanged: with no sealed file, boot reads
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.5 | API keys/tokens encrypted at rest; sealed-config-file fallback | `secrets.sealed` (AES-256-GCM via `secret_store` + `secrets.ts`); boot overlay |
-| 5.5 | All secrets encrypted at rest | sealable-keys set sealed in `secrets.sealed`; `secrets:seal` migration |
-| 4.5 | Keyring primary, sealed-file fallback | `KeySource` seam; sealed-file shipped now, keyring source deferred (see PRD conflicts) |
-| ADR-0010 #1 / hard rule #7 | Secrets not plaintext at rest; never inline secrets | passphrase via host-injected env; secrets sealed on disk |
+| PRD ref                    | Requirement                                                    | Satisfied by                                                                           |
+| -------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 4.5                        | API keys/tokens encrypted at rest; sealed-config-file fallback | `secrets.sealed` (AES-256-GCM via `secret_store` + `secrets.ts`); boot overlay         |
+| 5.5                        | All secrets encrypted at rest                                  | sealable-keys set sealed in `secrets.sealed`; `secrets:seal` migration                 |
+| 4.5                        | Keyring primary, sealed-file fallback                          | `KeySource` seam; sealed-file shipped now, keyring source deferred (see PRD conflicts) |
+| ADR-0010 #1 / hard rule #7 | Secrets not plaintext at rest; never inline secrets            | passphrase via host-injected env; secrets sealed on disk                               |
 
 ## Dependencies considered
 
@@ -136,7 +148,7 @@ platform crypto. `keytar` / OS-keyring libraries — deferred to the keyring TDD
 ## PRD conflicts surfaced (and resolution)
 
 - PRD §4.5/§5.5 list the **OS keyring as primary** with the sealed file as
-  *fallback*; this TDD ships the **sealed file first** and defers the keyring.
+  _fallback_; this TDD ships the **sealed file first** and defers the keyring.
   Resolution: the keyring is impractical for the dominant headless/Docker
   deployment; the sealed file is the PRD-named fallback and is sufficient on its
   own. The `KeySource` seam makes the keyring a drop-in later (its own TDD), so the
@@ -149,7 +161,7 @@ platform crypto. `keytar` / OS-keyring libraries — deferred to the keyring TDD
 
 None. This implements an existing ADR-0010 commitment; env-passphrase + sealed
 file is an implementation choice, not a new cross-cutting decision. (If a later
-keyring source changes the *default* key source, that warrants an ADR.)
+keyring source changes the _default_ key source, that warrants an ADR.)
 
 ## Telemetry implications
 

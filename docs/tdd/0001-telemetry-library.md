@@ -1,4 +1,5 @@
 # TDD 0001: Telemetry Library
+
 Status: implemented
 PRD refs: 5.6, 5.7
 PRD-rev: 10391ba
@@ -153,12 +154,12 @@ export const events = {
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.6 | Telemetry off by default, opt-in only | default-off boot gate (`SKEINKEEPER_TELEMETRY_*` == `"1"`); no-op clients when disabled; self-test #1 |
-| 5.6 | Two separate streams (product analytics + crash) | `createAnalytics` / `createCrash` as independent clients with independent enables |
-| 5.6 | No PII/content in analytics | `NoPII<T>` compile-time rejection; single emission surface enforced by lint |
-| 5.7 | Local observability / debuggability | the registry + typed emission underpin per-session metrics surfaced locally (the local-only cost dashboard is scoped separately — see Open questions) |
+| PRD ref | Requirement                                      | Satisfied by                                                                                                                                          |
+| ------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.6     | Telemetry off by default, opt-in only            | default-off boot gate (`SKEINKEEPER_TELEMETRY_*` == `"1"`); no-op clients when disabled; self-test #1                                                 |
+| 5.6     | Two separate streams (product analytics + crash) | `createAnalytics` / `createCrash` as independent clients with independent enables                                                                     |
+| 5.6     | No PII/content in analytics                      | `NoPII<T>` compile-time rejection; single emission surface enforced by lint                                                                           |
+| 5.7     | Local observability / debuggability              | the registry + typed emission underpin per-session metrics surfaced locally (the local-only cost dashboard is scoped separately — see Open questions) |
 
 ## Dependencies considered
 

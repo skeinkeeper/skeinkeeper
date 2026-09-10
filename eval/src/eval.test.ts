@@ -200,9 +200,7 @@ describe("reporter", () => {
 
   it("formats markdown succinctly when all green", () => {
     const md = formatMarkdownReport({
-      fixtures: [
-        { name: "a", path: "x", status: "pass", expectations: [] },
-      ],
+      fixtures: [{ name: "a", path: "x", status: "pass", expectations: [] }],
       totals: { pass: 1, fail: 0, skipped: 0 },
     });
     expect(md).toContain("All expectations passed");

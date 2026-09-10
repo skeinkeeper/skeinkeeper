@@ -51,7 +51,12 @@ describe("runVoiceSession", () => {
     const voiceIO = new FakeVoiceIO([
       {
         kind: "utterance",
-        utterance: { speaker: "p1", displayName: "Aragorn", text: "I open the door.", timestamp: 1 },
+        utterance: {
+          speaker: "p1",
+          displayName: "Aragorn",
+          text: "I open the door.",
+          timestamp: 1,
+        },
       },
     ]);
     const count = await runVoiceSession({

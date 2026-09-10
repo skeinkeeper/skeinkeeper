@@ -7,7 +7,7 @@ Relates to: ADR-0010
 
 > This ADR formalizes a decision originally made and recorded in
 > [TDD 0002 (Privacy Foundation)](../tdd/0002-privacy-foundation.md). ADR-0010 commits
-> the project to encryption-at-rest as a *mechanism* but does not fix the *approach*; this ADR
+> the project to encryption-at-rest as a _mechanism_ but does not fix the _approach_; this ADR
 > records the approach. Implementation detail (the `encryptedColumn()` helpers, nonce handling,
 > the `consents`/`deletion_log` tables) stays in TDD 0002.
 
@@ -34,7 +34,7 @@ deleted without needing to decrypt it).
 
 - **Chosen: `libsodium` per-column AEAD.** Fully OSS, audited, cross-platform; lets audit and
   deletion paths operate on ciphertext without the key.
-- **Rejected: SQLCipher (whole-DB encryption).** Forces *every* read through the key, including
+- **Rejected: SQLCipher (whole-DB encryption).** Forces _every_ read through the key, including
   the audit/deletion paths that only need to confirm a row exists or was removed. Whole-DB also
   pays the encryption cost on non-PII columns that don't need it.
 

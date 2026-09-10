@@ -7,3 +7,11 @@ coverage
 pnpm-lock.yaml
 LICENSE
 behavior/
+
+# Prettier's markdown formatter does not converge on this file: it alternately
+# indents and dedents the fenced code blocks that sit inside `- [ ]` list items,
+# so `--write` followed by `--check` fails no matter how many passes you run.
+# The indentation in the file is correct markdown for a checklist continuation;
+# the oscillation is a prettier bug, not a defect here. Excluded so the repo can
+# be format-clean. Re-test on a prettier upgrade and drop this if it settles.
+docs/LIVE-VALIDATION.md

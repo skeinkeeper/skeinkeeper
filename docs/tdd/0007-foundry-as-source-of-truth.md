@@ -1,4 +1,5 @@
 # TDD 0007: Foundry-as-Source-of-Truth
+
 Status: implemented
 PRD refs: 4.2, 5.1
 PRD-rev: 10391ba
@@ -54,7 +55,7 @@ export interface FoundryActor {
   id: string;
   name: string;
   type: "character" | "npc" | string;
-  system: string;                 // "dnd5e" | "fate-core" | "dungeon-world" | etc.
+  system: string; // "dnd5e" | "fate-core" | "dungeon-world" | etc.
   sheet: Record<string, unknown>; // Foundry's `actor.system` blob — opaque
   flags?: Record<string, unknown>;
 }
@@ -74,11 +75,15 @@ export interface FoundryClient {
   getActor(actorId: string): Promise<FoundryActor | null>;
   getActiveScene(): Promise<FoundryScene | null>;
   applyActorUpdate(actorId: string, update: Record<string, unknown>): Promise<void>;
-  rollDice(formula: string, opts?: { speaker?: string; whisperTo?: string[] }): Promise<{ total: number; rolls: number[]; formula: string }>;
+  rollDice(
+    formula: string,
+    opts?: { speaker?: string; whisperTo?: string[] },
+  ): Promise<{ total: number; rolls: number[]; formula: string }>;
 }
 ```
 
 Two implementations:
+
 - `MockFoundryClient` — in-memory; used by orchestrator unit tests. No network or Foundry process required.
 - `McpFoundryClient` (Phase 3) — wraps the MCP bridge selected per ADR-0011 (adambdooley default).
 
@@ -89,15 +94,20 @@ Because Foundry's `actor.system` blob is opaque to our orchestrator, we need a t
 ```ts
 export function renderActorState(actor: FoundryActor): string {
   switch (actor.system) {
-    case "dnd5e":        return renderDnd5e(actor);
-    case "fate-core":    return renderFateCore(actor);
-    case "dungeon-world": return renderDungeonWorld(actor);
-    default:             return renderGeneric(actor);
+    case "dnd5e":
+      return renderDnd5e(actor);
+    case "fate-core":
+      return renderFateCore(actor);
+    case "dungeon-world":
+      return renderDungeonWorld(actor);
+    default:
+      return renderGeneric(actor);
   }
 }
 ```
 
 These renderers are pure functions, small per-system files, no schema validation. They produce one-line summaries like:
+
 - D&D: `"Aragorn — HP 22/30, AC 18 [frightened]"`
 - Fate: `"Aragorn — physical 1/2, mild: 'Shaken by what I saw'"`
 - DW: `"Aragorn — HP 18/22, armor 1, debilities: weak"`
@@ -110,14 +120,16 @@ Generic fallback is fine for systems we haven't added a renderer for — the LLM
 Two categories of state-mutation tools:
 
 **Skeinkeeper-owned** (write directly to our SQLite via `TenantDb`):
+
 - `set_quest_flag`, `move_party`, `advance_time`, `whisper`, `fudge_roll`
 
 **Foundry-routed** (translate to MCP calls; system-aware; registered at session start once the active Foundry system is known):
+
 - D&D 5e: `apply_damage`, `heal`, `set_condition`, `clear_condition`, `update_inventory`, `update_npc_disposition`
 - Fate Core: `apply_stress`, `take_consequence`, `invoke_aspect`, etc.
 - Dungeon World: `apply_harm`, `tick_harm_clock`, `mark_debility`, etc.
 
-The Foundry-routed tool *definitions* live in `plugins/vtt-foundry/` (where the chosen MCP bridge adapter also lives — landing in Phase 3). They register into the existing `ToolRegistry` at session start. Their handlers translate the typed input into MCP calls and into Foundry actor updates.
+The Foundry-routed tool _definitions_ live in `plugins/vtt-foundry/` (where the chosen MCP bridge adapter also lives — landing in Phase 3). They register into the existing `ToolRegistry` at session start. Their handlers translate the typed input into MCP calls and into Foundry actor updates.
 
 The `roll` tool stays in core but its implementation in Phase 3 delegates to `foundry.rollDice()`, so rolls land in Foundry's chat log and are visible to players.
 
@@ -149,10 +161,10 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.2 | Ruleset-agnostic mechanical state (D&D, Fate, PbtA, etc.) | Foundry's per-system `actor.system` blob is the ruleset abstraction; per-system renderers format it for the LLM; Skeinkeeper holds no D&D-specific schema |
-| 5.1 | Foundry VTT integration as the authoritative source of mechanical state | `FoundryClient` interface + `McpFoundryClient` (Phase 3); Skeinkeeper holds only AI-DM-specific state; no duplication of mechanical state |
+| PRD ref | Requirement                                                             | Satisfied by                                                                                                                                              |
+| ------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.2     | Ruleset-agnostic mechanical state (D&D, Fate, PbtA, etc.)               | Foundry's per-system `actor.system` blob is the ruleset abstraction; per-system renderers format it for the LLM; Skeinkeeper holds no D&D-specific schema |
+| 5.1     | Foundry VTT integration as the authoritative source of mechanical state | `FoundryClient` interface + `McpFoundryClient` (Phase 3); Skeinkeeper holds only AI-DM-specific state; no duplication of mechanical state                 |
 
 ## Dependencies considered
 
@@ -182,9 +194,9 @@ No new events. The existing `tool.called` event covers tool dispatches whether t
 
 ## Privacy implications
 
-- Foundry's data stays on the operator's Foundry instance. Skeinkeeper never copies actor sheets into its own store. This is a privacy *improvement* — less duplication, smaller surface.
+- Foundry's data stays on the operator's Foundry instance. Skeinkeeper never copies actor sheets into its own store. This is a privacy _improvement_ — less duplication, smaller surface.
 - The `audit_log` may record actor IDs and partial sheet snapshots inside `payloadJson` (e.g., "applied 5 damage to actor `abc-123`, HP went 22→17"). Per design doc 0002 this is PII-adjacent and is covered by the existing encryption-at-rest plan.
-- Foundry user identity is *not* the same as Discord user identity. The consents table remains keyed on Discord ID (where voice consent matters); Foundry-side user identity isn't surfaced to Skeinkeeper's privacy layer.
+- Foundry user identity is _not_ the same as Discord user identity. The consents table remains keyed on Discord ID (where voice consent matters); Foundry-side user identity isn't surfaced to Skeinkeeper's privacy layer.
 
 ## Eval implications
 

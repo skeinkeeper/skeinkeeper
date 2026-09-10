@@ -62,7 +62,14 @@ describe("utteranceToFragment", () => {
 describe("renderBuffer", () => {
   it("labels each line by display name (falling back to speaker id)", () => {
     const out = renderBuffer([
-      { speaker: "discord:1", displayName: "Alice", text: "I move up", startTs: 1, endTs: 1, final: true },
+      {
+        speaker: "discord:1",
+        displayName: "Alice",
+        text: "I move up",
+        startTs: 1,
+        endTs: 1,
+        final: true,
+      },
       { speaker: "discord:2", text: "I follow", startTs: 2, endTs: 2, final: true },
     ]);
     expect(out).toBe("[Alice] I move up\n[discord:2] I follow");

@@ -133,7 +133,9 @@ async function main(): Promise<void> {
   }
 
   clearTimeout(stop);
-  console.log(`\n${utterances > 0 ? "✓" : "✗"} Layer 2 ${utterances > 0 ? "PASS" : "— heard nothing"}: ${utterances} utterance(s) transcribed.`);
+  console.log(
+    `\n${utterances > 0 ? "✓" : "✗"} Layer 2 ${utterances > 0 ? "PASS" : "— heard nothing"}: ${utterances} utterance(s) transcribed.`,
+  );
   connection.destroy();
   await client.destroy();
 }

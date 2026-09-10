@@ -90,8 +90,7 @@ export async function assignNpcVoice(
   // Accept an id, or fall back to matching the model's answer against names.
   const byId = args.library.find((v) => v.id === choice.voiceId);
   const resolved =
-    byId ??
-    args.library.find((v) => v.name.toLowerCase() === (choice.voiceId ?? "").toLowerCase());
+    byId ?? args.library.find((v) => v.name.toLowerCase() === (choice.voiceId ?? "").toLowerCase());
   if (!resolved) {
     throw new VoiceAssignmentError(
       `model did not return a valid voice id (got ${JSON.stringify(choice.voiceId)})`,

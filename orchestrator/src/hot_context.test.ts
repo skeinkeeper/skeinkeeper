@@ -41,12 +41,13 @@ function dnd5eNpc(name: string): FoundryActor {
 function warm(): WarmStateSnapshot {
   return {
     campaign: { id: "phandelver", name: "Lost Mine of Phandelver", rulesetId: "dnd5e" },
-    party: [
-      dnd5eCharacter("Aragorn", 22, 30),
-      dnd5eCharacter("Gimli", 8, 28, ["frightened"]),
-    ],
+    party: [dnd5eCharacter("Aragorn", 22, 30), dnd5eCharacter("Gimli", 8, 28, ["frightened"])],
     activeNpcs: [dnd5eNpc("Sildar")],
-    currentLocation: { id: "scene-1", name: "Phandalin Town Square", description: "Dusty and quiet." },
+    currentLocation: {
+      id: "scene-1",
+      name: "Phandalin Town Square",
+      description: "Dusty and quiet.",
+    },
   };
 }
 

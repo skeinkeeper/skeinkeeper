@@ -54,10 +54,7 @@ export class DeepgramSTT implements STTProvider {
     this.model = options.model ?? "nova-3";
   }
 
-  async *transcribe(
-    audio: AsyncIterable<Uint8Array>,
-    opts: STTOptions,
-  ): AsyncIterable<Utterance> {
+  async *transcribe(audio: AsyncIterable<Uint8Array>, opts: STTOptions): AsyncIterable<Utterance> {
     const bytes = await drainBytes(audio);
     if (bytes.length === 0) return;
 
@@ -65,13 +62,17 @@ export class DeepgramSTT implements STTProvider {
     url.searchParams.set("model", this.model);
     url.searchParams.set("smart_format", "true");
     if (this.options.encoding) url.searchParams.set("encoding", this.options.encoding);
-    if (this.options.sampleRate) url.searchParams.set("sample_rate", String(this.options.sampleRate));
+    if (this.options.sampleRate)
+      url.searchParams.set("sample_rate", String(this.options.sampleRate));
     if (this.options.channels) url.searchParams.set("channels", String(this.options.channels));
     if (opts.language) url.searchParams.set("language", opts.language);
 
     const res = await this.fetchImpl(url, {
       method: "POST",
-      headers: { authorization: `Token ${this.options.apiKey}`, "content-type": "application/octet-stream" },
+      headers: {
+        authorization: `Token ${this.options.apiKey}`,
+        "content-type": "application/octet-stream",
+      },
       body: bytes,
     });
     assertOk(res, "Deepgram listen request");

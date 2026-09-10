@@ -21,11 +21,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import {
-  DeepgramSTT,
-  ElevenLabsTTS,
-  ElevenLabsVoiceLibrary,
-} from "@skeinkeeper/voice-discord";
+import { DeepgramSTT, ElevenLabsTTS, ElevenLabsVoiceLibrary } from "@skeinkeeper/voice-discord";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SAMPLE_LINE = "The cavern mouth yawns before you, cold and patient.";
@@ -38,10 +34,7 @@ function loadEnv(path: string): void {
     if (!m) continue;
     const key = m[1]!;
     let val = m[2]!;
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
     if (process.env[key] === undefined) process.env[key] = val;

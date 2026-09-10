@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Skeinkeeper Contributors
 
-import type {
-  LLMEvent,
-  LLMOptions,
-  LLMProvider,
-  LLMRequest,
-  TokenUsage,
-} from "./llm.js";
+import type { LLMEvent, LLMOptions, LLMProvider, LLMRequest, TokenUsage } from "./llm.js";
 
 /**
  * One scripted response. If `match` is provided and returns false for a

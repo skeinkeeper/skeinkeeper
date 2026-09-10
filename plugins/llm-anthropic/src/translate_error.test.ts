@@ -70,7 +70,9 @@ describe("translateError", () => {
   });
 
   it("respects a non-default errorKind on TranslationError", () => {
-    const info = translateError(new TranslationError("simulated rate-limit pre-flight", "rate_limited"));
+    const info = translateError(
+      new TranslationError("simulated rate-limit pre-flight", "rate_limited"),
+    );
     expect(info.kind).toBe("rate_limited");
   });
 });

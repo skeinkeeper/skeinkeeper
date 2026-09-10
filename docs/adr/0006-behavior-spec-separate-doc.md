@@ -1,6 +1,7 @@
 # ADR-0006: DM Behavior Spec Lives in a Separately-Versioned Document
 
 ## Status
+
 Accepted (2026-05-17)
 
 ## Context
@@ -28,21 +29,25 @@ The Behavior Spec is treated as a runtime asset — like a configuration file or
 ## Consequences
 
 **Positive**
+
 - The codebase becomes stable. It changes when capabilities change, not when DM tone is being tuned.
 - The Behavior Spec can iterate rapidly — including by non-engineers, including by experienced DMs who want to contribute prompt-engineering improvements without touching code.
 - The Behavior Spec is a **system prompt artifact**, not just documentation. Its formatting and length are constrained by what the model needs to consume, not what a human reader needs.
 - Operator-defined behavior overlays (campaign-specific spec edits, personality presets) compose cleanly on top of the base spec.
 
 **Negative**
+
 - Newcomers might not realize the Behavior Spec is the most important document for AI-DM quality. The README surfaces this.
 - The spec has its own versioning rhythm separate from semantic versioning of the code. A spec change can ship without a code change.
 
 **Neutral**
+
 - The Behavior Spec follows a `vMAJOR.MINOR` versioning of its own, recorded in its version history appendix.
 - Behavior Spec changes are landed via PR like any other change, but the review criteria are different: playtesting evidence and eval-fixture impact, not pure architectural review.
 - A future ADR may formalize the Behavior Spec evaluation harness — replaying canonical scenarios against new spec versions to detect regressions.
 
 ## What this implies for the repo
+
 - `/behavior/default.md` — the AI's system prompt (this default ships with the project).
 - `/behavior/personalities/` (future) — distributable personality preset overlays.
 - `/docs/adr/` — architectural decisions and rationale.

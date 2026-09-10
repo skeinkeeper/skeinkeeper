@@ -1,4 +1,5 @@
 # TDD 0030: Per-Column PII Encryption
+
 Status: implemented
 PRD refs: 5.5, 5.6
 PRD-rev: 66c079f
@@ -15,7 +16,7 @@ AES-256-GCM, keyed from the same `SKEINKEEPER_SECRET_PASSPHRASE` `KeySource` as 
 sealed credential store ([TDD 0029](./0029-sealed-credential-store.md)). The shim
 TDD 0002 promised was never built; this TDD builds it.
 
-Three column shapes need three treatments (inventory in *Data & state*):
+Three column shapes need three treatments (inventory in _Data & state_):
 
 1. **Identity lookup columns** (raw Discord IDs queried by equality / used for
    erasure) — `consents.subject_id`, `player_character_map.discord_user_id`,
@@ -42,7 +43,7 @@ operate on ciphertext, never needing the plaintext key (ADR-0010 / ADR-0022).
 
 ## Components & interfaces
 
-- **`server/src/column_crypto.ts`** *(new)* — built once at boot from the
+- **`server/src/column_crypto.ts`** _(new)_ — built once at boot from the
   `KeySource` + per-install salt:
 
   ```ts
@@ -63,7 +64,8 @@ operate on ciphertext, never needing the plaintext key (ADR-0010 / ADR-0022).
   so `dec` and the migration can tell ciphertext from legacy plaintext. `hash` is
   HMAC/SHA-256 over the per-install salt + value (same family as
   `ErasureService.hashSubject`).
-- **Schema** *(new `_hash` columns + migration)* — add `subject_id_hash` to
+
+- **Schema** _(new `_hash` columns + migration)_ — add `subject_id_hash` to
   `consents`, `discord_user_id_hash` to `player_character_map`, `speaker_hash` to
   `dialogue`, each indexed in place of the raw-value index. Value columns stay
   `TEXT` (now hold ciphertext when enabled).
@@ -77,9 +79,8 @@ operate on ciphertext, never needing the plaintext key (ADR-0010 / ADR-0022).
   Discord event, not by parsing the token — verified in the inventory). The
   LanceDB `memory.audience` filter (`lance_memory_store.ts`) inherits the new token
   unchanged because it matches the same string `playerAudience()` produces.
-- **CLI `pii:encrypt`** *(in `server` CLI, alongside `secrets:*`)* — one-shot
-  migration: with the passphrase set, walk each PII table, fill the `_hash`
-  columns, encrypt the values, and rewrite `audience`/`conversation_id` tokens to
+- **CLI `pii:encrypt`** _(in `server` CLI, alongside `secrets:_`)* — one-shot
+migration: with the passphrase set, walk each PII table, fill the `\_hash`columns, encrypt the values, and rewrite`audience`/`conversation_id` tokens to
   the hashed form. Idempotent: rows already encrypted (tagged ciphertext) are
   skipped.
 
@@ -87,18 +88,18 @@ operate on ciphertext, never needing the plaintext key (ADR-0010 / ADR-0022).
 
 Per-column treatment (from the schema/adapter inventory):
 
-| Column | PII | Treatment |
-|---|---|---|
-| `consents.subject_id` | Discord ID (lookup + erasure) | `subject_id_hash` companion + AEAD value |
-| `player_character_map.discord_user_id` | Discord ID (lookup + erasure) | `discord_user_id_hash` companion + AEAD value |
-| `dialogue.speaker` | Discord ID (lookup + erasure) | `speaker_hash` companion + AEAD value |
-| `dialogue.audience`, `dialogue.conversation_id` | `player:<id>` routing token | embed `hash(id)` → `player:<hash>` |
-| `dialogue.text`, `dialogue.display_name` | free text / name (data-only) | AEAD |
-| `player_character_map.display_name` | name (data-only) | AEAD |
-| `audit_log.payload_json` | JSON may embed IDs (data-only; read for display) | AEAD; audit *existence/deletion* works on ciphertext |
-| `settings.value` | may hold operator ID (data-only) | AEAD |
-| `deletion_log.subject_id_hash` | already a salted hash | unchanged |
-| LanceDB `memory.audience` | `player:<id>` routing token | inherits the hashed token (no separate change) |
+| Column                                          | PII                                              | Treatment                                            |
+| ----------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| `consents.subject_id`                           | Discord ID (lookup + erasure)                    | `subject_id_hash` companion + AEAD value             |
+| `player_character_map.discord_user_id`          | Discord ID (lookup + erasure)                    | `discord_user_id_hash` companion + AEAD value        |
+| `dialogue.speaker`                              | Discord ID (lookup + erasure)                    | `speaker_hash` companion + AEAD value                |
+| `dialogue.audience`, `dialogue.conversation_id` | `player:<id>` routing token                      | embed `hash(id)` → `player:<hash>`                   |
+| `dialogue.text`, `dialogue.display_name`        | free text / name (data-only)                     | AEAD                                                 |
+| `player_character_map.display_name`             | name (data-only)                                 | AEAD                                                 |
+| `audit_log.payload_json`                        | JSON may embed IDs (data-only; read for display) | AEAD; audit _existence/deletion_ works on ciphertext |
+| `settings.value`                                | may hold operator ID (data-only)                 | AEAD                                                 |
+| `deletion_log.subject_id_hash`                  | already a salted hash                            | unchanged                                            |
+| LanceDB `memory.audience`                       | `player:<id>` routing token                      | inherits the hashed token (no separate change)       |
 
 No new persistent store; uses the existing SQLite DB + the per-install salt
 (`salt.ts`) + the TDD-0029 passphrase. Mechanical state stays in Foundry
@@ -139,12 +140,12 @@ No new persistent store; uses the existing SQLite DB + the per-install salt
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.5 | PII fields annotated and protected | `PII<T>` (existing) + per-column AEAD on every PII column |
-| 5.6 | Encryption-at-rest for PII-marked columns | `column_crypto` AES-256-GCM via `PiiCrypto`; `_hash` companions keep audit/deletion key-free |
-| ADR-0022 | Node-crypto AEAD, KeySource passphrase, per-column, key-free audit/deletion | `column_crypto` + hash companions + audience rework |
-| ADR-0010 #4 | Deletion path works without the key | erasure matches on `_hash`, operates on ciphertext |
+| PRD ref     | Requirement                                                                 | Satisfied by                                                                                 |
+| ----------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 5.5         | PII fields annotated and protected                                          | `PII<T>` (existing) + per-column AEAD on every PII column                                    |
+| 5.6         | Encryption-at-rest for PII-marked columns                                   | `column_crypto` AES-256-GCM via `PiiCrypto`; `_hash` companions keep audit/deletion key-free |
+| ADR-0022    | Node-crypto AEAD, KeySource passphrase, per-column, key-free audit/deletion | `column_crypto` + hash companions + audience rework                                          |
+| ADR-0010 #4 | Deletion path works without the key                                         | erasure matches on `_hash`, operates on ciphertext                                           |
 
 ## Dependencies considered
 

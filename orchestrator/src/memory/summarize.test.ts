@@ -37,7 +37,9 @@ describe("generateEpisodicSummary", () => {
   });
 
   it("throws on empty dialogue", async () => {
-    await expect(generateEpisodicSummary(llm("{}"), [])).rejects.toBeInstanceOf(EpisodicSummaryError);
+    await expect(generateEpisodicSummary(llm("{}"), [])).rejects.toBeInstanceOf(
+      EpisodicSummaryError,
+    );
   });
 
   it("throws when the model returns no usable summary", async () => {
