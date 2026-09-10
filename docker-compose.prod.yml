@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Skeinkeeper Contributors
+#
+# Production deployment. Copied into the deploy directory by scripts/promote.sh —
+# do not edit it there, edit it here and promote again; the deploy directory is
+# managed, and only `.env` and `data/` are yours.
+#
+# The difference from docker-compose.yml is the artifact. That file BUILDS from a
+# working tree, which is the right thing for development and the wrong thing for
+# a machine you expect to stay up: whatever happened to be checked out becomes
+# what is running, and there is nothing to roll back to. Here the artifact is an
+# immutable image tagged with the commit it was built from, so what is deployed
+# is a fact you can read (`SKEINKEEPER_IMAGE_TAG` in .env) and rolling back is
+# pointing at the previous tag.
+#
+# `restart: "no"` is deliberate. systemd supervises this (skeinkeeper.service,
+# Restart=always); two supervisors racing to restart the same container produces
+# confusing, hard-to-debug behaviour. One owner.
+#
+# Everything else — the loopback-scoped publish, the non-root user, the pinned
+# data dir — is identical to the dev compose and load-bearing for the same
+# reasons documented there.
+services:
+  app:
+    image: "skeinkeeper:${SKEINKEEPER_IMAGE_TAG:?promote.sh must set SKEINKEEPER_IMAGE_TAG in .env}"
+    env_file: .env
+    user: "${SKEINKEEPER_UID:-1000}:${SKEINKEEPER_GID:-1000}"
+    environment:
+      FOUNDRY_GATEWAY_BIND: "container"
+      SKEINKEEPER_WEB_HOST: "0.0.0.0"
+      SKEINKEEPER_DATA_DIR: "/data"
+    ports:
+      - "127.0.0.1:${SKEINKEEPER_WEB_PORT:-3000}:${SKEINKEEPER_WEB_PORT:-3000}"
+      - "127.0.0.1:${FOUNDRY_GATEWAY_PORT:-7733}:${FOUNDRY_GATEWAY_PORT:-7733}"
+    volumes:
+      - ./data:/data
+    restart: "no"

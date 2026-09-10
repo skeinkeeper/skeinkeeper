@@ -181,6 +181,43 @@ console password — belongs to you rather than to root. That matters beyond tid
 delete the data it is asked to erase. If `id -u` / `id -g` report something other
 than 1000, set `SKEINKEEPER_UID` / `SKEINKEEPER_GID` in `.env`.
 
+### Running it for real (survives reboots, rollback-able)
+
+`docker compose up` from a checkout is right for trying Skeinkeeper out and wrong
+for a machine you expect to stay up: nothing restarts it after a reboot, and what
+is running drifts with whatever you have checked out. For a table you actually
+play at, deploy it:
+
+```bash
+cp deploy/skeinkeeper.service ~/.config/systemd/user/skeinkeeper.service
+sed -i "s|%h|$HOME|g" ~/.config/systemd/user/skeinkeeper.service
+systemctl --user daemon-reload && systemctl --user enable skeinkeeper.service
+loginctl enable-linger "$USER"     # so it starts at boot without you logging in
+
+scripts/promote.sh                  # build this commit, deploy it, verify it
+```
+
+`promote.sh` builds an image tagged with the commit it came from, copies the
+managed compose file into `~/skeinkeeper-prod`, points the deployment at the new
+tag and restarts the unit — then waits for the console to actually answer before
+calling it done. It refuses on a dirty tree, a failing `pnpm verify:all`, or a
+port already held by a dev run, and a deploy that fails its health check rolls
+itself back to the previous image.
+
+| Command                               |                                       |
+| ------------------------------------- | ------------------------------------- |
+| `scripts/promote.sh`                  | build and deploy the current commit   |
+| `scripts/promote.sh --status`         | what is deployed, and what is running |
+| `scripts/promote.sh --rollback`       | return to the previous image          |
+| `journalctl --user -u skeinkeeper -f` | follow the logs                       |
+
+The deploy directory (`~/skeinkeeper-prod`, override with `SKEINKEEPER_DEPLOY_DIR`)
+holds only your `.env`, your `data/`, and a compose file `promote.sh` manages —
+no source tree, so a deployment cannot pick up uncommitted work. Its `data/` is
+separate from your checkout's, so the deployment has its own database, pairing
+secret and console password: **pair the add-on against the deployment once**, the
+first time you promote.
+
 The `app` service builds the image, installs ffmpeg + the native deps, and runs
 the Discord gateway, the voice loop, the operator console, and the Foundry
 gateway. Foundry itself runs outside the container, on your own machine.
