@@ -113,10 +113,7 @@ describe("translateRequest — task budget", () => {
   });
 
   it("does not set task_budget on Haiku (output_config is omitted entirely)", () => {
-    const p = translateRequest(
-      req({ modelTier: "orchestration", taskBudgetTokens: 30_000 }),
-      CFG,
-    );
+    const p = translateRequest(req({ modelTier: "orchestration", taskBudgetTokens: 30_000 }), CFG);
     expect(p.output_config).toBeUndefined();
   });
 

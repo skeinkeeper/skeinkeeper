@@ -1,4 +1,5 @@
 # TDD 0005: State Schema
+
 Status: implemented
 PRD refs: 5.1, 5.2
 PRD-rev: 10391ba
@@ -6,7 +7,7 @@ ADR constraints: 0002, 0003, 0008, 0010, 0011, 0013
 Author: maintainers
 Date: 2026-05-19
 Related TDDs: [0002 (privacy foundation)](./0002-privacy-foundation.md), [0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md)
-Supersedes: **Status: Superseded by [Design Doc 0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md) (2026-05-19).** The body below describes the pre-pivot schema (a first-class `characters` / `npcs` / `locations` / `faction_reputation` schema in Skeinkeeper's SQLite). Per design doc 0007 those tables were deleted; Foundry now owns mechanical state. Skeinkeeper's current schema (`tenants`, `campaigns`, `sessions`, `audit_log`, `consents`, `deletion_log`, `quest_flags`) is described in design doc 0007. The `TenantDb` tenant-scoping pattern from this doc *is* retained — see [ADR-0008](../adr/0008-tenant-scoping.md). Content below preserved unchanged as historical record.
+Supersedes: **Status: Superseded by [Design Doc 0007 (Foundry-as-source-of-truth)](./0007-foundry-as-source-of-truth.md) (2026-05-19).** The body below describes the pre-pivot schema (a first-class `characters` / `npcs` / `locations` / `faction_reputation` schema in Skeinkeeper's SQLite). Per design doc 0007 those tables were deleted; Foundry now owns mechanical state. Skeinkeeper's current schema (`tenants`, `campaigns`, `sessions`, `audit_log`, `consents`, `deletion_log`, `quest_flags`) is described in design doc 0007. The `TenantDb` tenant-scoping pattern from this doc _is_ retained — see [ADR-0008](../adr/0008-tenant-scoping.md). Content below preserved unchanged as historical record.
 
 ## Approach
 
@@ -48,17 +49,17 @@ This isn't a perfect compile-time barrier — a determined contributor could re-
 
 All tables are SQLite via Drizzle. Every operator-data table carries `tenant_id`. Foreign keys reference parent tables (no `tenant_id` denormalization for FKs because the parent already carries it; cross-tenant FKs are blocked at query time by the wrapper).
 
-| Table | Purpose | Mutated via |
-|---|---|---|
-| `tenants` | Tenant directory; default install has `{ id: "default" }`. | Operator CLI |
-| `campaigns` | One row per active campaign within a tenant. | Operator CLI / web UI |
-| `characters` | Player characters. `player_discord_id` is PII. | Tool calls + operator |
-| `npcs` | Named NPCs. Carries the three things from behavior spec §3 (mannerism, motivation, secret) plus disposition and voice. | Tool calls + operator |
-| `locations` | Named locations with optional hierarchy. | Tool calls + operator |
-| `quest_flags` | String-keyed campaign state (`"phandelver.cragmaw.cleared" = "true"`). | Tool calls |
-| `faction_reputation` | Per-faction integer reputation. | Tool calls |
-| `sessions` | One row per gameplay session. | Orchestrator |
-| `audit_log` | Every tool call, state mutation, and AI decision. Append-only. | Tool dispatcher |
+| Table                | Purpose                                                                                                                | Mutated via           |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `tenants`            | Tenant directory; default install has `{ id: "default" }`.                                                             | Operator CLI          |
+| `campaigns`          | One row per active campaign within a tenant.                                                                           | Operator CLI / web UI |
+| `characters`         | Player characters. `player_discord_id` is PII.                                                                         | Tool calls + operator |
+| `npcs`               | Named NPCs. Carries the three things from behavior spec §3 (mannerism, motivation, secret) plus disposition and voice. | Tool calls + operator |
+| `locations`          | Named locations with optional hierarchy.                                                                               | Tool calls + operator |
+| `quest_flags`        | String-keyed campaign state (`"phandelver.cragmaw.cleared" = "true"`).                                                 | Tool calls            |
+| `faction_reputation` | Per-faction integer reputation.                                                                                        | Tool calls            |
+| `sessions`           | One row per gameplay session.                                                                                          | Orchestrator          |
+| `audit_log`          | Every tool call, state mutation, and AI decision. Append-only.                                                         | Tool dispatcher       |
 
 `audit_log` rows are append-only by convention; no `UPDATE` or `DELETE` against this table outside the erasure flow.
 
@@ -66,7 +67,7 @@ All tables are SQLite via Drizzle. Every operator-data table carries `tenant_id`
 
 - Every `WHERE tenant_id = ?` query is indexed via composite indexes (e.g., `characters(tenant_id, campaign_id)`).
 - FKs use `ON DELETE CASCADE` where the parent's deletion implies the child's (e.g., deleting a campaign deletes its characters). This matches the erasure flow from design doc 0003.
-- `audit_log` does *not* cascade on parent deletion — it must be erased explicitly via the `audit_log` deletion adapter that lands with this task, otherwise it stays as the audit trail.
+- `audit_log` does _not_ cascade on parent deletion — it must be erased explicitly via the `audit_log` deletion adapter that lands with this task, otherwise it stays as the audit trail.
 
 ### Seed data
 
@@ -103,12 +104,12 @@ None — mechanical schema. Behavior fixtures land in Phase 1.6 onwards.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.1 | Warm-tier structured state for session (per ADR-0002) | SQLite tables (`campaigns`, `characters`, `npcs`, `locations`, `quest_flags`, `faction_reputation`, `sessions`, `audit_log`) via Drizzle |
-| 5.1 | Every mutation via typed tool call (per ADR-0003) | Columns annotated by mutation source; `TenantDb` API is the only sanctioned write path for application code |
-| 5.2 | All data scoped by tenant (per ADR-0008) | `TenantDb` wrapper forces `tenant_id` on every query; lint rule blocks direct schema imports outside server package; `unsafelyAcrossTenants` escape hatch is grep-able |
-| 5.2 | PII fields annotated and deletion-path documented | `characters.player_discord_id` marked PII; `AuditLogAdapter` + `CampaignAdapter` registered for erasure |
+| PRD ref | Requirement                                           | Satisfied by                                                                                                                                                           |
+| ------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1     | Warm-tier structured state for session (per ADR-0002) | SQLite tables (`campaigns`, `characters`, `npcs`, `locations`, `quest_flags`, `faction_reputation`, `sessions`, `audit_log`) via Drizzle                               |
+| 5.1     | Every mutation via typed tool call (per ADR-0003)     | Columns annotated by mutation source; `TenantDb` API is the only sanctioned write path for application code                                                            |
+| 5.2     | All data scoped by tenant (per ADR-0008)              | `TenantDb` wrapper forces `tenant_id` on every query; lint rule blocks direct schema imports outside server package; `unsafelyAcrossTenants` escape hatch is grep-able |
+| 5.2     | PII fields annotated and deletion-path documented     | `characters.player_discord_id` marked PII; `AuditLogAdapter` + `CampaignAdapter` registered for erasure                                                                |
 
 ## Dependencies considered
 

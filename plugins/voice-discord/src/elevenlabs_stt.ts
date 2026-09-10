@@ -37,10 +37,7 @@ export class ElevenLabsScribeSTT implements STTProvider {
     this.modelId = options.modelId ?? "scribe_v1";
   }
 
-  async *transcribe(
-    audio: AsyncIterable<Uint8Array>,
-    opts: STTOptions,
-  ): AsyncIterable<Utterance> {
+  async *transcribe(audio: AsyncIterable<Uint8Array>, opts: STTOptions): AsyncIterable<Utterance> {
     const blob = await drainBlob(audio);
     if (blob.size === 0) return;
 

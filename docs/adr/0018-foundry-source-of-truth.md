@@ -9,7 +9,7 @@ Relates to: ADR-0002, ADR-0004, ADR-0011, ADR-0012, ADR-0013
 > [TDD 0007 (Foundry-as-Source-of-Truth)](../tdd/0007-foundry-as-source-of-truth.md),
 > accepted 2026-05-19. It is documented as an ADR now, during the docs migration, because
 > several accepted ADRs (0011, 0012, 0013) already build on it without ever stating it.
-> The *design* of how this is implemented (the `FoundryClient` interface, the SQLite
+> The _design_ of how this is implemented (the `FoundryClient` interface, the SQLite
 > schema, per-system renderers) stays in TDD 0007; this ADR records only the decision.
 
 ## Context
@@ -34,7 +34,7 @@ surfaced two problems:
 
 - Foundry owns: player/NPC actors (full sheets — HP, stats, conditions, inventory, whatever
   the active system defines), scenes/locations, tokens (placement, disposition, fog),
-  the combat tracker, server-side dice, and compendium content. Skeinkeeper holds *references*
+  the combat tracker, server-side dice, and compendium content. Skeinkeeper holds _references_
   (Foundry actor/scene IDs), not copies.
 - Skeinkeeper owns only AI-DM-specific state in its SQLite: `tenants`, `campaigns`,
   `sessions`, `audit_log`, `consents`, `deletion_log`, and `quest_flags` (the AI's internal

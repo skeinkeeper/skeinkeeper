@@ -5,8 +5,5 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "references": [
-    { "path": "../packages/core" },
-    { "path": "../orchestrator" }
-  ]
+  "references": [{ "path": "../packages/core" }, { "path": "../orchestrator" }]
 }

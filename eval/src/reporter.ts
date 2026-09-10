@@ -80,7 +80,11 @@ function evalExpectation(e: Expectation, output: RunnerOutput): ExpectationResul
     case "not_contains":
       return !value.toLowerCase().includes(e.text.toLowerCase())
         ? { kind: e.kind, status: "pass" }
-        : { kind: e.kind, status: "fail", message: `"${e.text}" unexpectedly in "${truncate(value)}"` };
+        : {
+            kind: e.kind,
+            status: "fail",
+            message: `"${e.text}" unexpectedly in "${truncate(value)}"`,
+          };
     case "contains_any_of": {
       const hit = e.texts.find((t) => value.toLowerCase().includes(t.toLowerCase()));
       return hit
@@ -130,7 +134,9 @@ export function formatTextReport(report: EvalReport): string {
     }
   }
   lines.push("");
-  lines.push(`Totals: ${report.totals.pass} pass, ${report.totals.fail} fail, ${report.totals.skipped} skipped.`);
+  lines.push(
+    `Totals: ${report.totals.pass} pass, ${report.totals.fail} fail, ${report.totals.skipped} skipped.`,
+  );
   return lines.join("\n");
 }
 

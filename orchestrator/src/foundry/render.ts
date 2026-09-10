@@ -71,7 +71,9 @@ function renderFateCore(actor: FoundryActor): string {
     parts.push(`mental ${filled}/${mental.length}`);
   }
   if (Array.isArray(consequences)) {
-    const taken = (consequences as Array<{ severity?: string; text?: string }>).filter((c) => c.text);
+    const taken = (consequences as Array<{ severity?: string; text?: string }>).filter(
+      (c) => c.text,
+    );
     if (taken.length > 0) {
       parts.push(
         `consequences: ${taken.map((c) => `${c.severity ?? "?"}: "${c.text ?? ""}"`).join("; ")}`,

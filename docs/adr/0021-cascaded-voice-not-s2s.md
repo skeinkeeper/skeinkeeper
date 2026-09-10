@@ -7,7 +7,7 @@ Relates to: ADR-0003, ADR-0006, ADR-0009, ADR-0010
 
 > This ADR formalizes the architectural choice recorded in
 > [TDD 0028 (Real-Time Voice Latency)](../tdd/0028-real-time-voice-latency.md). The
-> *design* of the optimizations (streaming narration→TTS, barge-in, latency masking) stays in
+> _design_ of the optimizations (streaming narration→TTS, barge-in, latency masking) stays in
 > TDD 0028; this ADR records only the durable choice of cascade over speech-to-speech, which
 > forward-binds all future voice work.
 
@@ -30,7 +30,7 @@ S2S is structurally incompatible with Skeinkeeper:
 - **No disciplined tool calls.** Skeinkeeper's entire mutation model is typed tool calls
   (ADR-0003); S2S folds reasoning into an opaque audio model with no tool discipline.
 - **Single voice.** S2S cannot do per-NPC `[NPC:name]` voice routing (TDD 0017).
-- **No text transcript.** We *require* the transcript for episodic memory (TDD 0019), the audit
+- **No text transcript.** We _require_ the transcript for episodic memory (TDD 0019), the audit
   log and erasure (ADR-0010), and the side-channel audience model (TDD 0026). S2S produces none.
 
 Latency is closed instead by streaming the cascade, not by swapping the architecture.

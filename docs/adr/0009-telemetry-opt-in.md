@@ -1,6 +1,7 @@
 # ADR-0009: Telemetry Off By Default, Opt-In Only
 
 ## Status
+
 Accepted (2026-05-18)
 
 ## Context
@@ -10,7 +11,8 @@ Skeinkeeper is open-source, self-hosted software that processes personal data (p
 Telemetry-by-default in an OSS self-hosted project is a community-trust killer. Multiple well-known projects (Audacity, Homebrew, several VS Code extensions) have faced community revolts when uninvited telemetry was discovered. The norm in privacy-respecting OSS is **off by default, prominently disclosed, easy to enable, easy to disable**.
 
 At the same time, a typed telemetry library is genuinely useful:
-- A meaningful subset of operators *will* opt in to anonymous analytics if it's easy and the disclosure is honest, and that data helps improve the project.
+
+- A meaningful subset of operators _will_ opt in to anonymous analytics if it's easy and the disclosure is honest, and that data helps improve the project.
 - A two-stream architecture (anonymous product analytics + crash/error reporting) is a sound design pattern regardless of when emissions fire.
 - The discipline of "every user-visible feature has a named telemetry event" yields better-organized code and clearer feature boundaries even if events never ship.
 
@@ -44,16 +46,19 @@ Specifically:
 ## Consequences
 
 **Positive**
+
 - Trust: the privacy-sensitive user base finds Skeinkeeper safe to run.
 - Differentiation: many commercial alternatives are silent or vague about telemetry. "Zero phone-home by default" is a real signal.
 - The opt-in subset that does enable analytics provides high-quality data — they're engaged users who chose to help.
 - The typed-event discipline applies equally whether events fire or not. Code stays well-organized.
 
 **Negative**
+
 - Smaller and more selection-biased dataset than always-on telemetry. Decisions about general behavior must rely on community feedback (GitHub issues, Discord conversations) more than aggregate metrics.
 - Some product questions ("how often does feature X actually get used?") may be unanswerable for non-opted-in users. We live with that.
 
 **Neutral**
+
 - The opt-in UX matters. A grudging, buried toggle yields near-zero participation. A clear, honest, prominently-placed prompt during first-run setup gets meaningfully better participation. Worth designing well.
 - We don't try to coerce participation. No "you'll get better features if you enable" tricks.
 
@@ -77,5 +82,6 @@ These become CI checks, lint rules, or code-review gates:
 - The PostHog / Sentry project setup for maintainers. Operational detail.
 
 ## Revisit when
+
 - A clear community signal emerges that the opt-in rate is too low to support project decisions and a different approach is needed.
 - The privacy regulatory landscape shifts in ways that affect self-hosted telemetry.

@@ -1,6 +1,7 @@
 # ADR-0010: Privacy as Architecture, Not Operational Commitment
 
 ## Status
+
 Accepted (2026-05-18)
 
 ## Context
@@ -59,6 +60,7 @@ The README and CONTRIBUTING.md surface this stance clearly:
 > Skeinkeeper is software you run yourself. The project provides strong architectural foundations for privacy — encryption, deletion paths, audit logs, no phone-home by default — but you (the operator) are the data controller for whatever data your deployment processes. Skeinkeeper does not assume controller responsibilities on your behalf.
 
 A separate `/docs/PRIVACY.md` document explains:
+
 - What data Skeinkeeper stores locally (campaign state, transcripts, audit logs, consent records).
 - What data Skeinkeeper sends to external providers (LLM/TTS/STT calls — only to providers the operator has configured).
 - How operators can delete data, export data, and audit access.
@@ -68,15 +70,18 @@ A separate `/docs/PRIVACY.md` document explains:
 ## Consequences
 
 **Positive**
+
 - Honest framing: we say what we commit to, we don't commit to things software can't deliver. Self-hosted users trust this.
 - The architectural commitments are real and visible in code: deletion paths exist, encryption is enforced, audit logs are written. Operators can verify rather than trust.
 - No operational compliance overhead. No DPO retainer, no DPA negotiations, no certification audits.
 
 **Negative**
+
 - Some prospective operators may want a more turnkey privacy story than "you're the controller; we give you the tools." We accept that.
 - Operators in highly regulated industries (healthcare, education with minors, finance) may need more than Skeinkeeper provides at this layer. That's appropriate; specialized deployments need specialized counsel.
 
 **Neutral**
+
 - The age gate (16+ for accounts, 18+ for voice) becomes an operator decision rather than a project constraint. Documented as a strong recommendation; not enforced because we can't enforce it.
 - The EU AI Act's transparency requirement (Art. 50 — users informed they're interacting with AI) is met by the in-Discord consent flow regardless of operator jurisdiction. We do this because it's right.
 
@@ -98,5 +103,6 @@ These become CI checks, code-review gates, or definition-of-done items:
 - The full contents of `/docs/PRIVACY.md`. That's a separate doc.
 
 ## Revisit when
+
 - A clear operator use case emerges that requires architectural changes the project should make on operators' behalf.
 - The privacy regulatory landscape introduces obligations on software publishers.

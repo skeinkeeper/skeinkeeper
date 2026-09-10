@@ -1,4 +1,5 @@
 # TDD 0021: Compendium-Backed Cold Ingestion
+
 Status: implemented
 PRD refs: 5.1, 4.2
 PRD-rev: 10391ba
@@ -12,7 +13,7 @@ Related TDDs: [0014 (McpFoundryClient)](./0014-mcp-foundry-client.md), [0019 (co
 Per ADR-0012 and hard rule #9, Skeinkeeper does **not** encode game-system rules
 itself — Foundry's per-system module is the ruleset, and the LLM supplies
 general rules knowledge. The remaining question (raised in review) is how the DM
-gets *specific* system content — a monster's stat block, a spell's effect, an
+gets _specific_ system content — a monster's stat block, a spell's effect, an
 item's rules — for the system the connected world actually runs.
 
 Design doc 0019 added the cold tier and named two sources: promoted episodic
@@ -35,8 +36,12 @@ bridge's result shape, de-dupes by id, and returns typed `CompendiumEntry[]`:
 
 ```ts
 interface CompendiumEntry {
-  id: string; name: string; type: string;
-  packId: string; packLabel?: string; system?: string;
+  id: string;
+  name: string;
+  type: string;
+  packId: string;
+  packLabel?: string;
+  system?: string;
   text: string; // name + type + description + summary, for embedding
 }
 ```
@@ -50,7 +55,7 @@ description, summary }], gameSystem }`. Parsing is unit-tested with
 `ingestColdEntries(embed, store, { campaignId, entries })` embeds each entry's
 text (batched) and upserts a `cold` `MemoryRecord` (deterministic id so
 re-ingest updates rather than duplicates; structured fields preserved in
-`metadata.deltas`). Generic — reused for compendium content *and* operator lore
+`metadata.deltas`). Generic — reused for compendium content _and_ operator lore
 (0019 §6). Unit-tested with `FakeEmbeddingProvider` + `InMemoryMemoryStore`.
 
 ### 3. Wiring (app)
@@ -88,10 +93,10 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.1 | System content (monsters, spells, items) available to the DM without per-system Skeinkeeper code | `readCompendiumEntries` reads from whatever Foundry system is installed; no per-system logic in Skeinkeeper |
-| 4.2 | Cold memory tier populated with campaign-relevant content | `ingestColdEntries` upserts compendium entries as `cold` MemoryRecords into the LanceDB campaign store; retrieval surfaces them in hot context |
+| PRD ref | Requirement                                                                                      | Satisfied by                                                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1     | System content (monsters, spells, items) available to the DM without per-system Skeinkeeper code | `readCompendiumEntries` reads from whatever Foundry system is installed; no per-system logic in Skeinkeeper                                    |
+| 4.2     | Cold memory tier populated with campaign-relevant content                                        | `ingestColdEntries` upserts compendium entries as `cold` MemoryRecords into the LanceDB campaign store; retrieval surfaces them in hot context |
 
 ## Dependencies considered
 

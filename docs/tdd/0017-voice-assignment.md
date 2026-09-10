@@ -1,4 +1,5 @@
 # TDD 0017: DM + NPC Voice Assignment
+
 Status: implemented
 PRD refs: 4.1
 PRD-rev: 10391ba
@@ -13,7 +14,7 @@ The AI DM speaks: as itself (the narrator/DM voice) and as NPCs. Design doc 0012
 
 ### DM voice: operator picks a curated persona; ElevenLabs is hidden
 
-Skeinkeeper ships a small **curated set of DM voice personas** — e.g., "Warm Storyteller," "Gravelly Veteran," "Theatrical Showman," "Measured Sage" — each a human-meaningful name with a one-line description and a preview sample. Each persona maps *internally* to a specific ElevenLabs voice ID (plus default stability/style settings). The operator picks a persona in the Skeinkeeper UI; they never see a voice ID or the word "ElevenLabs."
+Skeinkeeper ships a small **curated set of DM voice personas** — e.g., "Warm Storyteller," "Gravelly Veteran," "Theatrical Showman," "Measured Sage" — each a human-meaningful name with a one-line description and a preview sample. Each persona maps _internally_ to a specific ElevenLabs voice ID (plus default stability/style settings). The operator picks a persona in the Skeinkeeper UI; they never see a voice ID or the word "ElevenLabs."
 
 The default persona pairs with the behavior spec's default "Generous Collaborator" preset (§1.1) — a warm, present storyteller. Stored per-campaign so different campaigns can have different DM voices.
 
@@ -47,9 +48,9 @@ This is what the `resolveVoiceId` hook (doc 0012) and the eventual segment-split
 
 ```ts
 interface VoicePersona {
-  id: string;            // "warm-storyteller"
-  label: string;         // "Warm Storyteller"
-  description: string;   // "Inviting, unhurried, leans into wonder."
+  id: string; // "warm-storyteller"
+  label: string; // "Warm Storyteller"
+  description: string; // "Inviting, unhurried, leans into wonder."
   // internal — never surfaced to the operator:
   providerVoiceId: string;
   providerSettings?: Record<string, unknown>;
@@ -84,11 +85,11 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.1 | Per-NPC voice profiles — each named NPC has a persistent voice identity, configured in the local web UI | `voice_assignment` table persists NPC→`providerVoiceId`; AI assigns on first encounter; operator overrides via web UI (shown as descriptions/previews) |
-| 4.1 | TTS streamed to Discord voice channel | narration split by `[NPC:x]` marker; each segment resolved to `providerVoiceId` and synthesized in order; `resolveVoiceId` hook in doc 0012 |
-| 4.1 | TTS providers pluggable via internal interface | `VoiceLibrary` abstraction is the sole ElevenLabs touch-point; operator never sees provider internals; provider-swap blast radius contained to this abstraction |
+| PRD ref | Requirement                                                                                             | Satisfied by                                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1     | Per-NPC voice profiles — each named NPC has a persistent voice identity, configured in the local web UI | `voice_assignment` table persists NPC→`providerVoiceId`; AI assigns on first encounter; operator overrides via web UI (shown as descriptions/previews)          |
+| 4.1     | TTS streamed to Discord voice channel                                                                   | narration split by `[NPC:x]` marker; each segment resolved to `providerVoiceId` and synthesized in order; `resolveVoiceId` hook in doc 0012                     |
+| 4.1     | TTS providers pluggable via internal interface                                                          | `VoiceLibrary` abstraction is the sole ElevenLabs touch-point; operator never sees provider internals; provider-swap blast radius contained to this abstraction |
 
 ## Dependencies considered
 
@@ -120,7 +121,7 @@ None of the voice data is PII: persona choices, NPC names, and voice IDs. The El
 
 ## Eval implications
 
-The AI's NPC→voice matching is unit-testable: given an NPC description + a fixed library of voice descriptions, assert the AI picks a sensible voice (e.g., a "gruff dwarf" maps to a low/gravelly voice, not a high/youthful one) via a `FakeLLMProvider`-scripted assignment. The narration-marker parser (splitting `[NPC:x]` segments) is a pure function with its own tests. The *subjective quality* of a voice fit is a human judgment, not an automated fixture.
+The AI's NPC→voice matching is unit-testable: given an NPC description + a fixed library of voice descriptions, assert the AI picks a sensible voice (e.g., a "gruff dwarf" maps to a low/gravelly voice, not a high/youthful one) via a `FakeLLMProvider`-scripted assignment. The narration-marker parser (splitting `[NPC:x]` segments) is a pure function with its own tests. The _subjective quality_ of a voice fit is a human judgment, not an automated fixture.
 
 ## Open questions
 

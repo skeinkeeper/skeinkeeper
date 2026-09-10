@@ -86,9 +86,7 @@ function parseLlmScript(raw: unknown, path: string): LlmScript {
       "refusal",
     ];
     if (!allowed.includes(obj.stop_reason as StopReason)) {
-      throw new Error(
-        `${path}: "llm_script.stop_reason" must be one of: ${allowed.join(", ")}`,
-      );
+      throw new Error(`${path}: "llm_script.stop_reason" must be one of: ${allowed.join(", ")}`);
     }
     script.stopReason = obj.stop_reason as StopReason;
   }

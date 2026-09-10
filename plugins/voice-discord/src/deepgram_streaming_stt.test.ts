@@ -3,10 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { Utterance } from "@skeinkeeper/orchestrator";
-import {
-  DeepgramStreamingSTT,
-  type DeepgramSocket,
-} from "./deepgram_streaming_stt.js";
+import { DeepgramStreamingSTT, type DeepgramSocket } from "./deepgram_streaming_stt.js";
 
 /** Fake Deepgram socket the test drives explicitly. */
 class FakeSocket implements DeepgramSocket {
@@ -85,11 +82,18 @@ describe("DeepgramStreamingSTT", () => {
     fake.emitOpen();
     await flush();
     // Audio forwarded after open, then a CloseStream signal.
-    expect(fake.sentBinary.map((b) => Array.from(b))).toEqual([[1, 2], [3, 4]]);
+    expect(fake.sentBinary.map((b) => Array.from(b))).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
     expect(fake.sentText).toContain(JSON.stringify({ type: "CloseStream" }));
 
     // Interim result is parsed but not yielded; the final is.
-    fake.emitMessage({ type: "Results", is_final: false, channel: { alternatives: [{ transcript: "i open" }] } });
+    fake.emitMessage({
+      type: "Results",
+      is_final: false,
+      channel: { alternatives: [{ transcript: "i open" }] },
+    });
     fake.emitMessage({
       type: "Results",
       is_final: true,
@@ -144,7 +148,11 @@ describe("DeepgramStreamingSTT", () => {
     })();
     fake.emitOpen();
     await flush();
-    fake.emitMessage({ type: "Results", is_final: true, channel: { alternatives: [{ transcript: "" }] } });
+    fake.emitMessage({
+      type: "Results",
+      is_final: true,
+      channel: { alternatives: [{ transcript: "" }] },
+    });
     fake.emitClose();
     await collect;
     expect(out).toHaveLength(0);

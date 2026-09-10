@@ -32,7 +32,10 @@ export class FakeEmbeddingProvider implements EmbeddingProvider {
 
   private vector(text: string): number[] {
     const v = new Array<number>(this.dimensions).fill(0);
-    for (const token of text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+    for (const token of text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)) {
       let h = 0;
       for (let i = 0; i < token.length; i++) h = (h * 31 + token.charCodeAt(i)) >>> 0;
       v[h % this.dimensions]! += 1;

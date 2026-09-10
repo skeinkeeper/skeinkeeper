@@ -1,4 +1,5 @@
 # TDD 0018: Streaming Speech-to-Text
+
 Status: implemented
 PRD refs: 4.1, 5.3
 PRD-rev: 10391ba
@@ -14,7 +15,7 @@ player finishing speaking and the DM responding is too long for a practical
 table. The current STT path (the `DeepgramSTT` adapter) is **prerecorded**:
 
 1. `DiscordVoiceIO` subscribes to a speaker with `EndBehaviorType.AfterSilence`
-   (≈0.8s), so the opus stream doesn't even *close* until 0.8s after they stop.
+   (≈0.8s), so the opus stream doesn't even _close_ until 0.8s after they stop.
 2. The whole clip is then drained into one buffer.
 3. One Deepgram REST round-trip transcribes it (~0.5–1.5s).
 
@@ -23,7 +24,7 @@ all of it serial, none of it overlapping the speech. That delay sits in front
 of the (larger) narration cost and compounds it.
 
 Deepgram (and most STT providers) offer **streaming** transcription over a
-WebSocket: audio is sent continuously *during* speech and interim + final
+WebSocket: audio is sent continuously _during_ speech and interim + final
 transcripts come back in real time, so the final transcript is ready almost
 the instant the speaker stops. Design doc 0015 §1 already anticipated this
 ("STT providers emit interim + final results; only finalized fragments enter
@@ -55,7 +56,7 @@ fallback if the socket can't open.
 - **Interim results feeding the decider / barge-in** (doc 0015 §5). The
   streaming client parses interims; wiring them into earlier endpointing or
   noise-resistant barge-in is a later refinement.
-- **Streaming narration → TTS.** The *other* (larger) half of the latency
+- **Streaming narration → TTS.** The _other_ (larger) half of the latency
   picture — generating narration sentence-by-sentence and speaking sentence 1
   while sentence 2 generates — is a separate effort (the deferred
   `runTurnStreaming` from doc 0011). This doc is STT only.
@@ -85,7 +86,7 @@ declare it directly) with an **injectable socket factory**, mirroring the
 logic unit-testable with a fake socket feeding canned Deepgram JSON, and keeps
 the dependency footprint minimal.
 
-*Alternative considered:* the official `@deepgram/sdk` live client — more
+_Alternative considered:_ the official `@deepgram/sdk` live client — more
 robust (built-in keepalive/reconnect) but heavier and harder to unit-test
 (mocking the SDK vs. feeding a fake socket). Per hard rule #10 we prefer the
 lighter, testable option; we revisit if reconnect/keepalive correctness proves
@@ -126,11 +127,11 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.1 | Real-time speech-to-text per speaker | `DeepgramStreamingSTT` sends audio live during speech; final transcript ready near-instantly on utterance end, removing the 1.5–2.5s prerecorded delay |
-| 5.3 | Voice round-trip ≤ 3s p95 from player end-of-utterance to AI start-of-speech | streaming STT eliminates the REST round-trip serial cost, materially reducing the STT component of the latency chain |
-| 5.3 | Streamed TTS required | not in scope of this doc (deferred `runTurnStreaming`); streaming STT is the STT half of the latency improvement |
+| PRD ref | Requirement                                                                  | Satisfied by                                                                                                                                           |
+| ------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4.1     | Real-time speech-to-text per speaker                                         | `DeepgramStreamingSTT` sends audio live during speech; final transcript ready near-instantly on utterance end, removing the 1.5–2.5s prerecorded delay |
+| 5.3     | Voice round-trip ≤ 3s p95 from player end-of-utterance to AI start-of-speech | streaming STT eliminates the REST round-trip serial cost, materially reducing the STT component of the latency chain                                   |
+| 5.3     | Streamed TTS required                                                        | not in scope of this doc (deferred `runTurnStreaming`); streaming STT is the STT half of the latency improvement                                       |
 
 ## Dependencies considered
 

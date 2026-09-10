@@ -4,12 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
 import type { Db } from "./db.js";
-import {
-  tenants,
-  campaigns,
-  type NewCampaign,
-  type NewTenant,
-} from "./schema/index.js";
+import { tenants, campaigns, type NewCampaign, type NewTenant } from "./schema/index.js";
 
 interface SeedFile {
   tenant: { id: string; name: string };
@@ -42,7 +37,11 @@ export function seedFromFile(db: Db, path: string): { inserted: number } {
   let inserted = 0;
   const now = Date.now();
 
-  const existingTenant = db.select().from(tenants).all().find((t) => t.id === file.tenant.id);
+  const existingTenant = db
+    .select()
+    .from(tenants)
+    .all()
+    .find((t) => t.id === file.tenant.id);
   if (!existingTenant) {
     const newTenant: NewTenant = {
       id: file.tenant.id,
@@ -54,7 +53,11 @@ export function seedFromFile(db: Db, path: string): { inserted: number } {
   }
 
   for (const c of file.campaigns ?? []) {
-    const existingCampaign = db.select().from(campaigns).all().find((x) => x.id === c.id);
+    const existingCampaign = db
+      .select()
+      .from(campaigns)
+      .all()
+      .find((x) => x.id === c.id);
     if (!existingCampaign) {
       const newCampaign: NewCampaign = {
         id: c.id,

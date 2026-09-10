@@ -22,7 +22,9 @@ function tmpFile(content: string): string {
 
 describe("loadBehaviorSpec", () => {
   it("loads a spec and extracts the version", () => {
-    const path = tmpFile(`# Skeinkeeper — Behavior Spec\n**v0.1 (Draft) · ...**\n\nFreeform content here.`);
+    const path = tmpFile(
+      `# Skeinkeeper — Behavior Spec\n**v0.1 (Draft) · ...**\n\nFreeform content here.`,
+    );
     const spec = loadBehaviorSpec(path);
     expect(spec.version).toBe("v0.1");
     expect(spec.content).toContain("Freeform content here.");
@@ -44,7 +46,9 @@ describe("loadBehaviorSpec", () => {
   });
 
   it("throws if no version line is present in the first 500 bytes", () => {
-    const path = tmpFile(`# Header without version metadata.\n\n` + "filler. ".repeat(100) + `**v0.1**`);
+    const path = tmpFile(
+      `# Header without version metadata.\n\n` + "filler. ".repeat(100) + `**v0.1**`,
+    );
     expect(() => loadBehaviorSpec(path)).toThrow(/version line/);
   });
 

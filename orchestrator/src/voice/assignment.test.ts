@@ -5,11 +5,7 @@ import { describe, expect, it } from "vitest";
 import { fakeLlmFromEvents, FakeLLMProvider } from "../interfaces/fake_llm_provider.js";
 import type { TokenUsage } from "../interfaces/llm.js";
 import { type VoiceLibraryEntry } from "./library.js";
-import {
-  assignNpcVoice,
-  resolveSegmentVoices,
-  VoiceAssignmentError,
-} from "./assignment.js";
+import { assignNpcVoice, resolveSegmentVoices, VoiceAssignmentError } from "./assignment.js";
 import type { NarrationSegment } from "./markers.js";
 
 const USAGE: TokenUsage = { inputTokens: 10, outputTokens: 5 };
@@ -72,9 +68,9 @@ describe("assignNpcVoice", () => {
     });
     const sent = llm.receivedRequests[0]!;
     expect(sent.modelTier).toBe("orchestration");
-    const userText = sent.messages[0]!.content
-      .map((c) => (c.type === "text" ? c.text : ""))
-      .join("");
+    const userText = sent.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join(
+      "",
+    );
     expect(userText).toContain("v-warm");
     expect(userText).toContain("kindly innkeeper");
   });

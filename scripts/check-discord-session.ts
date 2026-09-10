@@ -78,8 +78,20 @@ function need(value: string | undefined, label: string): string {
 }
 
 const PARTY: ReadonlyArray<FoundryActor> = [
-  { id: "actor-aragorn", name: "Aragorn", type: "character", system: "dnd5e", sheet: { attributes: { hp: { value: 24, max: 24 } } } },
-  { id: "actor-gimli", name: "Gimli", type: "character", system: "dnd5e", sheet: { attributes: { hp: { value: 30, max: 30 } } } },
+  {
+    id: "actor-aragorn",
+    name: "Aragorn",
+    type: "character",
+    system: "dnd5e",
+    sheet: { attributes: { hp: { value: 24, max: 24 } } },
+  },
+  {
+    id: "actor-gimli",
+    name: "Gimli",
+    type: "character",
+    system: "dnd5e",
+    sheet: { attributes: { hp: { value: 30, max: 30 } } },
+  },
 ];
 
 async function main(): Promise<void> {
@@ -88,23 +100,28 @@ async function main(): Promise<void> {
   const anthropicKey = need(process.env["ANTHROPIC_API_KEY"], "ANTHROPIC_API_KEY");
   const deepgramKey = need(process.env["DEEPGRAM_API_KEY"], "DEEPGRAM_API_KEY");
   const elevenKey = need(process.env["ELEVENLABS_API_KEY"], "ELEVENLABS_API_KEY");
-  const channelId = need(arg("--channel") ?? process.env["DISCORD_VOICE_CHANNEL_ID"], "--channel / DISCORD_VOICE_CHANNEL_ID");
+  const channelId = need(
+    arg("--channel") ?? process.env["DISCORD_VOICE_CHANNEL_ID"],
+    "--channel / DISCORD_VOICE_CHANNEL_ID",
+  );
   const seconds = Number(arg("--seconds") ?? "120");
 
   // --- AI-DM state (in-memory) ---
   const db = openDb({ path: ":memory:", runMigrations: true });
   const now = Date.now();
   db.insert(schema.tenants).values({ id: "default", name: "Voice Check", createdAt: now }).run();
-  db.insert(schema.campaigns).values({
-    id: CAMPAIGN_ID,
-    tenantId: "default",
-    name: "Voice Check",
-    rulesetId: "dnd5e",
-    behaviorSpecVersion: "v0.1",
-    status: "active",
-    createdAt: now,
-    updatedAt: now,
-  }).run();
+  db.insert(schema.campaigns)
+    .values({
+      id: CAMPAIGN_ID,
+      tenantId: "default",
+      name: "Voice Check",
+      rulesetId: "dnd5e",
+      behaviorSpecVersion: "v0.1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
   const tenantDb = new TenantDb(db, "default");
 
   const behaviorSpec = loadBehaviorSpec(findDefaultBehaviorSpec(import.meta.dirname));
@@ -127,17 +144,26 @@ async function main(): Promise<void> {
   });
 
   // --- voice I/O ---
-  const stt = new DeepgramStreamingSTT({ apiKey: deepgramKey, encoding: "linear16", sampleRate: 48_000, channels: 2, language: "en" });
+  const stt = new DeepgramStreamingSTT({
+    apiKey: deepgramKey,
+    encoding: "linear16",
+    sampleRate: 48_000,
+    channels: 2,
+    language: "en",
+  });
   const tts = new ElevenLabsTTS({ apiKey: elevenKey, defaultVoiceId: DM_VOICE_ID });
   const library = new ElevenLabsVoiceLibrary({ apiKey: elevenKey });
 
   console.log("→ logging in…");
-  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+  const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+  });
   const ready = new Promise<void>((resolve) => client.once(Events.ClientReady, () => resolve()));
   await client.login(token);
   await ready;
   const channel = await client.channels.fetch(channelId);
-  if (!channel || !channel.isVoiceBased()) throw new Error(`channel ${channelId} is not a voice channel`);
+  if (!channel || !channel.isVoiceBased())
+    throw new Error(`channel ${channelId} is not a voice channel`);
   console.log(`  ✓ ${client.user?.tag} → #${channel.name} in "${channel.guild.name}"`);
 
   const connection = joinVoiceChannel({
@@ -194,13 +220,17 @@ async function main(): Promise<void> {
     onTurn: (turn) => {
       console.log(`  🗣  DM: ${turn.narration}`);
       if (turn.toolCalls.length > 0) {
-        console.log(`     tools: ${turn.toolCalls.map((t) => `${t.name}(${t.ok ? "ok" : "fail"})`).join(", ")}`);
+        console.log(
+          `     tools: ${turn.toolCalls.map((t) => `${t.name}(${t.ok ? "ok" : "fail"})`).join(", ")}`,
+        );
       }
     },
   });
 
   clearTimeout(stop);
-  console.log(`\n✓ Layer 3 done: ${result.decisionCount} decision(s), ${result.turnCount} DM turn(s).`);
+  console.log(
+    `\n✓ Layer 3 done: ${result.decisionCount} decision(s), ${result.turnCount} DM turn(s).`,
+  );
   endSession(session);
   connection.destroy();
   await client.destroy();

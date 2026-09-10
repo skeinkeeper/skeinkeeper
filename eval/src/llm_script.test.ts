@@ -28,7 +28,10 @@ describe("scriptToEvents", () => {
 
   it("auto-generates tool_call ids when not provided", () => {
     const events = scriptToEvents({
-      toolCalls: [{ name: "roll", input: {} }, { name: "whisper", input: {} }],
+      toolCalls: [
+        { name: "roll", input: {} },
+        { name: "whisper", input: {} },
+      ],
     });
     const calls = events.filter((e) => e.kind === "tool_call");
     if (calls[0]?.kind === "tool_call") expect(calls[0].id).toBe("tu_1");

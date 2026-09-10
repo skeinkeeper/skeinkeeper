@@ -72,10 +72,7 @@ export class AnthropicProvider implements LLMProvider {
     this.analytics = cfg.analytics;
   }
 
-  async *complete(
-    req: LLMRequest,
-    opts: LLMOptions = {},
-  ): AsyncIterable<LLMEvent> {
+  async *complete(req: LLMRequest, opts: LLMOptions = {}): AsyncIterable<LLMEvent> {
     const startMs = Date.now();
     let success = false;
     let stopReason: StopReason = "end_turn";

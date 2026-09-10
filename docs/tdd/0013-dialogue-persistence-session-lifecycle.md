@@ -1,4 +1,5 @@
 # TDD 0013: Dialogue Persistence + Session Lifecycle (Phase 2c)
+
 Status: implemented
 PRD refs: 4.3, 5.1
 PRD-rev: 10391ba
@@ -39,11 +40,12 @@ One row per turn of speech (player, operator, system, or `narrator` for the AI).
 
 ### `runTurn` persists dialogue
 
-Each turn now writes two dialogue rows: the player's input (on entry) and the AI's narration as a `narrator` turn (on exit, if non-empty). The narrator turn is also pushed to the in-memory dialogue so the *next* turn's hot context includes what the AI just said — fixing a Phase 2a gap where the AI's prior responses weren't visible in subsequent turns' context.
+Each turn now writes two dialogue rows: the player's input (on entry) and the AI's narration as a `narrator` turn (on exit, if non-empty). The narrator turn is also pushed to the in-memory dialogue so the _next_ turn's hot context includes what the AI just said — fixing a Phase 2a gap where the AI's prior responses weren't visible in subsequent turns' context.
 
 ### Erasure + export: `DialogueAdapter`
 
 New `DialogueAdapter` (DeletionAdapter + ExportAdapter):
+
 - **player scope**: deletes/exports rows where `speaker = subjectId` (a player's own lines across all sessions).
 - **tenant scope**: all dialogue for the tenant.
 - **campaign scope**: not claimed — FK cascade from campaign deletion handles it.
@@ -66,11 +68,11 @@ Covered under Approach and Components & interfaces.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.3 | Session capabilities — recap generation, session-lifecycle signals | `startSession`/`endSession` lifecycle; `session.started`/`session.ended` telemetry events with real firing sites; `summaryJson` accepted by `endSession` (generation is Phase 4) |
-| 4.3 | Persistent state and memory across sessions | `dialogue` table with FK-cascade from sessions; `startSession` hydrates in-memory dialogue from prior persisted turns (resume); narrator turns persisted so multi-turn context is complete |
-| 5.1 | Memory architecture — warm tier; episodic tier; four-tier model | `dialogue` table is the session-transcript store; narrator rows feed subsequent turns' hot context (sliding window); episodic tier (post-session summaries) scaffolded by `endSession(summaryJson)` |
+| PRD ref | Requirement                                                        | Satisfied by                                                                                                                                                                                        |
+| ------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.3     | Session capabilities — recap generation, session-lifecycle signals | `startSession`/`endSession` lifecycle; `session.started`/`session.ended` telemetry events with real firing sites; `summaryJson` accepted by `endSession` (generation is Phase 4)                    |
+| 4.3     | Persistent state and memory across sessions                        | `dialogue` table with FK-cascade from sessions; `startSession` hydrates in-memory dialogue from prior persisted turns (resume); narrator turns persisted so multi-turn context is complete          |
+| 5.1     | Memory architecture — warm tier; episodic tier; four-tier model    | `dialogue` table is the session-transcript store; narrator rows feed subsequent turns' hot context (sliding window); episodic tier (post-session summaries) scaffolded by `endSession(summaryJson)` |
 
 ## Dependencies considered
 
@@ -87,7 +89,7 @@ None — the durable decisions are already captured: tenant scoping (ADR-0008), 
 ## Alternatives considered
 
 - **Store dialogue as a JSON blob on the session row.** Rejected — not queryable for player-scoped erasure (can't `DELETE WHERE speaker = X`), and grows unboundedly in a single column.
-- **Reconstruct dialogue from the audit log instead of a dedicated table.** The audit log stores a *hash* of player text (doc 0011), not the text, precisely so the audit log isn't a second copy of PII. So it can't reconstruct dialogue. A dedicated, erasable table is the right home for transcripts.
+- **Reconstruct dialogue from the audit log instead of a dedicated table.** The audit log stores a _hash_ of player text (doc 0011), not the text, precisely so the audit log isn't a second copy of PII. So it can't reconstruct dialogue. A dedicated, erasable table is the right home for transcripts.
 - **Don't persist narrator turns (only player input).** Rejected — then the AI can't see its own prior responses, breaking multi-turn continuity. The narrator turn is essential context.
 
 ## Telemetry implications

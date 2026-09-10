@@ -53,7 +53,10 @@ export function translateError(err: unknown): LLMErrorInfo {
     return info;
   }
 
-  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+  if (
+    err instanceof Anthropic.AuthenticationError ||
+    err instanceof Anthropic.PermissionDeniedError
+  ) {
     return { kind: "auth", message: err.message };
   }
 

@@ -1,6 +1,7 @@
 # ADR-0012: Drop the `Ruleset` Plugin Interface
 
 ## Status
+
 Accepted (2026-05-19). **Supersedes [ADR-0004](./0004-plugin-interface-pattern.md) for the Ruleset portion only.** The `LLMProvider`, `VTTDriver`, and `VoiceIO` interfaces from ADR-0004 remain current.
 
 ## Context
@@ -25,18 +26,22 @@ The three remaining plugin interfaces from ADR-0004 — `LLMProvider`, `VTTDrive
 ## Consequences
 
 **Positive**
+
 - No parallel ruleset abstraction to design, document, version, or test against ~50+ Foundry community systems.
-- Adding support for a new ruleset becomes proportional to *renderer + tool set* — not building a full ruleset module.
+- Adding support for a new ruleset becomes proportional to _renderer + tool set_ — not building a full ruleset module.
 - Confirms the design principle that we should not reinvent abstractions an integrated dependency already provides.
 
 **Negative**
+
 - Skeinkeeper depends on Foundry-side system modules for per-system mechanics. If a Foundry system module doesn't expose what we need (rare), we have to contribute upstream or fork the Foundry-side module — not a Skeinkeeper-side fix.
 - The "modular contribution surface" message in ADR-0004 is narrower than originally framed. CONTRIBUTING.md is updated accordingly.
 
 **Neutral**
+
 - The LLMProvider, VTTDriver, and VoiceIO interfaces are still where contributions land for those concerns.
-- Future scenarios where a non-Foundry VTT becomes a target (e.g., a Roll20 driver in v2+) might require re-introducing something like the `Ruleset` interface *inside the Roll20-specific plugin*, since Roll20's character-sheet model isn't per-system data models the way Foundry's is. The core orchestrator stays Foundry-shaped.
+- Future scenarios where a non-Foundry VTT becomes a target (e.g., a Roll20 driver in v2+) might require re-introducing something like the `Ruleset` interface _inside the Roll20-specific plugin_, since Roll20's character-sheet model isn't per-system data models the way Foundry's is. The core orchestrator stays Foundry-shaped.
 
 ## Revisit when
+
 - A non-Foundry VTT driver is contributed, at which point we evaluate whether per-system rendering needs to be re-abstracted for that driver.
 - A Foundry-side system module proves insufficient and Skeinkeeper needs to ship its own mechanics for a specific system.

@@ -1,4 +1,5 @@
 # TDD 0009: Behavior Spec Loader (Phase 1.6)
+
 Status: implemented
 PRD refs: 4.3, 6
 PRD-rev: 10391ba
@@ -138,11 +139,11 @@ Covered under Approach.
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.3 | Behavior is spec, not code — loaded as system prompt | `loadBehaviorSpec` reads `behavior/default.md` and returns its full content as `BehaviorSpec.content`, passed verbatim as `LLMRequest.systemPrompt` |
-| 4.3 | Behavior spec iterates independently of platform code | spec is versioned markdown loaded by path; `assertSpecCompatible` enforces version agreement between spec-on-disk and `campaign.behavior_spec_version` |
-| 6 | Architecture principle #4: Behavior is spec, not code | loader is a library function (not hardcoded path); the orchestrator receives content from the caller, not from an internal constant |
+| PRD ref | Requirement                                           | Satisfied by                                                                                                                                           |
+| ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4.3     | Behavior is spec, not code — loaded as system prompt  | `loadBehaviorSpec` reads `behavior/default.md` and returns its full content as `BehaviorSpec.content`, passed verbatim as `LLMRequest.systemPrompt`    |
+| 4.3     | Behavior spec iterates independently of platform code | spec is versioned markdown loaded by path; `assertSpecCompatible` enforces version agreement between spec-on-disk and `campaign.behavior_spec_version` |
+| 6       | Architecture principle #4: Behavior is spec, not code | loader is a library function (not hardcoded path); the orchestrator receives content from the caller, not from an internal constant                    |
 
 ## Dependencies considered
 

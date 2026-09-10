@@ -2,11 +2,7 @@
 // Copyright 2026 Skeinkeeper Contributors
 
 import { describe, expect, it, vi } from "vitest";
-import {
-  FakeLLMProvider,
-  fakeLlmFromEvents,
-  type FakeScript,
-} from "./fake_llm_provider.js";
+import { FakeLLMProvider, fakeLlmFromEvents, type FakeScript } from "./fake_llm_provider.js";
 import type { LLMEvent, LLMRequest, TokenUsage } from "./llm.js";
 
 function makeReq(overrides: Partial<LLMRequest> = {}): LLMRequest {

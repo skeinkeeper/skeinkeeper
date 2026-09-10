@@ -20,7 +20,10 @@ export interface BehaviorSpec {
 }
 
 export class BehaviorSpecError extends Error {
-  constructor(message: string, readonly path: string) {
+  constructor(
+    message: string,
+    readonly path: string,
+  ) {
     super(`${message} (path: ${path})`);
     this.name = "BehaviorSpecError";
   }
@@ -63,10 +66,7 @@ function parseVersion(content: string): string | undefined {
  * `behavior_spec_version`. Phase 1.6 enforces exact-string match; Phase 2+
  * may relax to allow MINOR bumps without breaking compatibility.
  */
-export function assertSpecCompatible(
-  spec: BehaviorSpec,
-  campaignVersion: string,
-): void {
+export function assertSpecCompatible(spec: BehaviorSpec, campaignVersion: string): void {
   if (spec.version === campaignVersion) return;
   throw new BehaviorSpecError(
     `Spec version mismatch: loaded ${spec.version}, campaign expects ${campaignVersion}.`,

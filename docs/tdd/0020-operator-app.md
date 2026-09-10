@@ -1,4 +1,5 @@
 # TDD 0020: Operator App (Phase 5)
+
 Status: implemented
 PRD refs: 4.4, 4.5
 PRD-rev: 10391ba
@@ -15,7 +16,7 @@ STT). But it ran via throwaway `scripts/check-*.ts`: in-memory DB,
 composition root duplicated in each script. Phase 5 turns that into the real
 **operator app** — the thing a friend group actually runs.
 
-It is the *composition root* the design docs have referred to ("the operator
+It is the _composition root_ the design docs have referred to ("the operator
 app / Phase 5 owns joining the channel…"). No new orchestrator concepts; it
 wires the existing pieces, adds the consent flow + UI + auth + persistence the
 scripts stubbed.
@@ -23,18 +24,20 @@ scripts stubbed.
 ### 1. One service, two faces
 
 A single Node service ("`@skeinkeeper/app`") that runs both:
+
 - the **Discord gateway client + voice loop** (the part the `voice-discord`
   plugin deliberately omits), and
 - a **local web server** for the operator UI.
 
 One process keeps `docker compose up` simple and lets the UI and bot share one
 `TenantDb` + config. The session-manager and web layers are kept separable so a
-future split (bot worker + web) is mechanical. *Alternative: separate processes
-now* — rejected as premature for a single-operator alpha.
+future split (bot worker + web) is mechanical. _Alternative: separate processes
+now_ — rejected as premature for a single-operator alpha.
 
 ### 2. Voice composition root
 
 The app owns the `discord.js` `Client`, and on session start:
+
 - joins the configured voice channel with **`selfDeaf: false`** (doc 0018
   lesson), producing the `VoiceConnection`;
 - builds `DiscordVoiceIO` + `DeepgramStreamingSTT` + `ElevenLabsTTS` +
@@ -47,8 +50,9 @@ The app owns the `discord.js` `Client`, and on session start:
 
 ### 3. Consent flow (closes the gate the scripts stubbed)
 
-Per ADR-0010, capture is gated on consent *before* STT. The transport throws
+Per ADR-0010, capture is gated on consent _before_ STT. The transport throws
 from `requestConsent` by design; the app owns delivery:
+
 - On a `consent_needed` event, the app DMs the player the versioned consent text
   (`VOICE_CONSENT_TEXT`).
 - The player grants/withdraws via a **Discord slash command**
@@ -61,6 +65,7 @@ from `requestConsent` by design; the app owns delivery:
 
 The UI changes behavior by **writing config the running loop already reads**,
 avoiding IPC:
+
 - Eagerness → the loop's `getEagerness` callback reads campaign/session config
   each cycle (already supported).
 - DM persona / NPC / mapping overrides → the `voice_assignment` and
@@ -109,6 +114,7 @@ The app's interface surface is the composition root itself: `@skeinkeeper/app` e
 ### 4. Web UI (localhost:3000)
 
 Operator-only controls — the operator never sees provider internals:
+
 - **Campaigns/sessions** — create a campaign (point at a Foundry world),
   start/stop a session.
 - **DM voice** — pick a curated **persona** (doc 0017; ElevenLabs hidden), with
@@ -137,17 +143,17 @@ See §8 phasing: 5a (headless), 5b (web UI), 5c (hardening + auth + secrets + do
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 4.4 | Connection config (Discord, Foundry, LLM, TTS, STT keys); encrypted at rest | first-run wizard captures keys → OS keyring or libsodium-sealed config; `.env` is dev-only |
-| 4.4 | Campaign management — create/archive campaigns; configure Lines & Veils, fudging policy | web UI campaign create/archive flow; campaign config written to `TenantDb`; loop reads it |
-| 4.4 | Party management — view/edit character sheets, Discord identity and voice mapping | overrides surface in web UI; backed by `player_character_map` + `voice_assignment` tables |
-| 4.4 | Session management — list past sessions, full transcript, live session view | web UI live view: transcript, respond/skip decisions, current turn, tool calls; pause button wired to session-manager |
-| 4.4 | Memory inspection — view retrieval logs, hot context for most recent turn | live view exposes tool calls and hot context; full memory inspector is a later phase |
-| 4.4 | Voice mapping — assign TTS voice IDs to named NPCs; preview clips | DM persona picker + NPC override table in web UI; preview clips fetched via `VoiceLibrary` |
-| 4.5 | First-run setup: operator sets local password; optional WebAuthn passkey | 5c hardening — first-run wizard + local auth (password + optional passkey) |
-| 4.5 | Session management: standard browser cookie session, scoped to localhost | localhost-bound web server; cookie session; no remote auth |
-| 4.5 | Secret storage: OS keyring; fallback to libsodium-sealed config file | production secret loading in 5c; dev falls back to `.env` |
+| PRD ref | Requirement                                                                             | Satisfied by                                                                                                          |
+| ------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 4.4     | Connection config (Discord, Foundry, LLM, TTS, STT keys); encrypted at rest             | first-run wizard captures keys → OS keyring or libsodium-sealed config; `.env` is dev-only                            |
+| 4.4     | Campaign management — create/archive campaigns; configure Lines & Veils, fudging policy | web UI campaign create/archive flow; campaign config written to `TenantDb`; loop reads it                             |
+| 4.4     | Party management — view/edit character sheets, Discord identity and voice mapping       | overrides surface in web UI; backed by `player_character_map` + `voice_assignment` tables                             |
+| 4.4     | Session management — list past sessions, full transcript, live session view             | web UI live view: transcript, respond/skip decisions, current turn, tool calls; pause button wired to session-manager |
+| 4.4     | Memory inspection — view retrieval logs, hot context for most recent turn               | live view exposes tool calls and hot context; full memory inspector is a later phase                                  |
+| 4.4     | Voice mapping — assign TTS voice IDs to named NPCs; preview clips                       | DM persona picker + NPC override table in web UI; preview clips fetched via `VoiceLibrary`                            |
+| 4.5     | First-run setup: operator sets local password; optional WebAuthn passkey                | 5c hardening — first-run wizard + local auth (password + optional passkey)                                            |
+| 4.5     | Session management: standard browser cookie session, scoped to localhost                | localhost-bound web server; cookie session; no remote auth                                                            |
+| 4.5     | Secret storage: OS keyring; fallback to libsodium-sealed config file                    | production secret loading in 5c; dev falls back to `.env`                                                             |
 
 ## Dependencies considered
 
@@ -205,7 +211,7 @@ behind the off-by-default toggle.
 
 ## Privacy implications
 
-This phase *implements* the privacy guarantees the scripts bypassed: real
+This phase _implements_ the privacy guarantees the scripts bypassed: real
 consent gating before STT, the deletion/export UI, sealed secrets. No new data
 categories beyond what ADR-0010 + PRIVACY.md already cover; the consent flow
 matches the documented wording/versioning. PRIVACY.md/INSTALL.md get an

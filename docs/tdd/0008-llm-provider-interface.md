@@ -1,4 +1,5 @@
 # TDD 0008: LLM Provider Interface (Phase 1.5)
+
 Status: implemented
 PRD refs: 5.2, 4.3
 PRD-rev: 10391ba
@@ -38,8 +39,16 @@ export interface LLMToolSpec {
   inputSchemaJson: Record<string, unknown>;
 }
 
-export interface LLMTextContent { type: "text"; text: string; }
-export interface LLMToolUseContent { type: "tool_use"; id: string; name: string; input: unknown; }
+export interface LLMTextContent {
+  type: "text";
+  text: string;
+}
+export interface LLMToolUseContent {
+  type: "tool_use";
+  id: string;
+  name: string;
+  input: unknown;
+}
 export interface LLMToolResultContent {
   type: "tool_result";
   toolUseId: string;
@@ -48,7 +57,10 @@ export interface LLMToolResultContent {
 }
 /** Opaque compaction block returned by the provider on a prior turn.
  *  Treated as a black box and round-tripped verbatim. See "Compaction" below. */
-export interface LLMCompactionContent { type: "compaction"; opaque: unknown; }
+export interface LLMCompactionContent {
+  type: "compaction";
+  opaque: unknown;
+}
 
 export type LLMContent =
   | LLMTextContent
@@ -91,12 +103,7 @@ export interface LLMOptions {
   onUsage?: (usage: TokenUsage) => void;
 }
 
-export type StopReason =
-  | "end_turn"
-  | "tool_use"
-  | "max_tokens"
-  | "compacted"
-  | "refusal";
+export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "compacted" | "refusal";
 
 export type LLMErrorKind =
   | "rate_limited"
@@ -140,11 +147,11 @@ The interface accepts `modelTier: "narration" | "orchestration"`, not raw model 
 - `AnthropicProvider`: `narration` → `claude-opus-4-7`, `orchestration` → `claude-haiku-4-5`. Overridable per provider config; environment variables `ANTHROPIC_MODEL_NARRATION` / `ANTHROPIC_MODEL_ORCHESTRATION` provide a no-recompile escape hatch for operators.
 - Future providers map their own equivalents.
 
-Rationale: the model-name landscape changes constantly. Locking orchestrator code to specific IDs creates a tight coupling that breaks every time a provider releases a new model. Tier-based dispatch lets the orchestrator say *"use the strong model for narration, the cheap model for orchestration meta-decisions"* and lets each provider answer that in its own terms.
+Rationale: the model-name landscape changes constantly. Locking orchestrator code to specific IDs creates a tight coupling that breaks every time a provider releases a new model. Tier-based dispatch lets the orchestrator say _"use the strong model for narration, the cheap model for orchestration meta-decisions"_ and lets each provider answer that in its own terms.
 
 ### Effort and thinking
 
-`effort` maps to Anthropic's `output_config.effort` parameter (GA, no beta header). The parameter is accepted on Opus 4.5+ and Sonnet 4.6 but **rejected on Haiku 4.5 / Sonnet 4.5** with a 400 *"this model does not support the effort parameter."* `AnthropicProvider`:
+`effort` maps to Anthropic's `output_config.effort` parameter (GA, no beta header). The parameter is accepted on Opus 4.5+ and Sonnet 4.6 but **rejected on Haiku 4.5 / Sonnet 4.5** with a 400 _"this model does not support the effort parameter."_ `AnthropicProvider`:
 
 - On `narration` tier (Opus 4.7 by default): sets `effort: "xhigh"` — the documented sweet spot for agentic work that needs intelligence but not max cost.
 - On `orchestration` tier (Haiku 4.5 by default): **omits `output_config` entirely** to avoid the 400. The Haiku tier accepts the caller's `effort` only if the operator has overridden the default model to one that supports it.
@@ -252,9 +259,9 @@ No PII, no prompt content, no model name (operators who care can read their own 
 
 ## Privacy implications
 
-- The provider receives the full assembled prompt — system prompt (behavior spec + warm state) + dialogue history + tools. This may include the Discord IDs of players (in dialogue) and quest-flag content. That's a `PII<T>`-adjacent flow, but the data is going to the configured LLM provider (a service the operator has a billing relationship with), not to Skeinkeeper's maintainers. The operator-facing privacy disclosure (`docs/PRIVACY.md`) already covers this: *"the LLM provider receives the assembled prompt for each turn"*.
+- The provider receives the full assembled prompt — system prompt (behavior spec + warm state) + dialogue history + tools. This may include the Discord IDs of players (in dialogue) and quest-flag content. That's a `PII<T>`-adjacent flow, but the data is going to the configured LLM provider (a service the operator has a billing relationship with), not to Skeinkeeper's maintainers. The operator-facing privacy disclosure (`docs/PRIVACY.md`) already covers this: _"the LLM provider receives the assembled prompt for each turn"_.
 - The `audit_log` records the request that went out (with prompt content) and the response that came back. This is on the operator's machine, encrypted at rest, and falls under the existing erasure paths (`ErasureService.deleteForPlayer(discordId)` cascades to audit log entries that reference that ID).
-- No new consents required — the existing voice-processing consent does not extend to LLM submission, but text submission to the operator's chosen LLM is part of the *gameplay itself* and is inherent to "running Skeinkeeper." This is documented in `docs/PRIVACY.md` and is the right default for self-hosted software.
+- No new consents required — the existing voice-processing consent does not extend to LLM submission, but text submission to the operator's chosen LLM is part of the _gameplay itself_ and is inherent to "running Skeinkeeper." This is documented in `docs/PRIVACY.md` and is the right default for self-hosted software.
 
 ## Eval implications
 
@@ -275,12 +282,12 @@ Real-API eval runs (against a live Anthropic key) are out of scope for Phase 1.5
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.2 | LLM provider must be pluggable (per ADR-0004) | `LLMProvider` interface in `orchestrator/src/interfaces/llm.ts`; orchestrator never references a concrete provider or model ID directly |
-| 5.2 | Anthropic as default provider | `AnthropicProvider` in `plugins/llm-anthropic/`; `narration` tier defaults to `claude-opus-4-7`, `orchestration` to `claude-haiku-4-5` |
-| 4.3 | LLM tool use is first-class, not text-encoded | `LLMToolUseContent` and `LLMToolResultContent` as native content types; `tool_call` event emitted by provider; dispatcher wired directly |
-| 4.3 | Prompt caching applied to stable prefix | `cache_control: { type: "ephemeral" }` on system prompt + tool list; `cacheSystemPrompt` flag defaults to `true` |
+| PRD ref | Requirement                                   | Satisfied by                                                                                                                             |
+| ------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.2     | LLM provider must be pluggable (per ADR-0004) | `LLMProvider` interface in `orchestrator/src/interfaces/llm.ts`; orchestrator never references a concrete provider or model ID directly  |
+| 5.2     | Anthropic as default provider                 | `AnthropicProvider` in `plugins/llm-anthropic/`; `narration` tier defaults to `claude-opus-4-7`, `orchestration` to `claude-haiku-4-5`   |
+| 4.3     | LLM tool use is first-class, not text-encoded | `LLMToolUseContent` and `LLMToolResultContent` as native content types; `tool_call` event emitted by provider; dispatcher wired directly |
+| 4.3     | Prompt caching applied to stable prefix       | `cache_control: { type: "ephemeral" }` on system prompt + tool list; `cacheSystemPrompt` flag defaults to `true`                         |
 
 ## Dependencies considered
 
@@ -294,7 +301,7 @@ None — this design directly implements ADR-0004 (plugin interface pattern) and
 
 ## Decisions to promote (ADR candidates)
 
-None promoted. The per-system *renderer* pattern (rendering Foundry's opaque `actor.system` blob for the LLM rather than validating a parallel schema) is a corollary of ADR-0012 (drop Ruleset interface) and ADR-0018 (Foundry source of truth); it is not promoted to a separate ADR.
+None promoted. The per-system _renderer_ pattern (rendering Foundry's opaque `actor.system` blob for the LLM rather than validating a parallel schema) is a corollary of ADR-0012 (drop Ruleset interface) and ADR-0018 (Foundry source of truth); it is not promoted to a separate ADR.
 
 ## Alternatives considered
 

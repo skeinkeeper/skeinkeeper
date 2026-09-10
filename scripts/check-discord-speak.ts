@@ -23,11 +23,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { Client, Events, GatewayIntentBits } from "discord.js";
-import {
-  VoiceConnectionStatus,
-  entersState,
-  joinVoiceChannel,
-} from "@discordjs/voice";
+import { VoiceConnectionStatus, entersState, joinVoiceChannel } from "@discordjs/voice";
 import { DiscordVoiceIO, ElevenLabsTTS } from "@skeinkeeper/voice-discord";
 import type { STTProvider } from "@skeinkeeper/orchestrator";
 
@@ -42,10 +38,7 @@ function loadEnv(path: string): void {
     if (!m) continue;
     const key = m[1]!;
     let val = m[2]!;
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
     if (process.env[key] === undefined) process.env[key] = val;
@@ -80,7 +73,10 @@ const noopStt: STTProvider = {
  * reset, 4014/4015 = server-side). Not part of the shipped adapter.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function hookWsCloseCodes(connection: { on: (e: string, l: (...a: any[]) => void) => void; state: any }): void {
+function hookWsCloseCodes(connection: {
+  on: (e: string, l: (...a: any[]) => void) => void;
+  state: any;
+}): void {
   const seenNet = new WeakSet<object>();
   const seenWs = new WeakSet<object>();
   const hookWs = (netState: any): void => {

@@ -33,8 +33,7 @@ export function translateRequest(
   req: LLMRequest,
   cfg: RequestTranslationConfig,
 ): BetaMessageStreamParams {
-  const model =
-    req.modelTier === "narration" ? cfg.modelNarration : cfg.modelOrchestration;
+  const model = req.modelTier === "narration" ? cfg.modelNarration : cfg.modelOrchestration;
   // Effort and adaptive thinking are not supported on Haiku 4.5 / Sonnet 4.5
   // (API returns 400 "this model does not support the effort parameter").
   // Both are accepted on Opus 4.5/4.6/4.7 and Sonnet 4.6.
@@ -48,9 +47,7 @@ export function translateRequest(
 
   const effort =
     req.effort ??
-    (req.modelTier === "narration"
-      ? cfg.defaultEffortNarration
-      : cfg.defaultEffortOrchestration);
+    (req.modelTier === "narration" ? cfg.defaultEffortNarration : cfg.defaultEffortOrchestration);
 
   const params: BetaMessageStreamParams = {
     model: model as BetaMessageStreamParams["model"],
@@ -79,18 +76,13 @@ export function translateRequest(
   return params;
 }
 
-function translateSystem(
-  prompt: string,
-  cache: boolean,
-): Anthropic.Messages.TextBlockParam[] {
+function translateSystem(prompt: string, cache: boolean): Anthropic.Messages.TextBlockParam[] {
   const block: Anthropic.Messages.TextBlockParam = { type: "text", text: prompt };
   if (cache) block.cache_control = { type: "ephemeral" };
   return [block];
 }
 
-function translateTools(
-  tools: ReadonlyArray<LLMToolSpec>,
-): Anthropic.Messages.ToolUnion[] {
+function translateTools(tools: ReadonlyArray<LLMToolSpec>): Anthropic.Messages.ToolUnion[] {
   return tools.map((t, i) => {
     const tool: Anthropic.Messages.Tool = {
       name: t.name,

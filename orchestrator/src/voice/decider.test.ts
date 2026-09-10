@@ -86,9 +86,9 @@ describe("decideShouldRespond", () => {
     });
     const sent = llm.receivedRequests[0]!;
     expect(sent.modelTier).toBe("orchestration");
-    const userText = sent.messages[0]!.content
-      .map((c) => (c.type === "text" ? c.text : ""))
-      .join("");
+    const userText = sent.messages[0]!.content.map((c) => (c.type === "text" ? c.text : "")).join(
+      "",
+    );
     expect(userText).toContain("RESERVED");
     expect(userText).toContain("I move into the dark corner");
   });

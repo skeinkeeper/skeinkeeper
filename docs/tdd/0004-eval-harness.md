@@ -1,4 +1,5 @@
 # TDD 0004: Eval Harness
+
 Status: implemented
 PRD refs: 5.7, 8
 PRD-rev: 10391ba
@@ -21,19 +22,19 @@ Phase 0.4 lands the framework, not the real runner — the real runner needs the
 YAML files under `eval/fixtures/*.eval.yaml`. One fixture per file. Schema:
 
 ```yaml
-name: tavern-three-senses                   # unique within the fixture set
-description: |                              # what this scenario tests
+name: tavern-three-senses # unique within the fixture set
+description: | # what this scenario tests
   When the party enters a new location, the AI's first beat should reference
   at least one non-sight sense per behavior/default.md §2.1.
-behavior_spec_version: v0.1                 # the spec version this expects; advisory
-skip: ""                                    # optional reason; non-empty = skip with that reason
+behavior_spec_version: v0.1 # the spec version this expects; advisory
+skip: "" # optional reason; non-empty = skip with that reason
 scenario:
-  state:                                    # initial warm state for the runner
+  state: # initial warm state for the runner
     location: tavern
-  turns:                                    # ordered turns to play
+  turns: # ordered turns to play
     - speaker: player
       text: "We push open the door of the inn."
-expectations:                               # checked against the runner's final response
+expectations: # checked against the runner's final response
   - kind: not_empty
     field: narration
   - kind: contains_any_of
@@ -110,7 +111,7 @@ The CLI prints a human-readable summary and exits non-zero if any expectations f
 
 ### CI integration
 
-`.github/workflows/ci.yml` already runs `pnpm eval`. Add a step *after* eval that, when the trigger is a `pull_request`:
+`.github/workflows/ci.yml` already runs `pnpm eval`. Add a step _after_ eval that, when the trigger is a `pull_request`:
 
 - Reads `eval/last-run.json`.
 - If `totals.fail > 0`, posts a comment summarizing failures via `gh pr comment $PR_NUMBER --body @-`.
@@ -155,10 +156,10 @@ Fixtures may contain example player utterances. They're committed to the public 
 
 ## Requirement traceability
 
-| PRD ref | Requirement | Satisfied by |
-|---------|-------------|--------------|
-| 5.7 | Behavioral regression detection for behavior spec changes | Declarative YAML fixture format + expectation kinds; CI runs `pnpm eval` on every PR and posts failure summaries |
-| 8 | CI gate for behavior spec / eval harness | `.github/workflows/ci.yml` step running eval; exits non-zero on any failed expectation; `eval/last-run.json` posted as PR comment when failures exist |
+| PRD ref | Requirement                                               | Satisfied by                                                                                                                                          |
+| ------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.7     | Behavioral regression detection for behavior spec changes | Declarative YAML fixture format + expectation kinds; CI runs `pnpm eval` on every PR and posts failure summaries                                      |
+| 8       | CI gate for behavior spec / eval harness                  | `.github/workflows/ci.yml` step running eval; exits non-zero on any failed expectation; `eval/last-run.json` posted as PR comment when failures exist |
 
 ## Dependencies considered
 

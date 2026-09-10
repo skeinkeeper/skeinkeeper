@@ -1,6 +1,7 @@
 # ADR-0008: Tenant Scoping in the Data Model
 
 ## Status
+
 Accepted (2026-05-18)
 
 ## Context
@@ -37,6 +38,7 @@ Concretely:
 ## Consequences
 
 **Positive**
+
 - **Multiple campaign groups in one install just work**, with no risk of state mixing.
 - **Code is easier to review.** A reviewer reading a query knows immediately what scope it operates in.
 - **Backup and restore are scoped.** Exporting one campaign group's data doesn't leak another's.
@@ -44,11 +46,13 @@ Concretely:
 - **The convention scales.** If the operator ever runs more campaign groups, the architecture doesn't change.
 
 **Negative**
+
 - **Engineering discipline cost.** Every query reviewer has to confirm tenant scoping. CI lint helps but doesn't catch everything.
 - **The constant value `"default"`** can confuse newcomers ("why is this column always the same value?"). The CONTRIBUTING guide explains it.
 - **A small storage overhead** (the column itself, the index). Negligible.
 
 **Neutral**
+
 - This is a standard pattern in software that may host multiple isolated workloads. The discipline is well-understood; we're following convention.
 - SQLite is sufficient for the OSS scale; Postgres with row-level security would also implement this cleanly if scale ever required it.
 
@@ -67,6 +71,7 @@ These become CI checks or lint rules:
 - How tenants are created or destroyed at the operator-facing level. That's an operator-UX question handled in design docs.
 
 ## Revisit when
+
 - A pattern of cross-tenant operations becomes legitimately useful and the escape hatch is being invoked frequently.
 - A different multi-tenancy model becomes clearly superior. Unlikely; this is the standard pattern.
 - The discipline cost in contributor experience turns out to be higher than expected.

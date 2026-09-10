@@ -1,6 +1,7 @@
 # ADR-0001: Use the Foundry MCP Module for VTT Integration
 
 ## Status
+
 Accepted (2026-05-17). **Superseded by [ADR-0011](./0011-prefer-oss-foundry-mcp-bridges.md) (2026-05-19)** — the recommendation of the Patreon-gated `alexivenkov` bridge was reversed once fully-OSS alternatives were surveyed. The historical content below is preserved unchanged.
 
 ## Context
@@ -20,20 +21,24 @@ The adapter normalizes the MCP commands into our internal `VTTDriver` interface,
 ## Consequences
 
 **Positive**
+
 - Foundry integration is largely "done" on day one. Engineering time redirects to the harder problems: orchestration, memory, and behavior.
 - The community module benefits from its own contributor base — bug fixes and Foundry-version compatibility updates flow in for free.
 - The MCP surface is already designed to be AI-consumable; we don't have to invent that abstraction.
 
 **Negative**
+
 - We take on a third-party dependency whose roadmap we don't control. If the maintainer abandons it or makes breaking changes, we inherit the cost.
 - We're constrained by the commands the module exposes. Capabilities outside that surface require either upstreaming a contribution, forking, or implementing direct Foundry calls alongside the bridge.
 - The module currently requires an API key issued via Patreon. This creates a non-free dependency for some users and a soft licensing question for an OSS project. Mitigation: document the dependency clearly; revisit if it becomes a barrier.
 
 **Neutral**
+
 - The `VTTDriver` abstraction means we can later replace the implementation without affecting the orchestrator. The MCP module is the **implementation**, not the **interface**.
 - We should contribute back to the Foundry MCP project where useful (bug reports, command additions). Good OSS hygiene.
 
 ## Revisit when
+
 - The maintainer's support cadence falls below 30 days for security or compatibility issues.
 - A clearly superior alternative emerges (WotC ships official Foundry-equivalent automation, etc.).
 - We need commands the module won't accept upstream.
