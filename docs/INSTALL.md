@@ -181,16 +181,6 @@ console password — belongs to you rather than to root. That matters beyond tid
 delete the data it is asked to erase. If `id -u` / `id -g` report something other
 than 1000, set `SKEINKEEPER_UID` / `SKEINKEEPER_GID` in `.env`.
 
-> **Upgrading an install that predates this?** A container that previously ran as
-> root left root-owned files behind, and the non-root container cannot write them —
-> it will fail to open its own database. Hand ownership back once, before starting:
->
-> ```bash
-> docker compose down
-> sudo chown -R "$(id -u):$(id -g)" data/
-> docker compose up -d
-> ```
-
 The `app` service builds the image, installs ffmpeg + the native deps, and runs
 the Discord gateway, the voice loop, the operator console, and the Foundry
 gateway. Foundry itself runs outside the container, on your own machine.
