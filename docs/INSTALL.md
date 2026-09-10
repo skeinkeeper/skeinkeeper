@@ -232,8 +232,12 @@ into the add-on's gateway URL too.
   `0.0.0.0:7733:7733`. That genuinely puts both surfaces on your network — the
   gateway without TLS, the console with only a password — and Skeinkeeper cannot
   detect it, because a connection arriving through the publish mapping looks
-  identical to a LAN peer. If you need Foundry on another machine, use
-  `FOUNDRY_GATEWAY_BIND=lan` with TLS (below), which is the supported way.
+  identical to a LAN peer. If you need Foundry on another machine, run
+  Skeinkeeper **natively** (`pnpm app:start`) with `FOUNDRY_GATEWAY_BIND=lan`
+  and TLS (below). The shipped compose file deliberately cannot do this: it
+  pins `FOUNDRY_GATEWAY_BIND: "container"` as a literal in `environment:`, which
+  beats anything in your `.env`, so setting `lan` there is silently ignored
+  rather than refused.
 - **Do not add a second service to this Compose project** without reading this
   first. Docker's project network lets any sibling container reach these ports
   _directly_, never traversing the host publish mapping the paragraph above rests
