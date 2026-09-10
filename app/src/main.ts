@@ -117,8 +117,13 @@ async function main(): Promise<void> {
     );
   }
   const web = createWebServer(app, bus, auth);
+  // `container` binds 0.0.0.0 of the container's OWN namespace and is published to
+  // the host's loopback only, so advertise the URL the operator can actually open —
+  // the same reason the gateway advertises 127.0.0.1 rather than its bind address.
+  const isContainerBind = config.foundry.gateway.bind === "container";
+  const shownHost = isContainerBind && host === "0.0.0.0" ? "127.0.0.1" : host;
   web.listen(config.webPort, host, () => {
-    console.log(`Skeinkeeper operator console: http://${host}:${config.webPort}`);
+    console.log(`Skeinkeeper operator console: http://${shownHost}:${config.webPort}`);
     if (consoleCredential !== undefined) {
       const path = join(config.dataDir, CONSOLE_PASSWORD_FILE);
       if (consoleCredential.created) {
@@ -135,7 +140,10 @@ async function main(): Promise<void> {
         "  (no operator password set — console is unauthenticated; loopback-only. " +
           "Set SKEINKEEPER_OPERATOR_PASSWORD_HASH to require login.)",
       );
-    if (!hostIsLoopback) {
+    // Not a warning in `container` mode: the bind is namespace-internal and the
+    // publish mapping is loopback-scoped, so the console is NOT on the network. A
+    // warning that fires when nothing is wrong teaches operators to ignore warnings.
+    if (!hostIsLoopback && !isContainerBind) {
       console.log(`  (WARNING: bound to ${host} — the console is reachable on the network)`);
     }
   });
