@@ -1,0 +1,26 @@
+[Unit]
+Description=Skeinkeeper operator app (Docker Compose deployment)
+Documentation=https://github.com/skeinkeeper/skeinkeeper/blob/main/docs/INSTALL.md
+# Foundry is a separate service; Skeinkeeper does not require it to be up in
+# order to start (Start fails closed at session time instead — TDD 0039).
+After=docker.service
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+WorkingDirectory=%h/skeinkeeper-prod
+# Foreground compose, so systemd supervises the container directly and its logs
+# land in the journal. The compose file sets `restart: "no"` for the same
+# reason: exactly one supervisor. Two would race on every failure.
+ExecStart=/usr/bin/docker compose up
+ExecStop=/usr/bin/docker compose down
+Restart=always
+RestartSec=10
+# Compose needs time to stop the container gracefully; the app flushes telemetry
+# and closes the database on SIGTERM.
+TimeoutStopSec=90
+SyslogIdentifier=skeinkeeper
+
+[Install]
+WantedBy=default.target
