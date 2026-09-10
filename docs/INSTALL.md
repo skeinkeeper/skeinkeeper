@@ -174,6 +174,23 @@ cp .env.example .env   # fill in tokens/keys
 docker compose up
 ```
 
+The container runs as uid/gid `1000:1000` by default so that everything it writes
+into `./data` — the SQLite database, the LanceDB store, the pairing secret and the
+console password — belongs to you rather than to root. That matters beyond tidiness:
+`pnpm skeinkeeper <erase args>` runs natively as your user, and it has to be able to
+delete the data it is asked to erase. If `id -u` / `id -g` report something other
+than 1000, set `SKEINKEEPER_UID` / `SKEINKEEPER_GID` in `.env`.
+
+> **Upgrading an install that predates this?** A container that previously ran as
+> root left root-owned files behind, and the non-root container cannot write them —
+> it will fail to open its own database. Hand ownership back once, before starting:
+>
+> ```bash
+> docker compose down
+> sudo chown -R "$(id -u):$(id -g)" data/
+> docker compose up -d
+> ```
+
 The `app` service builds the image, installs ffmpeg + the native deps, and runs
 the Discord gateway, the voice loop, the operator console, and the Foundry
 gateway. Foundry itself runs outside the container, on your own machine.
