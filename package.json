@@ -29,7 +29,7 @@
     "app:start": "tsx app/src/main.ts",
     "ingest:compendium": "tsx app/src/ingest.ts",
     "skeinkeeper": "tsx scripts/skeinkeeper.mjs",
-    "prepare": "lefthook install"
+    "prepare": "if git rev-parse --git-dir >/dev/null 2>&1; then lefthook install; fi"
   },
   "dependencies": {
     "@skeinkeeper/llm-anthropic": "workspace:^",

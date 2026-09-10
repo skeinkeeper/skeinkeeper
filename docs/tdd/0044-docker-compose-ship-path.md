@@ -118,6 +118,14 @@ container replacement so the operator pairs and logs in once.
   why the snippet above repeats the variable on both sides. The advertised add-on URL
   follows `FOUNDRY_GATEWAY_PORT` too, so a customised gateway port must be pasted into the
   add-on's `gatewayUrl` setting; INSTALL says so.
+- **The `prepare` lifecycle hook breaks the image build.** `pnpm install` runs the root
+  `prepare` script (`lefthook install`), which shells out to `git` and requires a
+  repository. The image has neither: `git` is not in the base image, and
+  `.dockerignore` deliberately excludes `.git`. Setting `LEFTHOOK=0` does not help —
+  lefthook still invokes git at install time — and `--ignore-scripts` would skip the
+  native rebuilds the voice path needs. The hook is therefore guarded to no-op when
+  there is no repository, which keeps it loud on a developer machine and silent in
+  an image. Found by runtime-verify, not by design.
 - **The elephant: this is the first end-to-end run of the container path.** Because the
   console and gateway have never been reachable (0043), nothing behind them is known to
   work in a container: ffmpeg and Discord voice UDP egress, `pnpm app:start` transpiling
@@ -232,6 +240,11 @@ is the acceptance evidence, and this path is exercised as part of
 - `Dockerfile` — drop the stale MCP-bridge header
 - `docs/INSTALL.md` — the container path, pairing, console login, do-not-widen
 - `.env.example` — document `container` alongside `loopback` / `lan`
+- `package.json` — guard the root `prepare` hook so it no-ops outside a git repo
+  _(added at verify time: `docker build` failed because `pnpm install` runs
+  `prepare` → `lefthook install`, which requires a git repository. `.dockerignore`
+  correctly excludes `.git`, so installing the `git` package would not have helped
+  either — the fix belongs in the hook, not the image.)_
 
 ## Expected diff size
 
@@ -240,5 +253,6 @@ is the acceptance evidence, and this path is exercised as part of
 - `Dockerfile` — 10 lines
 - `docs/INSTALL.md` — 70 lines (×1.2 prose pad applied)
 - `.env.example` — 15 lines (×1.2 prose pad applied)
+- `package.json` — 2 lines
 
-Total expected diff: 130 lines across 5 files.
+Total expected diff: 132 lines across 6 files.
