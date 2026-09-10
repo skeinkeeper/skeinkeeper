@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Skeinkeeper Contributors
+#
+# Build-context exclusions. The Dockerfile's `COPY . .` copies whatever is in
+# the context, so without this file an image built from a working checkout bakes
+# in the operator's own credentials and their table's recorded speech — and an
+# operator who publishes that image distributes both (CLAUDE.md hard rule #7,
+# PRD §5.5). An image built before this file existed still contains them:
+# rebuild it, and do not publish the old one.
+
+# Operator secrets: Discord bot token, Anthropic / ElevenLabs / Deepgram keys,
+# and any TLS material for FOUNDRY_GATEWAY_BIND=lan.
+.env
+.env.*
+*.key
+*.pem
+secrets/
+
+# Player data: the audience-tagged dialogue store, LanceDB episodic memory, the
+# SQLite database. Personal data the operator controls — never in an image.
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+.lancedb/
+logs/
+
+# Host build tree. `pnpm install --frozen-lockfile` owns these inside the image;
+# a host copy is both wrong (native bindings) and large.
+node_modules
+**/node_modules
+.pnpm-store/
+**/dist
+**/*.tsbuildinfo
+
+# Repo plumbing with no runtime use. `.worktrees` can hold entire extra
+# checkouts of this repo.
+.git
+.github
+.worktrees

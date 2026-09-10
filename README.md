@@ -40,6 +40,11 @@ docker compose up
 # open http://localhost:3000 in your browser
 ```
 
+The console requires a password. On first boot Skeinkeeper generates one, prints
+it once in the `docker compose up` output, and persists it in `./data` — copy it
+from the logs to log in. See [`docs/INSTALL.md`](./docs/INSTALL.md) for the rest
+of the first-run sequence (pairing the Foundry add-on, then Start).
+
 ## What it does
 
 - **Runs the DM side of a tabletop RPG session.** Narrates scenes, voices NPCs, calls for rolls, adjudicates rules, tracks state.

@@ -33,7 +33,10 @@ export interface AppConfig {
   foundry: {
     url: string;
     gateway: {
-      bind: "loopback" | "lan";
+      /** Where the gateway listens (TDD 0043). `container` is `0.0.0.0` inside
+       *  a container's own network namespace — set by the shipped compose file,
+       *  not something to enable on a native run. */
+      bind: "loopback" | "container" | "lan";
       port: number;
       pairingSecret: string;
       tls?: { cert: string; key: string };
@@ -77,7 +80,8 @@ const DEFAULT_DM_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"; // George — warm storytell
 
 function gatewayFromEnv(env: Env, missing: string[]): AppConfig["foundry"]["gateway"] {
   const bindRaw = (env["FOUNDRY_GATEWAY_BIND"] ?? "loopback").trim();
-  const bind = bindRaw === "lan" ? "lan" : "loopback";
+  const bind: AppConfig["foundry"]["gateway"]["bind"] =
+    bindRaw === "lan" ? "lan" : bindRaw === "container" ? "container" : "loopback";
   const secret = (env["FOUNDRY_PAIRING_SECRET"] ?? "").trim();
   const cert = env["FOUNDRY_GATEWAY_TLS_CERT"];
   const key = env["FOUNDRY_GATEWAY_TLS_KEY"];
@@ -85,6 +89,12 @@ function gatewayFromEnv(env: Env, missing: string[]): AppConfig["foundry"]["gate
     cert !== undefined && cert.length > 0 && key !== undefined && key.length > 0
       ? { cert, key }
       : undefined;
+  // `lan` crosses a network the operator does not fully control, so cert, key
+  // and secret must all be supplied up front. `container` needs neither: the
+  // bind is inside the container's network namespace and published to host
+  // loopback only, and its mandatory pairing secret is generated and persisted
+  // at boot (loadOrCreatePairingSecret) rather than hand-configured — requiring
+  // it here would put a setup step in front of `docker compose up` (TDD 0043).
   if (bind === "lan") {
     if (secret.length === 0 || tls === undefined) {
       missing.push("FOUNDRY_GATEWAY_TLS_CERT+FOUNDRY_GATEWAY_TLS_KEY+FOUNDRY_PAIRING_SECRET");

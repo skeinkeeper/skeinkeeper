@@ -1,6 +1,6 @@
 # TDD 0043: Container bind mode + console credential
 
-Status: draft
+Status: implemented
 PRD refs: 4.2 (FR-F2, FR-F6), §3 Goals (operator-controlled `docker compose up`), 5.5
 PRD-rev: b8a265c
 ADR constraints: 0009, 0010, 0025, 0029, 0030
