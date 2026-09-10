@@ -347,6 +347,13 @@ export class FoundryGateway {
       worldId: typeof msg["worldId"] === "string" ? msg["worldId"] : "",
     };
     ws.send(JSON.stringify({ type: "hello-ok", protocol: 1 }));
+    // Pairing is a step INSTALL tells the operator to perform by hand, and its
+    // failure mode is a silent 5s Start timeout. Say so when it succeeds, so the
+    // operator can tell "paired" from "typed the secret wrong" before Start.
+    console.info(
+      `Foundry add-on paired: ${this.hello.moduleId} on Foundry ${this.hello.foundryVersion}` +
+        (this.hello.worldId.length > 0 ? ` (world ${this.hello.worldId})` : ""),
+    );
     const waiters = this.waiters;
     this.waiters = [];
     for (const w of waiters) w(this.hello);

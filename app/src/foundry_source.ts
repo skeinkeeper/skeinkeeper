@@ -43,21 +43,35 @@ export interface FoundrySource {
  * store (design doc 0029).
  */
 export function loadOrCreatePairingSecret(dataDir: string, envSecret: string): string {
+  return resolvePairingSecret(dataDir, envSecret).secret;
+}
+
+/** As `loadOrCreatePairingSecret`, but also reports whether THIS call generated the
+ *  secret. Callers print the plaintext only when it did: the value is a credential,
+ *  and reprinting it on every boot multiplies the `docker logs` snapshots that
+ *  contain it. The console password already works this way (auth.ts). */
+export function resolvePairingSecret(
+  dataDir: string,
+  envSecret: string,
+): { secret: string; created: boolean } {
   const fromEnv = envSecret.trim();
-  if (fromEnv.length > 0) return fromEnv;
+  if (fromEnv.length > 0) return { secret: fromEnv, created: false };
   const path = join(dataDir, ".foundry-pairing-secret");
   if (existsSync(path)) {
     const raw = readFileSync(path, "utf8").trim();
-    if (raw.length >= 16) return raw;
+    if (raw.length >= 16) return { secret: raw, created: false };
   }
   const secret = randomBytes(24).toString("base64url");
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(path, secret, { mode: 0o600 });
-  return secret;
+  return { secret, created: true };
 }
 
 export function createFoundrySource(config: AppConfig, _env: NodeJS.ProcessEnv): FoundrySource {
-  const secret = loadOrCreatePairingSecret(config.dataDir, config.foundry.gateway.pairingSecret);
+  const { secret, created: secretCreated } = resolvePairingSecret(
+    config.dataDir,
+    config.foundry.gateway.pairingSecret,
+  );
   const gateway = new FoundryGateway({
     bind: config.foundry.gateway.bind,
     port: config.foundry.gateway.port,
@@ -72,7 +86,13 @@ export function createFoundrySource(config: AppConfig, _env: NodeJS.ProcessEnv):
     if (listening) return;
     await gateway.listen();
     listening = true;
-    console.info(`Foundry add-on pairing secret: ${secret}`);
+    const secretPath = join(config.dataDir, ".foundry-pairing-secret");
+    if (secretCreated) {
+      console.info(`Foundry add-on pairing secret (generated — copy it now): ${secret}`);
+      console.info(`  Stored in ${secretPath}; it will not be printed again.`);
+    } else {
+      console.info(`Foundry add-on pairing secret: unchanged, read it from ${secretPath}.`);
+    }
     console.info(`Foundry gateway: ${gateway.listenUrl}`);
     console.info(
       "Enable the Skeinkeeper add-on in your Foundry world, paste that secret into its " +
