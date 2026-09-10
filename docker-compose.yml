@@ -24,6 +24,13 @@ services:
     environment:
       FOUNDRY_GATEWAY_BIND: "container"
       SKEINKEEPER_WEB_HOST: "0.0.0.0"
+      # Pinned here rather than left to the image's ENV, for the same reason:
+      # `.env.example` ships SKEINKEEPER_DATA_DIR=./data, and `env_file:` beats
+      # the Dockerfile's ENV — so an operator's own `.env` would silently send
+      # every write to /app/data *inside* the container. The volume below would
+      # receive nothing, and the pairing secret, console password, SQLite DB and
+      # episodic memory would all be lost on `docker compose down`.
+      SKEINKEEPER_DATA_DIR: "/data"
     # Both sides of each mapping template off the SAME variable: the app reads
     # these vars to pick its listen port *inside* the container (app/src/config.ts),
     # so hardcoding the container side leaves nothing listening whenever an
