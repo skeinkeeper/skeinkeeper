@@ -75,3 +75,8 @@ strategy/
 **/task-breakdown*.md
 plugins/*/pnpm-lock.yaml
 local_cache/
+
+# Eval run output: rewritten by every `pnpm eval` with machine-specific absolute
+# paths, and consumed only by the CI step that just produced it — never the
+# committed copy. Tracking it only produced churn and leaked local paths.
+eval/last-run.json
